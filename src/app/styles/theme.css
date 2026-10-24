@@ -78,11 +78,16 @@
   --activity-stand-lit: #00f8d0;
   /* 环带在两套主题下都很亮，字形不能跟随浅色主题的白色 surface。 */
   --activity-ink: #16171c;
+  /* 点阵宇宙背景只在深色挂载（src/components/space-backdrop.tsx），浅色值取 claude.dev 浅色主题，只为两套主题 token 齐全。 */
+  --space-dot: oklch(0.619 0.01 100);
+  --space-shot: oklch(0.848 0.02 90.6);
   --activity-shadow: 0.5;
 }
 
 .dark {
   --background: oklch(0.15 0.008 85);
+  --space-dot: oklch(0.619 0.01 100);
+  --space-shot: oklch(0.713 0.021 87.5);
   --foreground: oklch(0.93 0.012 90);
   --muted: oklch(0.205 0.008 85);
   --muted-foreground: oklch(0.66 0.012 90);
@@ -219,6 +224,10 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  .dark body {
+    background-image: none;
   }
 
   ::selection {

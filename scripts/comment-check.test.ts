@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 import { addedLines, basePaths, buildRequests, collect, COMMENT_AUTHOR, COMMENT_MARKER, commentBody, findComments, main, report } from "./comment-check.ts";
 import { loadTypeScript } from "./comment-only-check.ts";
-import { COMMENT_CHECK, commentAdvice } from "./pr-gate/checks.ts";
+import { COMMENT_CHECK, COMMENT_CHECK_PATH, commentAdvice } from "./pr-gate/checks.ts";
 
 const ts = loadTypeScript(process.cwd());
 
@@ -58,11 +58,25 @@ test("report 只列 ≥0.7 的，调用失败时写明没有建议", () => {
   assert.equal(partial.title, "1 条新注释可能该删（另有 1 条 Jev 没答）");
 });
 
-test("commentAdvice 只在 neutral 时给建议", () => {
+test("commentAdvice：neutral 给建议，success 不提，检查缺席、在跑、没跑成都标出来", () => {
   const run = { name: COMMENT_CHECK, status: "completed", conclusion: "neutral", html_url: "https://github.com/x", output: { title: "2 条新注释可能该删" } };
-  assert.match(commentAdvice([run]) ?? "", /2 条新注释可能该删.*https:\/\/github\.com\/x/);
-  assert.equal(commentAdvice([{ ...run, conclusion: "success" }]), null);
-  assert.equal(commentAdvice([]), null);
+  const code = ["src/a.ts"];
+  assert.match(commentAdvice([run], code) ?? "", /2 条新注释可能该删.*https:\/\/github\.com\/x/);
+  assert.equal(commentAdvice([{ ...run, conclusion: "success" }], code), null);
+  assert.match(commentAdvice([], code) ?? "", /没出现在 head 上/);
+  assert.equal(commentAdvice([], ["docs/a.md"]), null);
+  assert.match(commentAdvice([{ ...run, status: "in_progress", conclusion: null }], code) ?? "", /还在跑/);
+  assert.match(commentAdvice([{ ...run, conclusion: "failure" }], code) ?? "", /没跑成（failure）/);
+  assert.match(commentAdvice([{ ...run, conclusion: "cancelled" }], code) ?? "", /没跑成（cancelled）/);
+});
+
+test("COMMENT_CHECK_PATH 与 comment-check.yml 的 paths 一致", () => {
+  const yml = readFileSync(new URL("../.github/workflows/comment-check.yml", import.meta.url), "utf8");
+  const exts = [...yml.matchAll(/^\s+- "\*\*\.(\w+)"$/gm)].map((m) => m[1]).sort();
+  assert.ok(exts.length > 0);
+  assert.deepEqual(exts, ["cjs", "cts", "js", "jsx", "mjs", "mts", "ts", "tsx"]);
+  for (const ext of exts) assert.ok(COMMENT_CHECK_PATH.test(`a.${ext}`), ext);
+  assert.ok(!COMMENT_CHECK_PATH.test("a.md"));
 });
 
 test("标注集每条都有该删与否的标签和代码上下文", () => {

@@ -20,6 +20,7 @@ import NotFound from "@/app/not-found";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { RestReady } from "@/components/rest-ready";
 import { SiteAnalytics } from "@/components/site-analytics";
+import { SpaceBackdrop } from "@/components/space-backdrop";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
@@ -123,6 +124,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body className="flex min-h-full flex-col">
         <BootAttributes />
         <PsPlusSprite />
+        <SpaceBackdrop />
         <ThemeProvider>{children}</ThemeProvider>
         <ExternalLinkGuard />
         <PwaRegistration />
