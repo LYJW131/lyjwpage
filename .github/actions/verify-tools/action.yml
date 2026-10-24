@@ -13,14 +13,17 @@ runs:
   steps:
     - id: image
       shell: bash
-      run: echo "key=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
-    # PR 上的运行只能读默认分支的缓存，自己存的只有这个 PR 用得上：默认分支的那份由 verify-cache.yml 存
+      run: |
+        echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+        echo "key=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+    # PR 上的运行只能读默认分支的缓存，自己存的只有这个 PR 用得上：默认分支的那份由 verify-cache.yml 存。
+    # 键要带系统名：Playwright 按 Ubuntu 版本下不同的 WebKit 构建，ubuntu-latest 换代后旧系统的构建缺库起不来
     - id: browsers
       if: inputs.browsers == 'true'
       uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ inputs.playwright-version }}-chromium-webkit
+        key: playwright-${{ inputs.playwright-version }}-${{ steps.image.outputs.os }}-chromium-webkit
     - id: debs
       uses: actions/cache@v6
       with:
