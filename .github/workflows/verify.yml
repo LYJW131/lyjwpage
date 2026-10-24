@@ -80,7 +80,10 @@ jobs:
         timeout-minutes: 14
         with:
           browsers: "true"
+      # actionlint 只是验证员的一件工具，下载失败不该拖垮整个验证
       - name: Install actionlint
+        continue-on-error: true
+        timeout-minutes: 3
         run: |
           curl -fsSL -m 60 -o "$RUNNER_TEMP/actionlint.tgz" "https://github.com/rhysd/actionlint/releases/download/v$V/actionlint_${V}_linux_amd64.tar.gz"
           echo "$SHA  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
