@@ -1,0 +1,25 @@
+# lyjwpage
+
+> LYJW's personal homepage, driven by real devices and everyday activity. One page gathers live state from a Mac, an iPhone, a NAS and cloud services: what LYJW is listening to, watching and playing, the app in front on the Mac, chargers, workouts, an exit-node server, AI coding token usage and the site's own health.
+
+Most cards show live or recent state; a card for something not happening right now (watching, listening, charging) is hidden instead of showing old data. The site is open source, and every number on the page can be read as JSON or through MCP, so prefer those over scraping the HTML.
+
+## Data for agents
+
+- [MCP endpoint](https://lyjw.me/mcp): public, no auth, Streamable HTTP. The `get_site_status` tool reads any card's live data with paging and search; tool descriptions list every view
+- [Daily digest](https://lyjw.me/api/status/digest): JSON summary of the last 24 hours, with a tagline and a few readings
+- [Pulse](https://lyjw.me/api/status/pulse): JSON 24-hour timeline of coding, tokens, listening, watching, playing, charging and activity
+- [Now listening](https://lyjw.me/api/status/listening/now): JSON for the song playing right now, if any
+- [Coding usage](https://lyjw.me/api/status/coding): JSON AI coding token totals and cost estimates per agent and model
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/LYJW131/lyjwpage/main/README.en.md): what each card shows, architecture and how data flows from devices to the page
+- [How it works (explainer)](https://lyjw.me/explainer/?lang=en): animated walkthrough of the system
+- [API contracts](https://raw.githubusercontent.com/LYJW131/lyjwpage/main/docs/api-contracts.md): naming of report endpoints, status endpoints and push events (Chinese)
+
+## Optional
+
+- [Source code](https://github.com/LYJW131/lyjwpage): the site, its Cloudflare Workers and the device reporters
+- [Design notes](https://raw.githubusercontent.com/LYJW131/lyjwpage/main/docs/design-notes.md): page details and key design choices (Chinese)
+- [Mirror for mainland China](https://lyjw131.com): same site on another domain

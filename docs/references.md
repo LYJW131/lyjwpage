@@ -267,6 +267,10 @@
   - 是什么：工具定义设 `defer_loading` 后不进初始上下文，模型用 BM25 搜到才加载。
   - 取了什么：首页对话常驻站点工具与 `web_search` / `web_fetch`，领域工具和全部 MCP 工具按需加载，系统提示列出按需工具的类别。
   - 状态：采用。落在 `workers/ai/src/chat/doc-search.ts#TOOL_SEARCH_TOOL` 与 `workers/ai/src/chat/domain-search.ts`。
+- **[llms.txt 提案](https://llmstxt.org/)**
+  - 是什么：放在站点根的 Markdown 索引，给 agent 一份能装进上下文的站点说明：一个 H1、一段引用块摘要、几节 H2 链接列表，`Optional` 一节可跳过。
+  - 取了什么：按这个版式写站点的 `/llms.txt`，链接优先指向对 agent 友好的内容（公开 MCP 端点、JSON 状态端点、GitHub 上的 Markdown 原文），不给首页另做 `.md` 版本：首页是实时仪表盘，数据已经有 JSON 与 MCP 两个出口。
+  - 状态：采用。落在 `public/llms.txt`（静态资产，由 `src/lib/llms-txt.test.mts` 核对链到的站内路径与仓库文件还在）。
 
 ## 密钥管理
 
