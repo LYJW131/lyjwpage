@@ -81,8 +81,9 @@ export function planOf(pull: FullPull, tier: ReturnType<typeof tierOf>) {
 }
 
 // 上次通过的回执（与要判定时的判定）还盖得住 head，就不再跑验证员：常见于评审后只改了措辞或注释
-export function carryOver(plan: ReturnType<typeof planOf>, reuse: Evaluation) {
-  if (plan.need === "" || !reuse.pass || !reuse.receipt) return { plan, note: null };
+// 只给新推送沿用：改目标分支、贴标签这些事件的回执没记目标分支，照常重验
+export function carryOver(plan: ReturnType<typeof planOf>, reuse: Evaluation, event: string | undefined) {
+  if (event !== "synchronize" || plan.base !== "main" || plan.need === "" || !reuse.pass || !reuse.receipt) return { plan, note: null };
   const from = reuse.receipt.sha.slice(0, 7);
   return { plan: { ...plan, need: "", judge: false, ui: false }, note: `沿用 ${from} 的回执（${reuse.receipt.coverage}）：之后只改了文档或代码注释，这次不跑验证员` };
 }
@@ -106,7 +107,7 @@ async function plan(gh: Client, pr: number) {
       console.log(`查上次回执失败，照常验证：${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  const { plan: result, note } = reuse ? carryOver(planned, reuse) : { plan: planned, note: null };
+  const { plan: result, note } = reuse ? carryOver(planned, reuse, process.env.EVENT_ACTION) : { plan: planned, note: null };
   if (note) {
     console.log(note);
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${note}\n`);

@@ -49,6 +49,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           COMMENT_ONLY_REPO: ${{ runner.temp }}/ts
+          EVENT_ACTION: ${{ github.event.action }}
 
   verify:
     needs: plan

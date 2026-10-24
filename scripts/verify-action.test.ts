@@ -77,15 +77,18 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
   assert.equal(planOf(pull({ state: "closed" }), tierOf(["src/components/a.tsx"], trusted)).judge, false);
 });
 
-test("carryOver：通过的回执还盖得住 head 就不跑验证员，没通过或本来就不验的照旧", () => {
+test("carryOver：新推送时通过的回执还盖得住 head 就不跑验证员；没通过、本来就不验、别的事件或目标分支不是 main 的照旧", () => {
   const planned = planOf(pull(), tierOf(["scripts/a.ts"], trusted));
   const receipt = { sha: "b".repeat(40), level: "unit-test-verified", coverage: "notes-only" as const };
-  const kept = carryOver(planned, { head: HEAD, receipt, judge: null, pass: true, next: null });
+  const kept = carryOver(planned, { head: HEAD, receipt, judge: null, pass: true, next: null }, "synchronize");
   assert.deepEqual([kept.plan.need, kept.plan.judge, kept.plan.ui], ["", false, false]);
   assert.match(kept.note ?? "", /沿用 bbbbbbb 的回执（notes-only）/);
-  assert.equal(carryOver(planned, { head: HEAD, receipt, judge: null, pass: false, next: "x" }).plan.need, "unit-test-verified");
+  assert.equal(carryOver(planned, { head: HEAD, receipt, judge: null, pass: false, next: "x" }, "synchronize").plan.need, "unit-test-verified");
+  for (const event of ["edited", "labeled", "reopened", undefined]) assert.equal(carryOver(planned, { head: HEAD, receipt, judge: null, pass: true, next: null }, event).note, null);
+  const release = planOf(pull({ base: { ref: "release" } }), tierOf(["scripts/a.ts"], trusted));
+  assert.equal(carryOver(release, { head: HEAD, receipt, judge: null, pass: true, next: null }, "synchronize").note, null);
   const skipped = planOf(pull({ draft: true }), tierOf(["scripts/a.ts"], trusted));
-  assert.equal(carryOver(skipped, { head: HEAD, receipt, judge: null, pass: true, next: null }).note, null);
+  assert.equal(carryOver(skipped, { head: HEAD, receipt, judge: null, pass: true, next: null }, "synchronize").note, null);
 });
 
 test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义", () => {
