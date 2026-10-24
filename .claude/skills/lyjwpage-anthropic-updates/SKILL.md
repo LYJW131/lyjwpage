@@ -77,7 +77,7 @@ python3 -I "$SCRATCH/fetch.py" scan > "$SCRATCH/scan.json"
 
 ### 3. 读正文
 
-- `anthropic`、`claude-dev`：逐篇读全文（`curl` 后抽正文，或 WebFetch）。
+- `anthropic`、`claude-dev`、`claude-blog`：逐篇读全文（`curl` 后抽正文，或 WebFetch）。
 - `x`：推文正文在扫描结果里；推文链到官方页面（anthropic.com、claude.dev、claude.com、文档站）就读那页，和第 2 步拉到的同一篇只读一次、合成一条。`official` 组逐条报；`anthropic` 与 `builders` 组量大，只挑讲 Claude、coding agent、skill、验证与评审流程、上下文工程这类和本项目做法相关的，其余按账号合成一句「@某某 另有 N 条」。
 - `simonw`、`latent-space`：标题在扫描结果里；只读和 Claude、coding agent 或本站技术栈相关的，其余只列标题。
 - `cloudflare`：标题和产品分类在扫描结果里；涉及本站在用的绑定或功能（Workers、Durable Objects、KV、D1、R2、Workers AI、缓存、Access、Builds、Observability）才读正文。
