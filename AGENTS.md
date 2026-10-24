@@ -91,7 +91,7 @@
 | 规则 | 由什么强制 |
 | --- | --- |
 | 不手跑 `wrangler deploy` / `cf deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
-| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执、Jev 只提醒 | PreToolUse 钩子 `scripts/guard-merge-method.ts` |
+| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执/Jev 只提醒 | PreToolUse 钩子 `scripts/guard-merge-method.ts` |
 | 不直推 main | GitHub 分支保护 |
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 大小、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
