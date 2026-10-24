@@ -150,6 +150,8 @@ export async function converse({
     }
   }
 
+  // 同一档位整条回复用同一份工具列表：中途改 tools 会让前几轮回传的思考块失效；次数用完、升档失败由 run 回错误。
+  let tools = roundTools();
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
     const { model, serverFallback: fallback, provider, thinking } = GOD_CHAT_TIER_INFO[tier];
@@ -160,7 +162,6 @@ export async function converse({
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
     if (lastRound) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
     // 收尾轮照带全部工具、用 tool_choice none 禁掉调用：历史里 tool search 留下的 tool_reference 指向的工具不在列表里，API 整轮 400。
-    const tools = roundTools();
     const betas = betasFor(tier);
     const sentAt = Date.now();
     const timing = { firstTokenMs: -1, firstTextMs: -1, textDeltas: 0, maxTextGapMs: 0 };
@@ -283,6 +284,7 @@ export async function converse({
         tier = lineupTier(lineup, "think");
         const upgradedEffort = GOD_CHAT_TIER_INFO[tier].effort;
         upgradeOpen = false;
+        tools = roundTools();
         outputLeft = GOD_CHAT_TIER_INFO[tier].maxTokens;
         console.info("[god-chat] upgrade", JSON.stringify({ round }));
         emit({ type: "route", route: tier, tier });

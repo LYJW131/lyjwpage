@@ -83,7 +83,7 @@
 - 不抄易变的值：写常量或符号名（如 `AGENT_LIMITS_STALE_MS`），不抄「185 分钟」；数量、版本、日期同理。引用写路径加符号，不写行号。
 - 采用了外部文章、演讲、仓库或官方文档里的做法，同一提交在 `docs/references.md` 对应主题下登记（流程见 `.claude/skills/lyjwpage-borrow/SKILL.md`）；落地处变了同步改。
 - 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
-- 改代码、规则或流程的同一提交里更新受影响的文档与注释：提交前 `rg` 改动的符号、常量名和规则关键词，范围含 `HUMAN.md`、`.claude/memory/`、`.claude/skills/`、`.claude/rules/`、`docs/`（含记着代码事实的 `docs/explainer/FACTS.md`）与各级 `README.md`。新加的东西（模型、数据去向、来源、Worker）还没有出处可搜，改搜它已有的同类（加 Clairic 就搜 Clef），照同类出现的每一处补上，对外的隐私说明 `src/components/god-chat/consent.tsx#CONSENT_COPY` 也在其中。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
+- 改代码、规则或流程的同一提交里更新受影响的文档与注释：提交前 `rg` 改动的符号、常量名和规则关键词，范围含 `HUMAN.md`、`.claude/memory/`、`.claude/skills/`、`.claude/rules/`、`docs/`（含 `docs/explainer/FACTS.md`）、各级 `README*.md` 与 `public/llms.txt`。新加的东西（模型、数据去向、来源、Worker）还没有出处可搜，改搜它已有的同类（加 Clairic 就搜 Clef），照同类出现的每一处补上，对外的隐私说明 `src/components/god-chat/consent.tsx#CONSENT_COPY` 也在其中。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 写 Markdown 的格式规矩（docs 类型、仓库外事实、AGENTS.md 写法与大小上限）见 `.claude/rules/docs-writing.md`。
 
 ## 规则 → 由什么强制

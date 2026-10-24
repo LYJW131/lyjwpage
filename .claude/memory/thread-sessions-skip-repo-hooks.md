@@ -13,4 +13,8 @@ Consequences: in threads, the identity/deploy guard, `guard-merge-method.ts`, an
 
 2026-10-24 05:40 SGT (probe in thread「项目讨论串加载哪些配置」): per the same doc table, threads load only root `CLAUDE.md`/`.claude/CLAUDE.md` and NON-path-specific `.claude/rules/`. All 7 lyjwpage rules have `paths:` frontmatter, and nested `CLAUDE.md` (workers/*, scripts, reporters/*, docs/explainer) are subdir files, so none load in threads: reading `workers/core/package.json` and `shared/state-core.ts` injected nothing. Threads must open those files by hand. Thread process: `CLAUDE_CODE_ENTRYPOINT=remote_projects`, hooks/permissions come from `/home/claude/.claude/launcher-settings.json`. Standalone cloud sessions (cloud-environments doc「What carries over」) do load repo hooks, permissions, `.mcp.json` (single repo), skills, agents, commands; repo-declared plugins load in neither.
 
+2026-10-24 06:21 SGT: repo skills now load in threads. env <cloud env>'s Setup script (and a user-level SessionStart fallback in `scripts/cloud/claude-user-settings.json`, #638/#639) symlinks each `.claude/skills/<name>` into the platform-precreated real dir `/root/.claude/skills/`; Haiku probe saw all 13 lyjwpage-* skills. In threads `CLAUDE_PROJECT_DIR` is empty, pwd is `/home/user/lyjwpage`. Repo guard hooks still don't run in threads.
+
+2026-10-24 06:31 SGT: lyjw approved splitting general skills to account level; thread proposed `bug-diagnose` and `delegate-cheap-work` (general cores of lyjwpage-diagnose/-delegate; descriptions defer to the repo skill when present).
+
 **How to apply:** don't claim a repo hook protects thread work. Re-test after platform updates with the same direct-vs-in-thread comparison.
