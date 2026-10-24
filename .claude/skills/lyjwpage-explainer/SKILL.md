@@ -88,7 +88,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 ### 6. 交付
 
 - 录像：`docs/explainer/v2/tools/video.sh $F/zh <输出.mp4> <配乐.mp3>`（配乐从哪取见 `--help`），放进 `/mnt/project-files/<主题>/` 给 lyjw 看。
-- PR：回执由 Verify Action 签（见 lyjwpage-verify「PR 上的验证」），PR 描述的验证清单写明在分支预览上测 11 个章节标签、`?t=` 停住、播放走时、375 宽、配乐请求和控制台。画面变了算 UI 改动，lyjw 看过录像或预览、点头再合。
+- PR：回执由 Verify Action 签（见 lyjwpage-verify「PR 上的验证」），PR 描述的验证清单写明在分支预览上测每个章节标签（章数以 `docs/explainer/v2/plan.js` 的 `PLAN` 为准）、`?t=` 停住、播放走时、375 宽、配乐请求和控制台。画面变了算 UI 改动，lyjw 看过录像或预览、点头再合。
 
 ### 7. 合并后
 
