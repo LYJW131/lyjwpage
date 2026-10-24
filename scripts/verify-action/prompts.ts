@@ -36,14 +36,14 @@ ${site}
 
 工作方法照 \`.claude/skills/lyjwpage-verify/SKILL.md\` 的「检查清单」与「回执」两节。里面写给主线程、会话 scratchpad、/mnt/project-files 的地方，在这里一律换成下面的目录。
 
-环境：依赖已装好；要跑 \`scripts/verify-action.ts\` 时前面加 \`GITHUB_OUTPUT=\`，不然它会写进这一步的输出文件；${ui ? "Playwright 的 Chromium 与 WebKit 已装，" : "Playwright 的 Chromium 已装（WebKit 的系统依赖只在界面档装），"}\`node scripts/site-verify.ts doctor --url <地址>\` 可自检。要给 lyjw 看的截图存到 ${outDir}/shots/（PNG，至多 12 张，文件名写清宽度、主题、引擎），其余产物放 ${outDir}/work/。
+环境：依赖已装好；要跑 \`scripts/verify-action.ts\` 时前面加 \`GITHUB_OUTPUT=\`，不然它会写进这一步的输出文件；${ui ? "Playwright 的 Chromium 与 WebKit 已装，" : "Playwright 的 Chromium 已装（WebKit 的系统依赖只在界面档装），"}\`node scripts/site-verify.ts doctor --url <地址>\` 可自检。改了工作流用 \`actionlint\` 查（已在 PATH 上）。要给 lyjw 看的截图存到 ${outDir}/shots/（PNG，至多 12 张，文件名写清宽度、主题、引擎），其余产物放 ${outDir}/work/。
 
 ${items}
 
 清单之外，读 diff 补查清单漏掉的、和改动直接相关的行为，行 id 用 X1、X2……X 行只列在这个 Action 里验得了的检查：合并后才看得到的、要真跑一次 Action 或连生产与控制台的、给工作流 YAML 或纯文档补单测的，不列 X 行，也不写进 notVerified。FAIL 只给这次改动带进来的缺陷：改动前就有的问题、措辞与风格小毛病不记 FAIL，写在相关那一行 evidence 末尾「另：……」。PR 带 \`do-not-merge\` 标签（用 \`gh pr view ${pr} --json labels\` 查）、是一次性测试时，照 PR 描述的用意验，故意放的演示内容不算缺陷。
 本地门禁：CI 会跑全套 lint、typecheck、测试与 docs:check、rules:check，你不重跑这些；只跑覆盖改动行为的那几个单测当证据，清单点名要的除外。时间花在读代码、对照文档、找副作用上。撤回证明由 Action 在你之前用脚本跑过，你不重跑，也不把它列成检查行（它单独写在回执的「脚本：」一行）。${proof ?? "撤回证明：结果读不出来"}。结论是「脚本没跑成」时，在 notVerified 里写一句「撤回证明没跑成」。原始结果在 ${outDir}/work/revert-proof.json，判断「修复有没有被测试抓住」时引用它。
 
-这些是有意的安排，不算没验到，notVerified 里不写：没跑全量 lint、typecheck、测试与 docs:check、rules:check（CI 跑；CI 不跑 build，改了构建、路由或缓存的照清单跑）；Verify Action 自己的发评论、推截图（在你之后才跑）；不碰界面时没开浏览器；环境里没有外部服务的密钥（要调外部服务的检查标 SKIPPED，一句话说明）；没装 actionlint（改了工作流就用 YAML 解析加读 diff 代替）；bubblewrap 沙箱已在上一步自检，你在沙箱里，再套一层 bwrap 会失败，不用试。
+这些是有意的安排，不算没验到，notVerified 里不写：没跑全量 lint、typecheck、测试与 docs:check、rules:check（CI 跑；CI 不跑 build，改了构建、路由或缓存的照清单跑）；Verify Action 自己的发评论、推截图（在你之后才跑）；不碰界面时没开浏览器；环境里没有外部服务的密钥（要调外部服务的检查标 SKIPPED，一句话说明）；bubblewrap 沙箱已在上一步自检，你在沙箱里，再套一层 bwrap 会失败，不用试。
 
 最后按给定的 JSON schema 交结果：model 写你的模型 ID；level 照 skill「回执」的五档规则定；rows 每行一个检查，evidence 只写一句：命令、退出码与关键数字或截图文件名，不贴输出原文（原文放 ${outDir}/work/）；notVerified 至多 3 条，只写和这次改动有关、本该验却没验到的，每条一句。`;
 }

@@ -54,6 +54,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      actions: read
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
@@ -79,6 +80,14 @@ jobs:
         timeout-minutes: 14
         with:
           browsers: "true"
+      - name: Install actionlint
+        run: |
+          curl -fsSL -m 60 -o "$RUNNER_TEMP/actionlint.tgz" "https://github.com/rhysd/actionlint/releases/download/v$V/actionlint_${V}_linux_amd64.tar.gz"
+          echo "$SHA  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          sudo tar xzf "$RUNNER_TEMP/actionlint.tgz" -C /usr/local/bin actionlint
+        env:
+          V: 1.7.12
+          SHA: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
       # WebKit 的系统依赖（一百多个 apt 包）只在界面档装。runner 默认的 azure 镜像时常卡住不报错（一次挂了 40 分钟）：
       # timeout 要放在 sudo 里面才杀得掉 apt-get、放开 dpkg 锁；重试前从镜像表删掉 azure，走 archive.ubuntu.com
       - name: Install browser system deps
@@ -125,7 +134,7 @@ jobs:
           claude_args: >-
             --model haiku --effort ${{ env.EFFORT }}
             --add-dir ${{ runner.temp }}/verify-out
-            --allowedTools "Bash,Read,Write,Glob,Grep"
+            --allowedTools "Bash,Read,Write,Glob,Grep,WebFetch"
             --json-schema '${{ steps.prompt.outputs.schema }}'
       - if: always()
         run: node scripts/verify-ab.ts --effort "$EFFORT" --execution-file "$EXECUTION_FILE" --out "$RUNNER_TEMP/verify-out/work/ab.json"
@@ -158,6 +167,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      actions: read
     env:
       EFFORT: medium
       OUT: verify-ab
