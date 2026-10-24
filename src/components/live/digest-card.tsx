@@ -184,7 +184,7 @@ export function DigestCard({
         {pool.length > 1 && <script dangerouslySetInnerHTML={{ __html: headlinePickScript(pool) }} />}
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (
-            <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
+            <li key={item.topic} className="contents" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
               <span className="size-2 self-center bg-(--tone)" aria-hidden />
               <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums">{digestFigure(item)}</span>
               <span className="truncate text-sm text-muted-foreground">{item.caption}</span>
