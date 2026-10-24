@@ -102,7 +102,7 @@ test("Prophet 没有空位时 request_upgrade 回错误，Small Fry 自己答完
   const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
   assert.equal(requests.length, 2);
   assert.deepEqual(requests[1].thinking, { type: "disabled" });
-  assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
+  assert.deepEqual(requests[1].tools, requests[0].tools);
   assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.tier), ["flash"]);
 });
 
