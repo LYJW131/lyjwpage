@@ -16,6 +16,15 @@ export function notesOnlyFiles(files: string[], compareCode: CompareCode): strin
   return compareCode(code).every((result) => SAME_CODE.has(result.status)) ? files : null;
 }
 
+// 内容比较看不见可执行位：去掉 x 位会让钩子脚本跑不起来，模式变了一律不算只改注释。新增、删除的文件一边模式是 000000，不算模式变化。
+export function parseRawDiff(raw: string) {
+  return raw.split("\n").filter((line) => line.startsWith(":")).map((line) => {
+    const [meta = "", file = ""] = line.split("\t");
+    const [oldMode = "", newMode = ""] = meta.slice(1).split(" ");
+    return { file, modeChanged: oldMode !== newMode && oldMode !== "000000" && newMode !== "000000" };
+  });
+}
+
 export const gitNotesOnly: NotesOnly = (from, to) => {
   for (const sha of [from, to]) {
     try {
@@ -25,6 +34,7 @@ export const gitNotesOnly: NotesOnly = (from, to) => {
     }
   }
   const repo = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-  const files = execFileSync("git", ["diff", "--name-only", "--no-renames", from, to], { encoding: "utf8" }).split("\n").filter(Boolean);
-  return notesOnlyFiles(files, (code) => checkFiles({ repo, base: from, to, files: code, ts: loadTypeScript(repo) }));
+  const changes = parseRawDiff(execFileSync("git", ["diff", "--raw", "--no-renames", "--no-abbrev", from, to], { encoding: "utf8" }));
+  if (changes.some((change) => change.modeChanged)) return null;
+  return notesOnlyFiles(changes.map((change) => change.file), (code) => checkFiles({ repo, base: from, to, files: code, ts: loadTypeScript(repo) }));
 };

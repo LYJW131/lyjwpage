@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { bodyDigest } from "./verify-action/body.ts";
-import { notesOnlyFiles } from "./verify-receipt/notes-only.ts";
+import { notesOnlyFiles, parseRawDiff } from "./verify-receipt/notes-only.ts";
 import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, stampTitle, type Stamp } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -51,6 +51,17 @@ test("coverage：补丁不同但之后只改了文档或注释也沿用，判断
   assert.equal(coverage(OLD, HEAD, differ, () => ["README.md"]), "notes-only");
   assert.equal(coverage(OLD, HEAD, differ, () => null), "stale");
   assert.equal(coverage(OLD, HEAD, differ, () => { throw new Error("no ts"); }), "stale");
+});
+
+test("parseRawDiff：模式变了记 modeChanged，新增与删除不算", () => {
+  const z = "0".repeat(40);
+  const h = "1".repeat(40);
+  const raw = [`:100755 100644 ${h} ${h} M\t.claude/hooks/session-start.sh`, `:000000 100644 ${z} ${h} A\tdocs/new.md`, `:100644 100644 ${h} ${z} M\tREADME.md`, ""].join("\n");
+  assert.deepEqual(parseRawDiff(raw), [
+    { file: ".claude/hooks/session-start.sh", modeChanged: true },
+    { file: "docs/new.md", modeChanged: false },
+    { file: "README.md", modeChanged: false },
+  ]);
 });
 
 test("notesOnlyFiles：文档档的文件直接放过，代码文件要逐个证明只改了注释", () => {
