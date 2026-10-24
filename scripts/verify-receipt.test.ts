@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { bodyDigest } from "./verify-action/body.ts";
+import { notesOnlyFiles } from "./verify-receipt/notes-only.ts";
 import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, stampTitle, type Stamp } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -43,6 +44,24 @@ test("coverage：同一提交、补丁相同沿用、补丁不同作废、算不
   assert.equal(coverage(OLD, HEAD, patchIds({ [OLD]: "p1", [HEAD]: "p1" })), "carried");
   assert.equal(coverage(OLD, HEAD, patchIds({ [OLD]: "p1", [HEAD]: "p2" })), "stale");
   assert.equal(coverage(OLD, HEAD, () => { throw new Error("no git"); }), "stale");
+});
+
+test("coverage：补丁不同但之后只改了文档或注释也沿用，判断出错就作废", () => {
+  const differ = patchIds({ [OLD]: "p1", [HEAD]: "p2" });
+  assert.equal(coverage(OLD, HEAD, differ, () => ["README.md"]), "notes-only");
+  assert.equal(coverage(OLD, HEAD, differ, () => null), "stale");
+  assert.equal(coverage(OLD, HEAD, differ, () => { throw new Error("no ts"); }), "stale");
+});
+
+test("notesOnlyFiles：文档档的文件直接放过，代码文件要逐个证明只改了注释", () => {
+  const compare = (statuses: Record<string, string>) => (files: string[]) => files.map((file) => ({ file, status: statuses[file] ?? "code" }));
+  assert.deepEqual(notesOnlyFiles(["docs/a.md", ".claude/skills/x/SKILL.md"], () => assert.fail()), ["docs/a.md", ".claude/skills/x/SKILL.md"]);
+  assert.deepEqual(notesOnlyFiles(["README.md", "scripts/a.ts"], compare({ "scripts/a.ts": "comment-only" })), ["README.md", "scripts/a.ts"]);
+  assert.equal(notesOnlyFiles(["scripts/a.ts"], compare({ "scripts/a.ts": "directive" })), null);
+  assert.equal(notesOnlyFiles(["scripts/new.ts"], compare({ "scripts/new.ts": "new" })), null);
+  assert.equal(notesOnlyFiles([".github/workflows/verify.yml"], compare({})), null);
+  assert.equal(notesOnlyFiles([".claude/settings.json"], compare({})), null);
+  assert.equal(notesOnlyFiles(["src/components/a.tsx"], compare({})), null);
 });
 
 test("回执盖住 head 且等级够就通过，主线程不再重验", () => {

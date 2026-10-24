@@ -181,10 +181,10 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 - 第一行不手写：用 `node scripts/verify-receipt.ts sign --sha <简报给的 SHA> --level <等级>` 的输出原样粘贴。它用 `git rev-parse` 展开完整 SHA、只收下面五档等级，提交不存在或等级写错就退出 2。手抄过 40 位 SHA 会错字，脚本按 SHA 认回执，错一位整张作废。
 - 等级只能写下面五档之一，原样照抄，不自拟新名字（如 `local-ui-verified`）：本地开发服务器或本地生产构建上的真页面检查属于 `live-ui-verified`，没上生产写进「没验到」。
-- 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，覆盖改动的单测也要跑过并列进证据（PR 上 lint、类型这类门禁由 CI 跑，结论由脚本记在回执「脚本：」一行，合并前 `pr-gate.ts` 另查 CI；没开 PR 时验证员自己跑改动涉及的门禁），同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
+- 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的单测跑过；验证员临时写的脚本不算）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，覆盖改动的单测也要跑过并列进证据（PR 上 lint、类型这类门禁由 CI 跑，结论由脚本记在回执「脚本：」一行，合并前 `pr-gate.ts` 另查 CI；没开 PR 时验证员自己跑改动涉及的门禁），同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
 - PR 上只认 lyjw131[bot] 发的回执与判定（Verify Action 的 publish job，按数字 id 认，见 `scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`）；线程用 lyjw 的账号贴的同格式评论不算，主线程不自签、不转贴子代理的回执。没开 PR 时派的验证员的回执随汇报交给 lyjw。
-- 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> --need <等级>`（贴了 `needs-judge` 的 PR 加 `--judge`；没加时 head 上的 FAIL 判定也不放行）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就等 Action 按新 head 重验。
+- 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> --need <等级>`（贴了 `needs-judge` 的 PR 加 `--judge`；没加时 head 上的 FAIL 判定也不放行）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了，但从回执的提交到 head 只改了文档档的文件或代码注释（注释由 `docs:comment-only` 的同一套比较证明；`notes-only`），也照旧算数，Verify Action 的 plan 这时不再跑验证员，只在 job 摘要里写「沿用 <sha> 的回执」；其余（`stale`）等 Action 按新 head 重验。只沿用通过的回执，没通过的照样重验。
 - 回执只说「验过什么、到什么程度」，不替主线程判断合不合；合并门槛照第 3 节与「3b」。
 
 ## 主线程收到报告后

@@ -32,17 +32,23 @@ jobs:
       head: ${{ steps.plan.outputs.head }}
       base: ${{ steps.plan.outputs.base }}
     steps:
+      # 沿用回执要比上次回执的提交和 head：要完整历史与 origin/main
       - uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           package-manager-cache: false
+      # 判断「只改了注释」要 TypeScript 解析器；只装这一个包，不跑整仓 pnpm install
+      - name: Install TypeScript
+        run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/ts" "typescript@$(node -p 'require("./package.json").devDependencies.typescript')"
       - id: plan
         run: node scripts/verify-action.ts plan --pr "$PR"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          COMMENT_ONLY_REPO: ${{ runner.temp }}/ts
 
   verify:
     needs: plan
