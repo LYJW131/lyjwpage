@@ -1,5 +1,6 @@
-const UI_PATHS = [/^src\/components\//, /^src\/app\/(?!api\/)/, /\.css$/, /^public\//, /^docs\/explainer\/v2\//];
-const DOC_PATHS = [/\.md$/i, /^\.claude\//, /^docs\//];
+const UI_PATHS = [/^src\/components\//, /^src\/app\/(?!api\/)/, /\.css$/, /^public\/(?!.*\.(?:txt|md)$)/i, /^docs\/explainer\/v2\//];
+// public 下的 .txt / .md 是给机器读的纯文本（llms.txt），不改界面。
+const DOC_PATHS = [/\.md$/i, /^\.claude\//, /^docs\//, /^public\/.*\.txt$/i];
 // 会话或服务端照着执行、或决定哪些命令与响应头生效的文件：落在 .claude、docs、public 下也按逻辑档收门槛。
 const EXEC_PATHS = [
   /^\.claude\/settings[^/]*\.json$/,

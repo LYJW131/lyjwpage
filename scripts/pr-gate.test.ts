@@ -37,7 +37,7 @@ const build = (worker: string, conclusion: string | null, extra: Partial<CheckRu
 });
 
 test("分档：只改 md 与 .claude 是 docs，界面与逻辑按路径分，回执等级跟着档走，判定只在 PR 要了时叫", () => {
-  const docs = tierOf(["README.md", "docs/workers-builds.md", "docs/architecture.json", ".claude/skills/x/SKILL.md", ".claude/rules/images.md", "DESIGN.md"], trusted);
+  const docs = tierOf(["README.md", "docs/workers-builds.md", "docs/architecture.json", ".claude/skills/x/SKILL.md", ".claude/rules/images.md", "DESIGN.md", "public/llms.txt", "public/NOTES.TXT"], trusted);
   assert.deepEqual([docs.name, docs.need, docs.judge], ["docs", null, false]);
   const ui = tierOf(["src/components/card.tsx", "src/app/site.css", "public/icon.png", "docs/explainer/v2/index.html", "docs/explainer/v2/tools/x.mjs", "docs/a.md"], trusted);
   assert.deepEqual([ui.name, ui.need, ui.judge, ui.logic], ["ui", "live-ui-verified", false, []]);
