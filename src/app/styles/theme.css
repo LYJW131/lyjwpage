@@ -83,6 +83,9 @@
 
 .dark {
   --background: oklch(0.15 0.008 85);
+  /* 深色背景的点阵宇宙（src/components/space-backdrop），取 claude.dev 深色主题的 --space-dot / --space-shot。 */
+  --space-dot: oklch(0.619 0.01 100);
+  --space-shot: oklch(0.713 0.021 87.5);
   --foreground: oklch(0.93 0.012 90);
   --muted: oklch(0.205 0.008 85);
   --muted-foreground: oklch(0.66 0.012 90);
@@ -219,6 +222,10 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  .dark body {
+    background-image: none;
   }
 
   ::selection {
