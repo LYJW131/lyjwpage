@@ -32,17 +32,24 @@ jobs:
       head: ${{ steps.plan.outputs.head }}
       base: ${{ steps.plan.outputs.base }}
     steps:
+      # 沿用回执要比上次回执的提交和 head：要完整历史与 origin/main
       - uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           package-manager-cache: false
+      # 判断「只改了注释」要 TypeScript 解析器；只装这一个包，不跑整仓 pnpm install
+      - name: Install TypeScript
+        run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/ts" "typescript@$(node -p 'require("./package.json").devDependencies.typescript')"
       - id: plan
         run: node scripts/verify-action.ts plan --pr "$PR"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          COMMENT_ONLY_REPO: ${{ runner.temp }}/ts
+          EVENT_ACTION: ${{ github.event.action }}
 
   verify:
     needs: plan
@@ -62,9 +69,8 @@ jobs:
       proof: ${{ steps.proof.outputs.proof || (steps.proof.outcome == 'failure' && '{"verdict":"error","tests":[]}') || '' }}
       ci: ${{ steps.ci.outputs.ci || (steps.ci.outcome == 'failure' && 'error') || '' }}
     env:
-      EFFORT: high
       OUT: verify-out
-    steps: &verify-steps
+    steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.plan.outputs.head }}
@@ -135,17 +141,12 @@ jobs:
           prompt: ${{ steps.prompt.outputs.prompt }}
           # Bash 沙箱只许写工作目录与 $TMPDIR，产物目录在 runner.temp 下，不加进来截图和 work/ 都写不进去
           claude_args: >-
-            --model haiku --effort ${{ env.EFFORT }}
+            --model haiku --effort high
             --add-dir ${{ runner.temp }}/verify-out
             --allowedTools "Bash,Read,Write,Glob,Grep,WebFetch"
             --json-schema '${{ steps.prompt.outputs.schema }}'
-      - if: always()
-        run: node scripts/verify-ab.ts --effort "$EFFORT" --execution-file "$EXECUTION_FILE" --out "$RUNNER_TEMP/verify-out/work/ab.json"
-        env:
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
-          STRUCTURED_OUTPUT: ${{ steps.claude.outputs.structured_output }}
       - id: ci
-        if: always() && env.EFFORT == 'high'
+        if: always()
         timeout-minutes: 6
         continue-on-error: true
         run: node scripts/verify-action.ts ci --pr "$PR" --head "$HEAD" --timeout-min 5
@@ -159,22 +160,6 @@ jobs:
           path: ${{ runner.temp }}/verify-out
           if-no-files-found: ignore
           retention-days: 14
-
-  # effort 对比：同一份提示词用 medium 再跑一遍，只记进 job 摘要与 verify-ab artifact，回执与 publish 不读它
-  verify-ab:
-    needs: plan
-    if: needs.plan.outputs.need != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      pull-requests: read
-      checks: read
-      actions: read
-    env:
-      EFFORT: medium
-      OUT: verify-ab
-    steps: *verify-steps
 
   judge:
     needs: plan

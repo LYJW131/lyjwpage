@@ -9,7 +9,8 @@ import { buildCoverage } from "./pr-gate/checks.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type FetchLike, type PrFile, type Pull } from "./pr-gate/github.ts";
 import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
-import { signStamp } from "./verify-receipt.ts";
+import { evaluate, gitPatchId, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
+import { gitNotesOnly } from "./verify-receipt/notes-only.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { machineLine, runProof, type ProofSummary } from "./verify-action/machine.ts";
 import { judgePrompt, verifierPrompt } from "./verify-action/prompts.ts";
@@ -79,9 +80,38 @@ export function planOf(pull: FullPull, tier: ReturnType<typeof tierOf>) {
   };
 }
 
+// 上次通过的回执（与要判定时的判定）还盖得住 head，就不再跑验证员：常见于评审后只改了措辞或注释
+// 只给新推送沿用：改目标分支、贴标签这些事件的回执没记目标分支，照常重验
+export function carryOver(plan: ReturnType<typeof planOf>, reuse: Evaluation, event: string | undefined) {
+  if (event !== "synchronize" || plan.base !== "main" || plan.need === "" || !reuse.pass || !reuse.receipt) return { plan, note: null };
+  const from = reuse.receipt.sha.slice(0, 7);
+  return { plan: { ...plan, need: "", judge: false, ui: false }, note: `沿用 ${from} 的回执（${reuse.receipt.coverage}）：之后只改了文档或代码注释，这次不跑验证员` };
+}
+
 async function plan(gh: Client, pr: number) {
   const { pull, tier } = await load(gh, pr);
-  const result = planOf(pull, tier);
+  const planned = planOf(pull, tier);
+  let reuse: Evaluation | null = null;
+  if (planned.need !== "") {
+    try {
+      reuse = evaluate({
+        head: planned.head,
+        ...parseComments(await gh.all<Comment>(`issues/${pr}/comments`)),
+        need: planned.need,
+        wantJudge: planned.judge,
+        patchId: gitPatchId,
+        notesOnly: gitNotesOnly,
+        body: await bodyDigest(pull.body),
+      });
+    } catch (error) {
+      console.log(`查上次回执失败，照常验证：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const { plan: result, note } = reuse ? carryOver(planned, reuse, process.env.EVENT_ACTION) : { plan: planned, note: null };
+  if (note) {
+    console.log(note);
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${note}\n`);
+  }
   console.log(JSON.stringify(result, null, 2));
   for (const [key, value] of Object.entries(result)) setOutput(key, String(value));
 }
