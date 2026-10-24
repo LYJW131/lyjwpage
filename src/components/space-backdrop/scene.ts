@@ -8,6 +8,9 @@ const MIN_GUTTER = CLAWD_WIDTH + 72;
 const EDGE = 12;
 // 背景整层出现是 lyjw 要的慢速渐显，有意长于 DESIGN.md「Motion」的常规时长。Clawd 和星空同时渐显：星空给 Clawd 让出的空洞随星空出现，Clawd 晚到就会先露出一块空白。
 const FADE_MS = 2000;
+// 换侧不让 Clawd 从卡片后面横穿过去：淡出、挪到另一侧留白的对应位置、再淡入。
+const SWAP_OUT_MS = 240;
+const SWAP_IN_MS = 480;
 
 type Side = "left" | "right";
 
@@ -34,12 +37,41 @@ export function mountSpaceScene(host: HTMLElement) {
     const center = gutterCenter(side);
     return lo < hi ? [lo / innerWidth, hi / innerWidth] : [center / innerWidth, center / innerWidth];
   };
+  let swapping = false;
+  let swapTimer: ReturnType<typeof setTimeout> | undefined;
+  const swapTo = (next: Side) => {
+    const current = actor;
+    if (!current) return;
+    const move = () => {
+      const [lo, hi] = boundsX();
+      const t = hi > lo ? (current.getRect().left + CLAWD_WIDTH / 2) / innerWidth : 0.5;
+      side = next;
+      const [nlo, nhi] = boundsX();
+      const rel = hi > lo ? Math.max(0, Math.min(1, (t - lo) / (hi - lo))) : 0.5;
+      current.place(nlo + (1 - rel) * (nhi - nlo));
+    };
+    if (reducedMotion) return move();
+    swapping = true;
+    const out = current.canvas.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SWAP_OUT_MS, easing: "ease-in", fill: "forwards" });
+    // 用定时器而不是 onfinish：页面不出帧时（后台标签）动画的完成事件不会派发，swapping 会一直卡住。
+    swapTimer = setTimeout(() => {
+      swapping = false;
+      out.cancel();
+      if (actor !== current) return;
+      move();
+      current.canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SWAP_IN_MS, easing: "ease-out" });
+    }, SWAP_OUT_MS);
+  };
   const target = (): FloatTarget | null => {
-    if (!pointer) return null;
+    if (!pointer || swapping) return null;
     const inLeft = pointer.x < column.left - EDGE;
     const inRight = pointer.x > column.right + EDGE;
     if (!inLeft && !inRight) return null;
-    side = inLeft ? "left" : "right";
+    const next: Side = inLeft ? "left" : "right";
+    if (next !== side) {
+      swapTo(next);
+      return null;
+    }
     return { x: pointer.x / innerWidth, y: Math.max(0.12, Math.min(0.88, pointer.y / innerHeight)) };
   };
 
@@ -79,6 +111,7 @@ export function mountSpaceScene(host: HTMLElement) {
     removeEventListener("resize", syncActor);
     removeEventListener("pointermove", onPointer);
     document.documentElement.removeEventListener("pointerleave", onLeave);
+    clearTimeout(swapTimer);
     actor?.stop();
     field.stop();
   };

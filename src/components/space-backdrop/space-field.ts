@@ -53,7 +53,6 @@ export type SpaceFieldOptions = {
   reducedMotion?: boolean;
 };
 
-// 移植自 claude.dev 页脚的 spaceField（progress 恒为 1，即完全展开）：点阵星云 + 左上月牙 + 右下带环行星，点击放流星。
 export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
   const { avoidRef, clickHost = host, shouldShoot, spacing: h = 12, maxDensity = 0.34, grain = 0.7, mix = 0.5, reducedMotion = false } = options;
   const canvas = document.createElement("canvas");
@@ -90,11 +89,14 @@ export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
     const deg = Math.PI / 180;
     if (Math.random() < 0.75) {
       const fromLeft = Math.random() < 0.5;
-      const x0 = fromLeft ? -40 : rect.width + 40;
+      const dir = fromLeft ? 1 : -1;
+      const edge = fromLeft ? -40 : rect.width + 40;
       let angle = (28 + 27 * Math.random()) * deg;
-      const run = Math.abs(cx - x0);
+      const run = Math.abs(cx - edge);
       if (cy - Math.tan(angle) * run < 10) angle = Math.max(12 * deg, Math.atan((cy - 10) / run));
-      shots.push({ x: x0, y: cy - Math.tan(angle) * run, vx: (fromLeft ? 1 : -1) * Math.cos(angle) * speed, vy: Math.sin(angle) * speed, t: 0, life: 2.4 });
+      // 角度压到下限后起点仍可能远在视口上方，固定寿命内飞不进来；起点挪到视口上沿，点击总有可见的流星。
+      const entry = Math.min(run, (cy + 20) / Math.tan(angle));
+      shots.push({ x: cx - dir * entry, y: cy - Math.tan(angle) * entry, vx: dir * Math.cos(angle) * speed, vy: Math.sin(angle) * speed, t: 0, life: 2.4 });
     } else {
       const angle = (28 + 27 * Math.random()) * deg;
       shots.push({ x: cx, y: cy, vx: (Math.random() < 0.5 ? 1 : -1) * Math.cos(angle) * speed, vy: Math.sin(angle) * speed, t: 0, life: 1.6 });

@@ -101,6 +101,13 @@ export function clawdAstronaut(host: HTMLElement, { px = 2.7, home, targetRef, b
     vy += ((goal.y - y) * 0.12 - 0.8 * vy) * dt;
     x += vx * dt;
     y += vy * dt;
+    if (boundsX) {
+      const [lo, hi] = boundsX();
+      if (x < lo || x > hi) {
+        x = Math.max(lo, Math.min(hi, x));
+        vx = 0;
+      }
+    }
     tilt += (Math.max(-8, Math.min(8, 55 * vx)) - tilt) * (1 - Math.exp(-(4 * dt)));
     const index = LAUNCH + (Math.floor(t * sprite.fps) % (LOOP - LAUNCH));
     ctx.clearRect(0, 0, W, H);
@@ -134,6 +141,10 @@ export function clawdAstronaut(host: HTMLElement, { px = 2.7, home, targetRef, b
       cancelAnimationFrame(raf);
       ro.disconnect();
       canvas.remove();
+    },
+    place(nx: number) {
+      x = nx;
+      vx = 0;
     },
     getRect(): AvoidRect {
       return { left: x * canvas.clientWidth - width / 2, top: y * canvas.clientHeight - height / 2, w: width, h: height };
