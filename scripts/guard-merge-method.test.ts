@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeMethodReason, receiptReason } from "./guard-merge-method.ts";
+import { commentReason, mergeMethodReason, receiptReason } from "./guard-merge-method.ts";
 import { stampLine, stampTitle } from "./verify-receipt.ts";
 import { bodyDigest } from "./verify-action/body.ts";
 
@@ -42,11 +42,12 @@ test("带 do-not-merge 标签、读不到标签或没给 PR 号都拦下", () =>
 const HEAD = "a".repeat(40);
 const BOT = { id: 338272049 };
 
-function fakeFetch(files: string[], comments: { user: { id: number }; body: string }[], { author = 153256373, labels = [] as string[] } = {}) {
+function fakeFetch(files: string[], comments: { user: { id: number }; body: string }[], { author = 153256373, labels = [] as string[], checkRuns = [] as unknown[] } = {}) {
   const routes: Record<string, unknown> = {
     "pulls/7": { number: 7, head: { sha: HEAD }, body: "", labels: labels.map((name) => ({ name })), user: { id: author } },
     "pulls/7/files": files.map((filename) => ({ filename })),
     "issues/7/comments": comments,
+    [`commits/${HEAD}/check-runs`]: { check_runs: checkRuns },
   };
   return async (url: string) => {
     const [key, query = ""] = url.replace("https://api.github.com/repos/LYJW131/lyjwpage/", "").split("?");
@@ -88,4 +89,16 @@ test("receiptReason：lyjw 账号贴的同格式评论不算，读不到 GitHub 
   const forged = { user: { id: 153256373 }, body: await stamped({ level: "unit-test-verified" }) };
   assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [forged]) })) ?? "", /logic 档/);
   assert.match((await receiptReason(8, { fetch: fakeFetch(["scripts/a.ts"], []) })) ?? "", /读不到 #8 的回执/);
+});
+
+const jev = (conclusion: string, startedAt = "2026-01-01T00:00:00Z") => ({ name: "Comment check (Jev)", status: "completed", conclusion, started_at: startedAt, html_url: "https://example/run", output: { title: "1 条新注释可能该删" } });
+
+test("commentReason：head 上 Jev 列出该删的注释时提醒，没有建议时不提醒", async () => {
+  assert.match((await commentReason(7, { fetch: fakeFetch([], [], { checkRuns: [jev("neutral")] }) })) ?? "", /1 条新注释可能该删/);
+  assert.equal(await commentReason(7, { fetch: fakeFetch([], [], { checkRuns: [jev("success")] }) }), null);
+  assert.equal(await commentReason(7, { fetch: fakeFetch([], [], { checkRuns: [jev("neutral", "2026-01-01T00:00:00Z"), jev("success", "2026-01-02T00:00:00Z")] }) }), null);
+});
+
+test("commentReason：读不到 GitHub 也提醒，不当成没有建议", async () => {
+  assert.match((await commentReason(8, { fetch: fakeFetch([], []) })) ?? "", /读不到 #8 head 上的 Comment check/);
 });
