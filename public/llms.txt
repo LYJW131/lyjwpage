@@ -10,7 +10,7 @@ Most cards show live or recent state; a card for something not happening right n
 - [Daily digest](https://lyjw.me/api/status/digest): JSON summary of the last 24 hours, with a tagline and a few readings
 - [Pulse](https://lyjw.me/api/status/pulse): JSON 24-hour timeline of coding, tokens, listening, watching, playing, charging and activity
 - [Now listening](https://lyjw.me/api/status/listening/now): JSON for the song playing right now, if any
-- [Coding usage](https://lyjw.me/api/status/coding): JSON AI coding token totals and cost estimates per agent and model
+- [Coding usage](https://lyjw.me/api/status/coding): JSON AI coding token totals and API-equivalent cost overall, top models by tokens, and each agent's most recent day
 
 ## Docs
 
