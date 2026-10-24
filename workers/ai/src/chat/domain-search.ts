@@ -29,7 +29,7 @@ export const ANIME_SEARCH_TOOL: Anthropic.Beta.BetaTool = {
 
 export const GAME_SEARCH_TOOL: Anthropic.Beta.BetaTool = {
   name: "game_search",
-  description: "Look up PC games on the Steam store: current price and discount, release date, genres, Metacritic score, platforms and a short description.",
+  description: "Look up PC games on the Steam store: current price and discount, release date, genres, Metacritic score, platforms and a short description. Use it for questions about a specific PC game's price, discount or store page; it covers only the Steam store, not consoles or other stores, and knows nothing about what LYJW played (that is get_site_status or show_card).",
   input_schema: {
     type: "object",
     properties: {
