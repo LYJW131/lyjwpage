@@ -92,7 +92,7 @@ export async function gate(
   const reviewers = reviewerSummary(reviews, issueComments, head);
   const labels = (pull.labels ?? []).map((label) => label.name);
   const verdict = decide({ pull, tier, checks, builds, threads, reviewers, receipt, judge: wantJudge });
-  const advice = commentAdvice(runs.check_runs ?? []);
+  const advice = commentAdvice(runs.check_runs ?? [], paths);
   if (advice) verdict.notes.push(advice);
   const changedVerifier = verifierFiles(paths);
   if (changedVerifier.length > 0) verdict.notes.push(`这个 PR 改了验证员本身（${changedVerifier.join("、")}）：pull_request 触发的 Verify Action 里验证与判定跑的是分支上的这份（签发的 publish 只跑 main 上的脚本），结论出自被改过的验证员，合并前交 lyjw 看一眼`);

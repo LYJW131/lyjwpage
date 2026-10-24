@@ -77,13 +77,13 @@ export async function receiptReason(pr: number, deps: { fetch?: FetchLike; patch
   }
 }
 
-// Jev 的注释建议不挡 ready，pr-gate 只放在 notes 里，合并时容易被跳过；合并前再提醒一次。读不到也要说，不当成没有建议。
+// Jev 的注释建议不挡 ready，pr-gate 只放在 notes 里，合并时容易被跳过；合并前再提醒一次。读不到也要说。
 export async function commentReason(pr: number, deps: { fetch?: FetchLike } = {}): Promise<string | null> {
   try {
     const gh = client(deps.fetch ?? fetch);
     const pull = await gh.get<Pull>(`pulls/${pr}`);
-    const runs = await gh.get<{ check_runs?: CheckRun[] }>(`commits/${pull.head.sha}/check-runs?per_page=100`);
-    return commentAdvice(runs.check_runs ?? []);
+    const [files, runs] = await Promise.all([gh.all<PrFile>(`pulls/${pr}/files`), gh.get<{ check_runs?: CheckRun[] }>(`commits/${pull.head.sha}/check-runs?per_page=100`)]);
+    return commentAdvice(runs.check_runs ?? [], changedPaths(files));
   } catch (error) {
     return `读不到 #${pr} head 上的 Comment check (Jev)（${(error as Error).message}）：去 PR 评论里看 Jev 列出的新注释再合并。`;
   }

@@ -94,9 +94,16 @@ test("receiptReason：lyjw 账号贴的同格式评论不算，读不到 GitHub 
 const jev = (conclusion: string, startedAt = "2026-01-01T00:00:00Z") => ({ name: "Comment check (Jev)", status: "completed", conclusion, started_at: startedAt, html_url: "https://example/run", output: { title: "1 条新注释可能该删" } });
 
 test("commentReason：head 上 Jev 列出该删的注释时提醒，没有建议时不提醒", async () => {
-  assert.match((await commentReason(7, { fetch: fakeFetch([], [], { checkRuns: [jev("neutral")] }) })) ?? "", /1 条新注释可能该删/);
-  assert.equal(await commentReason(7, { fetch: fakeFetch([], [], { checkRuns: [jev("success")] }) }), null);
-  assert.equal(await commentReason(7, { fetch: fakeFetch([], [], { checkRuns: [jev("neutral", "2026-01-01T00:00:00Z"), jev("success", "2026-01-02T00:00:00Z")] }) }), null);
+  const code = ["src/a.ts"];
+  assert.match((await commentReason(7, { fetch: fakeFetch(code, [], { checkRuns: [jev("neutral")] }) })) ?? "", /1 条新注释可能该删/);
+  assert.equal(await commentReason(7, { fetch: fakeFetch(code, [], { checkRuns: [jev("success")] }) }), null);
+  assert.equal(await commentReason(7, { fetch: fakeFetch(code, [], { checkRuns: [jev("neutral", "2026-01-01T00:00:00Z"), jev("success", "2026-01-02T00:00:00Z")] }) }), null);
+});
+
+test("commentReason：改了 JS / TS 却没有 Jev 检查、或它没跑成时提醒，只改文档的不提", async () => {
+  assert.match((await commentReason(7, { fetch: fakeFetch(["src/a.ts"], []) })) ?? "", /没出现在 head 上/);
+  assert.match((await commentReason(7, { fetch: fakeFetch(["src/a.ts"], [], { checkRuns: [jev("failure")] }) })) ?? "", /没跑成/);
+  assert.equal(await commentReason(7, { fetch: fakeFetch(["docs/a.md"], []) }), null);
 });
 
 test("commentReason：读不到 GitHub 也提醒，不当成没有建议", async () => {

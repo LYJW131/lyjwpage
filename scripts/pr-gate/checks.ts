@@ -6,10 +6,17 @@ export const COMMENT_CHECK = "Comment check (Jev)";
 // 只记数据的对照实验 job，结论不挡合并（verify.yml 的 verify-ab）
 export const EXPERIMENT_CHECKS = new Set(["verify-ab"]);
 
-export function commentAdvice(runs: CheckRun[]) {
+// 须与 .github/workflows/comment-check.yml 的 paths 同步，由 comment-check.test.ts 对照。
+export const COMMENT_CHECK_PATH = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+
+// 检查没出现、还在跑或没跑成都要说出来，不当成「没有建议」；PR 没改 JS / TS 时工作流本来不跑。
+export function commentAdvice(runs: CheckRun[], paths: string[]) {
   const run = newestByName(runs).get(COMMENT_CHECK);
-  if (run?.status !== "completed" || run.conclusion !== "neutral") return null;
-  return `${COMMENT_CHECK}：${run.output?.title ?? "有新注释可能该删"}（建议，不挡合并）。逐条对照 AGENTS.md「文档与注释」判断删还是留：${run.html_url ?? ""}`;
+  if (!run) return paths.some((path) => COMMENT_CHECK_PATH.test(path)) ? `${COMMENT_CHECK} 没出现在 head 上（PR 改了 JS / TS，应该跑）：看 Comment Check 工作流有没有触发，补跑后再判断注释。` : null;
+  if (run.status !== "completed") return `${COMMENT_CHECK} 还在跑（${run.status}），注释建议还没出来：等它跑完再合。`;
+  if (run.conclusion === "neutral") return `${COMMENT_CHECK}：${run.output?.title ?? "有新注释可能该删"}（建议，不挡合并）。逐条对照 AGENTS.md「文档与注释」判断删还是留：${run.html_url ?? ""}`;
+  if (run.conclusion === "success" || run.conclusion === "skipped") return null;
+  return `${COMMENT_CHECK} 没跑成（${run.conclusion ?? "unknown"}），注释没人看过：重跑后再判断，或自己逐条对照 AGENTS.md「文档与注释」：${run.html_url ?? ""}`;
 }
 
 export function newestByName(runs: CheckRun[]) {
