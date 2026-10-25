@@ -66,13 +66,20 @@ test("parseRawDiff：模式变了记 modeChanged，新增与删除不算", () =>
 
 test("notesOnlyFiles：文档档的文件直接放过，代码文件要逐个证明只改了注释", () => {
   const compare = (statuses: Record<string, string>) => (files: string[]) => files.map((file) => ({ file, status: statuses[file] ?? "code" }));
-  assert.deepEqual(notesOnlyFiles(["docs/a.md", ".claude/skills/x/SKILL.md"], () => assert.fail()), ["docs/a.md", ".claude/skills/x/SKILL.md"]);
+  assert.deepEqual(notesOnlyFiles(["docs/a.md", ".claude/memory/x.md"], () => assert.fail()), ["docs/a.md", ".claude/memory/x.md"]);
   assert.deepEqual(notesOnlyFiles(["README.md", "scripts/a.ts"], compare({ "scripts/a.ts": "comment-only" })), ["README.md", "scripts/a.ts"]);
   assert.equal(notesOnlyFiles(["scripts/a.ts"], compare({ "scripts/a.ts": "directive" })), null);
   assert.equal(notesOnlyFiles(["scripts/new.ts"], compare({ "scripts/new.ts": "new" })), null);
   assert.equal(notesOnlyFiles([".github/workflows/verify.yml"], compare({})), null);
   assert.equal(notesOnlyFiles([".claude/settings.json"], compare({})), null);
   assert.equal(notesOnlyFiles(["src/components/a.tsx"], compare({})), null);
+});
+
+test("notesOnlyFiles：规则文档与验证员自己的文件改了不沿用回执", () => {
+  for (const file of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", "workers/ai/CLAUDE.md", "HUMAN.md", "REVIEW.md", "DESIGN.md", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/routines.md"]) {
+    assert.equal(notesOnlyFiles(["docs/a.md", file], () => assert.fail()), null, file);
+  }
+  assert.equal(notesOnlyFiles(["scripts/verify-action/prompts.ts"], () => [{ file: "scripts/verify-action/prompts.ts", status: "comment-only" }]), null);
 });
 
 test("回执盖住 head 且等级够就通过，主线程不再重验", () => {

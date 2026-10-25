@@ -1,16 +1,21 @@
 import { execFileSync } from "node:child_process";
 
 import { checkFiles, loadTypeScript } from "../comment-only-check.ts";
-import { tierOf } from "../pr-gate/tier.ts";
+import { tierOf, verifierFiles } from "../pr-gate/tier.ts";
+import { isRulePath } from "../rule-drift.ts";
 
 export type NotesOnly = (from: string, to: string) => string[] | null;
 type CompareCode = (files: string[]) => { file: string; status: string }[];
 
 const SAME_CODE = new Set(["comment-only", "unchanged"]);
 
-// 两个提交之间只改了文档档的文件（pr-gate/tier.ts 的 docs 档）或代码里的注释时，返回改了哪些文件；有一处别的改动就返回 null。
+// 两个提交之间只改了文档档的文件（pr-gate/tier.ts 的 docs 档，规则文档除外）或代码里的注释时，返回改了哪些文件；有一处别的改动就返回 null。
 // 只看 from→to 的文件差异：中间合进来的 main 也算改动，所以合过 main 的照样重验。
+// 规则文档（AGENTS.md、CLAUDE.md、HUMAN.md、skill、.claude/rules 等）与验证员自己的文件改了，验证员和判定员照着读的就变了，回执不再算数。
+const changesRules = (file: string) => isRulePath(file) || /(^|\/)CLAUDE\.md$/.test(file) || verifierFiles([file]).length > 0;
+
 export function notesOnlyFiles(files: string[], compareCode: CompareCode): string[] | null {
+  if (files.some(changesRules)) return null;
   const code = files.filter((file) => tierOf([file], { trustedAuthor: true }).name !== "docs");
   if (code.length === 0) return files;
   return compareCode(code).every((result) => SAME_CODE.has(result.status)) ? files : null;

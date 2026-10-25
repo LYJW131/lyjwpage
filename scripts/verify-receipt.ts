@@ -62,7 +62,7 @@ check 的选项：
   --help           显示本说明
 
 回执或判定按的提交不是当前 head 时，比两边相对 main 的补丁（逐字节，含空白与二进制，只忽略行号）：
-相同就沿用（coverage=carried，常见于只把 main 合进分支）；补丁不同，但那个提交到 head 只改了文档或代码注释，
+相同就沿用（coverage=carried，常见于只把 main 合进分支）；补丁不同，但那个提交到 head 只改了文档（规则文档除外）或代码注释，
 也沿用（coverage=notes-only，见 verify-receipt/notes-only.ts）；其余作废（coverage=stale）。
 比补丁要用本地 git：先 git fetch origin main。`;
 

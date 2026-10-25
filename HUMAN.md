@@ -100,7 +100,7 @@
 - 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。推送根本没触发构建（GitHub webhook 延迟或丢失，Cloudflare 构建列表里没有这个提交）的也不问，Claude 发现了就直接补跑。
 - 上报器哪些合进 main 后自动换镜像、哪些手动，见 [`.claude/rules/reporters.md`](./.claude/rules/reporters.md)；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。合并后每次都核对 `/api/version`；生产行为只在预览测不准的改动上复测（缓存与 Cache-Tag 清除、首屏 SSR、字体、依赖生产 Secret 或绑定的功能），其余以预览验证为准。
-- PR 上的验证在 GitHub 上跑（`.github/workflows/verify.yml`）：Claude 开 PR 时在描述里写「验证清单」和你的原话，每次推送 Action 派 Haiku 照清单验（上次回执已通过、这次只改了文档或代码注释的推送不再派，沿用那份回执；界面改动在分支预览上截桌面、手机和 WebKit 图），Claude 判为大改动的同时派 Opus 判定员对照你的原话判做没做到。回执和判定由 lyjw131[bot] 贴成 PR 评论，截图嵌在评论里，你看图点头就在那儿看；合并前 `scripts/verify-receipt.ts` 只认这个 bot 贴的，Claude 自己贴的不算。Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报。没开 PR 时的检查、等部署和核对生产，Claude 仍交给 Haiku 子代理（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- PR 上的验证在 GitHub 上跑（`.github/workflows/verify.yml`）：Claude 开 PR 时在描述里写「验证清单」和你的原话，每次推送 Action 派 Haiku 照清单验（上次回执已通过、这次只改了文档或代码注释的推送不再派，沿用那份回执；改了规则文档（AGENTS.md、CLAUDE.md、HUMAN.md、skill、`.claude/rules/` 等）或验证流程自己的文件照样重验；界面改动在分支预览上截桌面、手机和 WebKit 图），Claude 判为大改动的同时派 Opus 判定员对照你的原话判做没做到。回执和判定由 lyjw131[bot] 贴成 PR 评论，截图嵌在评论里，你看图点头就在那儿看；合并前 `scripts/verify-receipt.ts` 只认这个 bot 贴的，Claude 自己贴的不算。Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报。没开 PR 时的检查、等部署和核对生产，Claude 仍交给 Haiku 子代理（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
 - 所有等待（CI、机器评审、部署、后台循环）都有上限，到点记失败、附上最后看到的状态，接着做不依赖它的事，不会无声卡住（见 `lyjwpage-verify`「等待要有上限」）。
 
 ## 7. Claude 怎么向你汇报
