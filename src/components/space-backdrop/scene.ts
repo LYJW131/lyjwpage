@@ -13,6 +13,7 @@ const SWAP_IN_MS = 480;
 type Side = "left" | "right";
 
 type Slot = {
+  make: () => ClawdCast;
   cast: ClawdCast;
   side: Side;
   width: number;
@@ -28,8 +29,17 @@ export function mountSpaceScene(host: HTMLElement) {
   const fadeIn = (el: HTMLElement) => {
     if (!reducedMotion) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: "ease-in-out", fill: "backwards" });
   };
-  const slot = (cast: ClawdCast, side: Side, phase: number): Slot => ({ cast, side, phase, width: cast.w * CLAWD_PX, actor: null, swapping: false });
-  const slots = [slot(astronautCast(), "left", 0), slot(walkerCast(), "right", 37)];
+  const slot = (make: () => ClawdCast, side: Side, phase: number): Slot => {
+    const cast = make();
+    return { make, cast, side, phase, width: cast.w * CLAWD_PX, actor: null, swapping: false };
+  };
+  const slots = [slot(astronautCast, "left", 0), slot(walkerCast, "right", 37)];
+  let pointerCursor = false;
+  const setCursor = (over: boolean) => {
+    if (over === pointerCursor) return;
+    pointerCursor = over;
+    document.documentElement.style.cursor = over ? "pointer" : "";
+  };
   let pointer: { x: number; y: number } | null = null;
   let column = columnRect();
 
@@ -82,6 +92,8 @@ export function mountSpaceScene(host: HTMLElement) {
       // 两侧留白窄于此就不放这只 Clawd：他会被卡片挡住大半，还把卡片边上的点阵掏空。
       const wide = column.left >= s.width + 72;
       if (wide && !s.actor) {
+        // cast 里的动作与粒子按 actor 自己的计时走，重建 actor 时一并换新的。
+        s.cast = s.make();
         s.actor = clawdActor(host, {
           ...s.cast,
           phase: s.phase,
@@ -94,6 +106,7 @@ export function mountSpaceScene(host: HTMLElement) {
       } else if (!wide && s.actor) {
         s.actor.stop();
         s.actor = null;
+        setCursor(false);
       }
     }
   };
@@ -107,19 +120,16 @@ export function mountSpaceScene(host: HTMLElement) {
       const r = s.actor.getRect();
       return x >= r.left && x <= r.left + r.w && y >= r.top && y <= r.top + r.h;
     });
-  let pointerCursor = false;
   const onPointer = (e: PointerEvent) => {
     pointer = e.pointerType === "mouse" ? { x: e.clientX, y: e.clientY } : null;
-    const over = !!pointer && onBackdrop(e.target) && !!pokeable(e.clientX, e.clientY);
-    if (over === pointerCursor) return;
-    pointerCursor = over;
-    document.documentElement.style.cursor = over ? "pointer" : "";
+    setCursor(!!pointer && onBackdrop(e.target) && !!pokeable(e.clientX, e.clientY));
   };
   const onClick = (e: MouseEvent) => {
     if (onBackdrop(e.target)) pokeable(e.clientX, e.clientY)?.cast.poke?.();
   };
   const onLeave = () => {
     pointer = null;
+    setCursor(false);
   };
   const field = spaceField(host, {
     spacing: 9,
@@ -140,7 +150,7 @@ export function mountSpaceScene(host: HTMLElement) {
     removeEventListener("resize", syncActors);
     removeEventListener("pointermove", onPointer);
     document.removeEventListener("click", onClick);
-    if (pointerCursor) document.documentElement.style.cursor = "";
+    setCursor(false);
     document.documentElement.removeEventListener("pointerleave", onLeave);
     for (const s of slots) {
       clearTimeout(s.swapTimer);
