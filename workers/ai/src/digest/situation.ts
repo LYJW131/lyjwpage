@@ -71,6 +71,8 @@ export const SHIPPING_COMMITS = 8;
 export const SHIPPING_DEPLOYS = 4;
 // 锻炼的计分权重高，一次长散步就能盖过一整天的代码；代码达到这个时长的日子，主线让给其余得分最高的一类，锻炼只做附带。
 export const FITNESS_LEAD_MAX_BUILD_HOURS = 2;
+// 别的一类得分到这里（约 4 小时音乐、1.3 小时看番或游戏），第三格让给它，不再用主线同一类的格子填满；音乐的门槛与附带情境 soundtrack 对齐。
+export const GUEST_SCORE = 2;
 
 // 卡片上的 site 格有提交数就只放提交数，部署数要从 signals 另看。
 function shippingDay(options: DigestHighlight[], signals: DigestSignals): boolean {
@@ -134,7 +136,13 @@ function pickHighlights(primary: DigestSituation, family: Family, options: Diges
     ? [FAMILY_TOPICS[family][0], FAMILY_TOPICS[counterpart][0], ...FAMILY_TOPICS[family].slice(1), ...FAMILY_TOPICS[counterpart].slice(1)]
     : PICK_ORDER[primary] ?? [];
   const available = (topics: DigestTopic[]) => topics.flatMap((topic) => options.filter((option) => option.topic === topic));
-  const picked = [...new Set(available(order))].slice(0, primary === "codingLight" ? 2 : 3);
+  const own = [...new Set(available(order))];
+  if (primary !== "workAndPlay") {
+    const head = own.slice(0, 2);
+    const guest = byScore.filter((other) => scores[other] >= GUEST_SCORE).flatMap((other) => available(FAMILY_TOPICS[other]).slice(0, 1)).find((option) => !head.includes(option));
+    if (guest) return [...head, guest];
+  }
+  const picked = own.slice(0, primary === "codingLight" ? 2 : 3);
   if (picked.length >= 2) return picked;
   const rest = available(byScore.flatMap((other) => FAMILY_TOPICS[other])).filter((option) => !picked.includes(option));
   return [...picked, ...rest].slice(0, 2);
