@@ -59,7 +59,7 @@ export function keepsHeadline(previous: string | null, primary: DigestSituation,
 // 另一类活动当附带情境时（如听歌 soundtrack）在池里分到与主线交替的一半，不然轮换来轮换去全是主线的口吻；周末、频繁上线这类不是另一件事的附带不进池。
 export const POOL_SHARING_ACCENTS: readonly DigestSituation[] = ["soundtrack", "workoutToo"];
 
-// 与 Clef 的候选同种子抽样：选中的标题置顶，其余句子按各情境的抽样顺序交替，同一天里池子不变。
+// 与 Clef 的候选同种子抽样：选中的标题置顶，其余句子按各情境的抽样顺序交替。
 export function headlinePool(headline: string, primary: DigestSituation, accents: DigestSituation[], date: string): string[] {
   const own = sample(primary, date, HEADLINE_POOL);
   const samples = accents.filter((accent) => POOL_SHARING_ACCENTS.includes(accent)).map((accent) => sample(accent, date, HEADLINE_POOL));
