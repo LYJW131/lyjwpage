@@ -56,9 +56,16 @@ export function keepsHeadline(previous: string | null, primary: DigestSituation,
   return !!previous && sample(primary, date, PRIMARY_CANDIDATES).includes(previous);
 }
 
+// 另一类活动当附带情境时（如听歌 soundtrack）在池里分到与主线交替的一半，不然轮换来轮换去全是主线的口吻；周末、频繁上线这类不是另一件事的附带不进池。
+export const POOL_SHARING_ACCENTS: readonly DigestSituation[] = ["soundtrack", "workoutToo"];
+
 // 与 Clef 的候选同种子同序：池子的前几条就是当天候选，同一天里池子不变。
-export function headlinePool(headline: string, primary: DigestSituation, date: string): string[] {
-  return [...new Set([headline, ...sample(primary, date, HEADLINE_POOL)])].slice(0, HEADLINE_POOL);
+export function headlinePool(headline: string, primary: DigestSituation, accents: DigestSituation[], date: string): string[] {
+  const own = sample(primary, date, HEADLINE_POOL);
+  const samples = accents.filter((accent) => POOL_SHARING_ACCENTS.includes(accent)).map((accent) => sample(accent, date, HEADLINE_POOL));
+  const shared = Array.from({ length: HEADLINE_POOL }, (_, index) => samples.map((lines) => lines[index])).flat().filter((line) => line !== undefined);
+  const mixed = own.flatMap((line, index) => (index < shared.length ? [line, shared[index]] : [line]));
+  return [...new Set([headline, ...mixed])].slice(0, HEADLINE_POOL);
 }
 
 function parseChoice(body: unknown, candidates: string[]): string | null {
@@ -113,5 +120,5 @@ export async function composeDigest({
       situation: DIGEST_SITUATIONS[scene.primary],
       accents: scene.accents.map((accent) => DIGEST_SITUATIONS[accent]),
     });
-  return { status: "composed", digest: { headline, headlines: headlinePool(headline, scene.primary, signals.date), highlights: scene.highlights, model, generatedAt: Date.now(), inputHash } };
+  return { status: "composed", digest: { headline, headlines: headlinePool(headline, scene.primary, scene.accents, signals.date), highlights: scene.highlights, model, generatedAt: Date.now(), inputHash } };
 }
