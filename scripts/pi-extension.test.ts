@@ -50,6 +50,8 @@ test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
     "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
     "gh pr --repo lyjw131/lyjwpage merge 2 --rebase",
     "gh api -X POST repos/lyjw131/lyjwpage/pulls/1/merge",
+    "gh api repos/lyjw131/lyjwpage/pulls/1/merge -f merge_method=squash",
+    "echo 667 | xargs gh pr merge",
     `node -e "require('child_process').execFileSync('gh', ['pr', 'merge', '1', '--squash'])"`,
     `python3 -c "import subprocess; subprocess.run(['gh','pr','merge','1'])"`,
   ]) {
@@ -62,6 +64,11 @@ test("查询类 gh 命令与 git merge 不当合并", () => {
     "gh pr list --search merge",
     "gh pr create --title merge --body 'pr merge later'",
     "gh api repos/lyjw131/lyjwpage/pulls/1",
+    "gh api repos/lyjw131/lyjwpage/pulls/667/merge",
+    'gh pr view "$PR" --json mergeable,mergeStateStatus',
+    "echo pr merge is done; gh pr list",
+    "rg 'gh pr merge' docs",
+    "cat > notes.md <<'EOF'\n用 gh pr merge 合并，或 gh api -X PUT repos/x/y/pulls/1/merge。\nEOF",
     "git merge origin/main",
     "pnpm merge-message 667 'chore: x'",
   ]) {

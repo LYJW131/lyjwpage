@@ -105,19 +105,29 @@ export function expandsAtRuntime(command: string): boolean {
   return false;
 }
 
+const API_FIELD_OPTIONS = new Set(["-f", "--raw-field", "-F", "--field", "--input"]);
+const MERGE_TEXT = /\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']|pulls\/\d+\/merge\b|mergePullRequest|enablePullRequestAutoMerge/;
+const INTERPRETERS = new Set(["node", "python", "python3", "ruby", "perl", "deno", "bun"]);
+const INLINE_FLAGS = new Set(["-e", "-c", "-p", "--eval", "--print"]);
+const REPO_OPTIONS = new Set(["-R", "--repo"]);
+const isGh = (token: string) => program(token) === "gh" || token.includes("$");
+
 function apiMergesPull(tokens: string[]): boolean {
   const gh = tokens.findIndex((token) => program(token) === "gh");
   if (gh === -1 || !tokens.slice(gh + 1).includes("api")) return false;
   const args = tokens.slice(gh + 1);
   if (args.some((token) => /mergePullRequest|enablePullRequestAutoMerge/.test(token))) return true;
-  const put = args.some((token, i) =>
-    /^(-X|--method=?)put$/i.test(token) || ((token === "-X" || token === "--method") && args[i + 1]?.toUpperCase() === "PUT"));
-  return put && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
+  const explicit = args.flatMap((token, i) => {
+    if (token === "-X" || token === "--method") return [args[i + 1] ?? ""];
+    const attached = token.match(/^(?:-X|--method=)(.+)$/);
+    return attached === null ? [] : [attached[1]];
+  })[0];
+  const method = (explicit ?? (args.some((token) => API_FIELD_OPTIONS.has(token)) ? "POST" : "GET")).toUpperCase();
+  return method !== "GET" && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
 }
 
-const REPO_OPTIONS = new Set(["-R", "--repo"]);
-
 function prMerge(tokens: string[]): boolean {
+  if (!tokens.some(isGh)) return false;
   for (let i = tokens.indexOf("pr"); i !== -1; i = tokens.indexOf("pr", i + 1)) {
     let j = i + 1;
     while (j < tokens.length && tokens[j].startsWith("-")) j += REPO_OPTIONS.has(tokens[j]) ? 2 : 1;
@@ -126,12 +136,17 @@ function prMerge(tokens: string[]): boolean {
   return false;
 }
 
+function inlineScriptMerges(tokens: string[]): boolean {
+  if (!INTERPRETERS.has(program(tokens[programIndex(tokens)] ?? ""))) return false;
+  return tokens.some((token, i) => INLINE_FLAGS.has(tokens[i - 1] ?? "") && MERGE_TEXT.test(token));
+}
+
 // 合并不在 bash 里解析：gh 的选项别名、先后与 shell 引号的组合拦不全，统一交给 lyjwpage_merge_pr 工具，它不经 shell 直接调 gh。
 // 这里只防 agent 顺手写出的合并：命令文本里看得见的才拦，跑一个事先写好的脚本文件拦不到。
 export function mergesViaShell(command: string): boolean {
-  if (/pulls\/\d+\/merge\b|mergePullRequest|enablePullRequestAutoMerge|\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']/.test(command)) return true;
-  if (expandsAtRuntime(command) && /\bgh\b/.test(command) && /merge/i.test(command)) return true;
-  return commandsOf(command).flatMap((text) => segments(text) as string[][]).some((tokens) => prMerge(tokens) || apiMergesPull(tokens));
+  if (expandsAtRuntime(command) && /\bgh\b/.test(command) && /\bmerge\b/i.test(command)) return true;
+  return commandsOf(command).flatMap((text) => segments(text) as string[][]).some((tokens) =>
+    prMerge(tokens) || apiMergesPull(tokens) || inlineScriptMerges(tokens));
 }
 
 export function mergeArgs(input: MergeRequest): string[] {

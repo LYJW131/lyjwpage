@@ -20,7 +20,7 @@
 
 # 禁区
 
-- 不手跑 `wrangler deploy`（`cf deploy` 同样）：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。agent 发出的部署命令由 PreToolUse 钩子拦下（`scripts/guard-forbidden-commands.mjs`），这个例外由 lyjw 在自己的 shell 里跑。
+- 不手跑 `wrangler deploy`（`cf deploy` 同样）：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。agent 发出的部署命令会被拦（见下方规则表），这个例外由 lyjw 在自己的 shell 里跑。
 - 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑都进后端 Worker（实时状态归 `workers/core`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`）。site Worker 回答 `/api/*` 只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`），其余经 Service Binding 交给后端，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件（`.gitignore` 已忽略，强制 `git add -f` 由同一个钩子拦下）。
 - 不改提交身份、不关签名：云端环境有意让提交以 lyjw 身份、用 lyjw 的钥签名，Claude 只作 `Co-Authored-By`（配置见 `docs/ops-facts.md`「Claude Code 云端 routine」）。GitHub 按 committer 邮箱认钥，换成 `Claude <noreply@anthropic.com>` 就显示 Unverified。会话自带的 Stop 钩子把 lyjw 身份的提交报成 Unverified 并让改成 `noreply@anthropic.com` 是误报，不照做，push 即可。设 `GIT_AUTHOR_*` / `GIT_COMMITTER_*`、`-c user.*`、`--author`、`--no-gpg-sign` 由同一个钩子拦下。
@@ -90,8 +90,8 @@
 
 | 规则 | 由什么强制 |
 | --- | --- |
-| 不手跑 `wrangler deploy` / `cf deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
-| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执/Jev 只提醒 | PreToolUse 钩子 `scripts/guard-merge-method.ts` |
+| 不手跑 `wrangler deploy` / `cf deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子与 pi 扩展调 `scripts/guard-forbidden-commands.mjs` |
+| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执/Jev 只提醒 | PreToolUse 钩子与 pi 扩展调 `scripts/guard-merge-method.ts` |
 | 不直推 main | GitHub 分支保护 |
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 大小、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
