@@ -9,7 +9,7 @@ import { buildCoverage } from "./pr-gate/checks.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type FetchLike, type PrFile, type Pull } from "./pr-gate/github.ts";
 import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
-import { evaluate, gitPatchId, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
+import { evaluate, gitPatchId, notesOnlyFor, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
 import { gitNotesOnly, gitRulesChanged } from "./verify-receipt/notes-only.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { machineLine, runProof, type ProofSummary } from "./verify-action/machine.ts";
@@ -100,7 +100,7 @@ async function plan(gh: Client, pr: number) {
         need: planned.need,
         wantJudge: planned.judge,
         patchId: gitPatchId,
-        notesOnly: gitNotesOnly,
+        notesOnly: notesOnlyFor(pull.user?.id, gitNotesOnly),
         rulesChanged: gitRulesChanged,
         body: await bodyDigest(pull.body),
       });
