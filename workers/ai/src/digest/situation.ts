@@ -129,7 +129,7 @@ function accentSituations(primary: DigestSituation, family: Family, options: Dig
   return accents;
 }
 
-// 与 familyScores 同权重，挑客类里真正贡献了得分的那一格。
+// 同类里按 familyScores 的权重比较，挑真正贡献了得分的那一格，须与它同步；fitness 一类只有一格，不参与比较。
 function topicWeight(option: DigestHighlight): number {
   switch (option.topic) {
     case "coding":
