@@ -10,7 +10,6 @@ const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
 export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 
-// notes-only 沿用只给 lyjw 的账号开的 PR：别人的 PR 在回执之后只改了文档或注释也要重验
 export const notesOnlyFor = (authorId: number | undefined, notesOnly: NotesOnly | undefined) => (TRUSTED_AUTHOR_IDS.has(authorId ?? 0) ? notesOnly : undefined);
 
 // 回执和判定只认 lyjw131[bot]（GitHub App 的机器人账号）：由 .github/workflows/verify.yml 的 publish job 拿 App 令牌发；
