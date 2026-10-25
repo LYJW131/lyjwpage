@@ -179,9 +179,12 @@ export function evaluate({
       if (judgeCoverage === "stale") problems.push(`判定按的 ${judge.sha.slice(0, 7)} 和当前 head 的补丁不同，或之间改了规则文档：等 Verify Action 按新 head 重判`);
       if (body !== undefined && judge.body !== body) problems.push("判定之后 PR 描述的验证清单或 lyjw 原话改过（或判定没带描述摘要）：等 Verify Action 按新描述重判");
     }
-  } else if (judge?.verdict === "FAIL" && coverage(judge.sha, head, patchId, notesOnly) !== "stale") {
-    result.judge = { ...judge, coverage: coverage(judge.sha, head, patchId, notesOnly) };
-    problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送");
+  } else if (judge?.verdict === "FAIL") {
+    const judgeCoverage = coverage(judge.sha, head, patchId, notesOnly, rulesChanged);
+    if (judgeCoverage !== "stale") {
+      result.judge = { ...judge, coverage: judgeCoverage };
+      problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送");
+    }
   }
 
   result.pass = problems.length === 0;
