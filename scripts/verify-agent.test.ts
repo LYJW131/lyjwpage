@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { childEnv, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { checklistIds, lenientRows, reviewReport } from "./verify-agent/review.ts";
+import { removedIdentifiers } from "./verify-agent/tools.ts";
 
 test("childEnv：凭据与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
   const env = childEnv(
@@ -77,4 +79,48 @@ test("readAllowed：只许读点名的根目录；从 / 或 /proc 递归、根�
   assert.equal(readAllowed(roots, path.join(repo, "src", "a.ts")), true);
   for (const target of ["/", "/proc", "/proc/1/environ", root, path.join(repo, ".env.local"), path.join(repo, "home-link"), path.join(repo, "home-link", ".ssh")])
     assert.equal(readAllowed(roots, target), false, target);
+});
+
+test("checklistIds：从提示词里取清单 id，遇到第一行不是条目就停", () => {
+  const prompt = "前文\nPR 作者写的验证清单，每一项都要有一行结果，行 id 照抄：\n- V1：页面打开\n- V2：单测绿\n\n清单之外……\n- X9：不是清单";
+  assert.deepEqual(checklistIds(prompt), ["V1", "V2"]);
+  assert.deepEqual(checklistIds("没有清单"), []);
+});
+
+test("reviewReport：漏清单行、没登记声明、声明指向不存在的行、「另：」里藏着缺陷、没跑通单测却签单测档、逻辑改动没对照，都退回", () => {
+  const facts = { checklistIds: ["V1", "V2"], claims: [], hasDescription: true, logic: true, testsPassed: false, comparedBase: false };
+  const report = {
+    model: "m",
+    level: "unit-test-verified",
+    rows: [{ id: "V1", check: "c", result: "PASS", evidence: "grep 1 处。另：第 24 行报错文案仍含旧说法" }],
+    notVerified: [],
+  };
+  const issues = reviewReport(report, facts);
+  assert.equal(issues.length, 5);
+  assert.match(issues[0], /V2/);
+  assert.match(issues.join("\n"), /claims/);
+  assert.match(issues.join("\n"), /V1 判 PASS/);
+  assert.match(issues.join("\n"), /run_tests/);
+  assert.match(issues.join("\n"), /compare_base/);
+  assert.match(reviewReport(report, { ...facts, claims: [{ id: "C1", claim: "x", check: "X7" }] }).join("\n"), /C1→X7/);
+});
+
+test("reviewReport：写明改动前就有的「另：」、跑通了单测、对照过、声明都有行时放行", () => {
+  const report = {
+    model: "m",
+    level: "unit-test-verified",
+    rows: [
+      { id: "V1", check: "c", result: "PASS", evidence: "ok。另：README 仍写旧说法，改动前就有" },
+      { id: "X1", check: "c", result: "FAIL", evidence: "仍命中 1 处" },
+    ],
+    notVerified: [],
+  };
+  const facts = { checklistIds: ["V1"], claims: [{ id: "C1", claim: "x", check: "X1" }], hasDescription: true, logic: true, testsPassed: true, comparedBase: true };
+  assert.deepEqual(reviewReport(report, facts), []);
+  assert.deepEqual(lenientRows(report.rows), []);
+});
+
+test("removedIdentifiers：只收 diff 里删掉、新代码里又没出现的标识符", () => {
+  const patch = ["--- a/x.ts", "+++ b/x.ts", "-const OLD_LIMIT = 5;", "-useOldThing(verify-ab.yml)", "+const NEW_LIMIT = 5;", "+useOldThing()"].join("\n");
+  assert.deepEqual(removedIdentifiers(patch).sort(), ["OLD_LIMIT", "verify-ab.yml"]);
 });

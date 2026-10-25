@@ -19,7 +19,7 @@ inputs:
   default-branch:
     required: true
   model:
-    default: claude-haiku-5-5
+    default: anthropic/claude-haiku-5-5
   thinking:
     default: high
   timeout-min:

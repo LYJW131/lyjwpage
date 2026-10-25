@@ -3,10 +3,13 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
-import { childEnv, quote, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { JUDGE_SCHEMA, VERIFIER_SCHEMA, type VerifierReport } from "./verify-action/report.ts";
+import { childEnv, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { PLAYBOOK } from "./verify-agent/playbook.ts";
+import { checklistIds, hasDescription, isLogicTier, reviewReport, type Claim } from "./verify-agent/review.ts";
+import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool } from "./verify-agent/tools.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
 用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员，代替 claude-code-action。模型走 Anthropic API，
@@ -15,7 +18,7 @@ const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prom
 
   --role verifier|judge     决定结果 schema 与可写目录
   --prompt-file FILE        任务提示词（verify-action.ts prompt 的输出）；省略时读环境变量 PROMPT
-  --model ID                默认 claude-haiku-5-5
+  --model PROVIDER/ID       默认 anthropic/claude-haiku-5-5；钥匙的环境变量按提供方取（ANTHROPIC_API_KEY、DEEPSEEK_API_KEY…）
   --thinking LEVEL          off|minimal|low|medium|high|xhigh|max，默认 high
   --out-dir DIR             验证员可写的产物目录（shots/、work/），judge 不写
   --base REF                pr_diff 工具比对的目标分支，默认 origin/main
@@ -24,12 +27,13 @@ const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prom
   --transcript FILE         把整轮事件写成 JSONL，复盘用
   --api-key-file FILE       从文件读 Anthropic 钥匙并删掉文件（CI 里必须这样传）；本地可用 ANTHROPIC_API_KEY
   --github-token-file FILE  同上，给 pr_view 的 GitHub 令牌；本地可用 GITHUB_TOKEN
+  --harness v1|v2           v2（默认）加声明台账、目标分支对照、文档同步三个工具、交结果前的规则复核与探针 skill；v1 只有基础工具
   --pi-sdk DIR              装了 pi SDK 的 node_modules 目录；默认依次试 PI_SDK_DIR（npm install --prefix 的目录）、npm 全局目录`;
 
 const OPTIONS = {
   role: { type: "string" },
   "prompt-file": { type: "string" },
-  model: { type: "string", default: "claude-haiku-5-5" },
+  model: { type: "string", default: "anthropic/claude-haiku-5-5" },
   thinking: { type: "string", default: "high" },
   "out-dir": { type: "string" },
   base: { type: "string", default: "origin/main" },
@@ -39,6 +43,7 @@ const OPTIONS = {
   "pi-sdk": { type: "string" },
   "api-key-file": { type: "string" },
   "github-token-file": { type: "string" },
+  harness: { type: "string", default: "v2" },
   help: { type: "boolean" },
 } as const;
 
@@ -56,6 +61,10 @@ if (values.help) {
 }
 const FOLLOW_UP_MS = 5 * 60_000;
 const THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+if (values.harness !== "v1" && values.harness !== "v2") {
+  console.error("--harness 只认 v1|v2");
+  process.exit(2);
+}
 if (!THINKING.includes(values.thinking)) {
   console.error(`--thinking 只认 ${THINKING.join("|")}`);
   process.exit(2);
@@ -65,11 +74,12 @@ if (role !== "verifier" && role !== "judge") {
   console.error(HELP);
   process.exit(2);
 }
-const prompt = values["prompt-file"] ? fs.readFileSync(values["prompt-file"], "utf8") : process.env.PROMPT;
-if (!prompt) {
+const promptInput = values["prompt-file"] ? fs.readFileSync(values["prompt-file"], "utf8") : process.env.PROMPT;
+if (!promptInput) {
   console.error("没有提示词：给 --prompt-file 或环境变量 PROMPT");
   process.exit(2);
 }
+let prompt: string = promptInput;
 const timeoutMin = Number(values["timeout-min"]);
 if (!(timeoutMin > 0)) {
   console.error("--timeout-min 要正数");
@@ -83,13 +93,16 @@ const fromFile = (file: string | undefined) => {
   fs.rmSync(file, { force: true });
   return value || undefined;
 };
-const apiKey = fromFile(values["api-key-file"]) ?? process.env.ANTHROPIC_API_KEY;
+const [provider, modelId] = values.model.includes("/") ? [values.model.slice(0, values.model.indexOf("/")), values.model.slice(values.model.indexOf("/") + 1)] : ["anthropic", values.model];
+const keyEnv = `${provider.toUpperCase().replaceAll("-", "_")}_API_KEY`;
+const apiKey = fromFile(values["api-key-file"]) ?? process.env[keyEnv];
 const githubToken = fromFile(values["github-token-file"]) ?? process.env.GITHUB_TOKEN;
 delete process.env.ANTHROPIC_API_KEY;
+delete process.env[keyEnv];
 delete process.env.GITHUB_TOKEN;
 delete process.env.PROMPT;
 if (!apiKey) {
-  console.error("没有 Anthropic 钥匙：给 --api-key-file 或 ANTHROPIC_API_KEY");
+  console.error(`没有 ${provider} 的钥匙：给 --api-key-file 或 ${keyEnv}`);
   process.exit(2);
 }
 if (process.env.CI && !values["api-key-file"]) {
@@ -98,6 +111,8 @@ if (process.env.CI && !values["api-key-file"]) {
 }
 
 const cwd = process.cwd();
+const v2 = values.harness === "v2";
+const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-agent", "skills");
 const outDir = values["out-dir"] ? path.resolve(values["out-dir"]) : null;
 const tmpDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-agent-"));
 const schema = role === "verifier" ? VERIFIER_SCHEMA : JUDGE_SCHEMA;
@@ -113,7 +128,7 @@ const writable = [cwd, tmpDir, ...(outDir ? [outDir] : [])];
 const wrap = (command: string) => sandboxed(command, writable, bwrap);
 
 const { sdk, sdkDir } = await loadPi(values["pi-sdk"]);
-const readRoots = [cwd, tmpDir, sdkDir, ...(outDir ? [outDir] : [])];
+const readRoots = [cwd, tmpDir, sdkDir, ...(v2 ? [SKILL_DIR] : []), ...(outDir ? [outDir] : [])];
 // 守卫要和内置工具算出同一个路径（它们会去掉 @ 前缀、展开 ~）：直接用 pi 自己的解析函数，不另写一份
 const piPaths: { resolveToCwd: (file: string, cwd: string) => string; resolveReadPathAsync: (file: string, cwd: string) => Promise<string> } = await import(
   pathToFileURL(path.join(sdkDir, "dist/core/tools/path-utils.js")).href
@@ -121,11 +136,14 @@ const piPaths: { resolveToCwd: (file: string, cwd: string) => string; resolveRea
 const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = sdk;
 
 const modelRuntime = await ModelRuntime.create({ authPath: path.join(tmpDir, "auth.json"), modelsPath: path.join(tmpDir, "models.json") });
-await modelRuntime.setRuntimeApiKey("anthropic", apiKey);
-const model = modelRuntime.getModel("anthropic", values.model);
-if (!model) throw new Error(`pi 的模型表里没有 anthropic/${values.model}`);
+await modelRuntime.setRuntimeApiKey(provider, apiKey);
+const model = modelRuntime.getModel(provider, modelId);
+if (!model) throw new Error(`pi 的模型表里没有 ${provider}/${modelId}`);
+// DeepSeek 的强度走 reasoning_effort（low / high / max），pi 按 baseUrl 也会探测出来；写明，免得升级后探测规则变了悄悄不发
+if (provider === "deepseek") model.compat = { ...model.compat, supportsReasoningEffort: true };
 
 let report: unknown = null;
+let effortSent: string | undefined;
 const workLog = (name: string, text: string) => {
   if (!outDir) return null;
   const file = path.join(outDir, "work", name);
@@ -133,13 +151,11 @@ const workLog = (name: string, text: string) => {
   fs.writeFileSync(file, text);
   return file;
 };
-const tail = (text: string, lines: number) => text.split("\n").slice(-lines).join("\n");
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: undefined });
-let logSeq = 0;
 
-const run = (command: string, timeoutMs: number) =>
+const run = (command: string, timeoutMs: number, dir = cwd) =>
   new Promise<{ code: string | number; output: string }>((resolve) => {
-    const child = spawn("bash", ["-c", wrap(command)], { cwd, env: childEnvNow() as NodeJS.ProcessEnv, signal: AbortSignal.timeout(timeoutMs) });
+    const child = spawn("bash", ["-c", wrap(command)], { cwd: dir, env: childEnvNow() as NodeJS.ProcessEnv, signal: AbortSignal.timeout(timeoutMs) });
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));
@@ -163,44 +179,18 @@ const guardedWrite = {
   },
 };
 
+const MAX_REJECTIONS = 2;
+let rejections = 0;
+let testsPassed = false;
+let comparedBase = false;
+const claims = new Map<string, Claim>();
+const toolContext = { cwd, base: values.base, tmpDir, run, workLog };
+
 const customTools = [
   bash,
   ...(outDir ? [guardedWrite] : []),
-  {
-    name: "pr_diff",
-    label: "PR diff",
-    description: `这次改动：git diff ${values.base}...HEAD。stat=true 只给每个文件的增删行数；paths 限定文件。超过 60KB 截断，全文写进产物目录 work/。`,
-    parameters: {
-      type: "object",
-      properties: { stat: { type: "boolean" }, paths: { type: "array", items: { type: "string" } } },
-    },
-    execute: async (_id: string, params: { stat?: boolean; paths?: string[] }) => {
-      const args = ["diff", ...(params.stat ? ["--stat=200"] : []), `${values.base}...HEAD`, ...(params.paths?.length ? ["--", ...params.paths] : [])];
-      const out = execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-      if (out.length <= 60_000) return text(out || "（没有差异）");
-      const file = workLog(`diff-${++logSeq}.patch`, out);
-      return text(`${out.slice(0, 60_000)}\n…（截断，全文 ${file ?? "未保存"}）`);
-    },
-  },
-  {
-    name: "run_tests",
-    label: "Run tests",
-    description:
-      "在仓库根用 node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs 跑给定的测试文件（路径相对仓库根，workers/*/ 下的也从根跑）。返回退出码、tests/pass/fail 计数与失败段落；完整输出写进产物目录 work/。",
-    parameters: {
-      type: "object",
-      required: ["files"],
-      properties: { files: { type: "array", minItems: 1, items: { type: "string" } }, name: { type: "string", description: "日志文件名前缀" } },
-    },
-    execute: async (_id: string, params: { files: string[]; name?: string }) => {
-      const started = Date.now();
-      const { code, output } = await run(`node --test --test-reporter=tap --experimental-strip-types --import ./src/lib/testing/register-alias.mjs ${params.files.map(quote).join(" ")}`, 10 * 60_000);
-      const file = workLog(`${(params.name ?? "tests").replace(/[^\w.-]/g, "_")}-${++logSeq}.log`, output);
-      const counts = output.match(/^# (tests|pass|fail|cancelled|skipped) \d+$/gm)?.join(", ") ?? "没读到计数";
-      const failures = output.match(/^not ok .*$[\s\S]*?(?=^(?:ok|not ok) |\n# tests)/gm)?.join("\n").slice(0, 6000) ?? "";
-      return text(`退出码 ${code}，${Math.round((Date.now() - started) / 1000)} 秒；${counts}${file ? `；日志 ${file}` : ""}\n${failures || tail(output, 15)}`);
-    },
-  },
+  prDiffTool(toolContext),
+  runTestsTool(toolContext, () => (testsPassed = true)),
   ...(values.pr && githubToken
     ? [
         {
@@ -209,23 +199,35 @@ const customTools = [
           description: "读这个 PR 的标题、描述、标签、head 与目标分支（GitHub API，只读）。bash 里没有 GitHub 令牌，gh 用不了，查 PR 用这个。",
           parameters: { type: "object", properties: {} },
           execute: async () => {
-            const res = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY ?? "LYJW131/lyjwpage"}/pulls/${values.pr}`, {
-              headers: { authorization: `Bearer ${githubToken}`, accept: "application/vnd.github+json" },
-              signal: AbortSignal.timeout(20_000),
-            });
-            if (!res.ok) throw new Error(`GitHub ${res.status}`);
-            const pull = (await res.json()) as { title: string; body: string | null; labels: { name: string }[]; head: { sha: string }; base: { ref: string } };
+            const pull = await fetchPull();
             return text(JSON.stringify({ title: pull.title, labels: pull.labels.map((label) => label.name), head: pull.head.sha, base: pull.base.ref, body: pull.body ?? "" }, null, 2));
           },
         },
       ]
     : []),
+  ...(v2 ? [docsSyncTool(toolContext), compareBaseTool(toolContext), claimsTool(claims)] : []),
   {
     name: "submit_report",
     label: "Submit report",
-    description: "交最终结果，整轮到此结束。参数照结果 schema；只调一次，调之前把要跑的检查都跑完。",
+    description: v2
+      ? "交最终结果。参数照结果 schema；交上来会按判定规则复核，退回时照提示改完再交，通过才结束。"
+      : "交最终结果，整轮到此结束。参数照结果 schema；只调一次，调之前把要跑的检查都跑完。",
     parameters: schema,
     execute: async (_id: string, params: unknown) => {
+      if (v2 && role === "verifier" && rejections < MAX_REJECTIONS) {
+        const issues = reviewReport(params as VerifierReport, {
+          checklistIds: checklistIds(prompt),
+          claims: [...claims.values()],
+          hasDescription: hasDescription(prompt),
+          logic: isLogicTier(prompt),
+          testsPassed,
+          comparedBase,
+        });
+        if (issues.length) {
+          rejections++;
+          return { ...text(`没收，先改这几处再交（第 ${rejections} 次退回，最多 ${MAX_REJECTIONS} 次）：\n${issues.map((issue, index) => `${index + 1}. ${issue}`).join("\n")}`), isError: true };
+        }
+      }
       report = params;
       return { ...text("已收到结果。"), terminate: true };
     },
@@ -233,16 +235,18 @@ const customTools = [
 ];
 
 const SYSTEM = `你在 pi 里运行，工具和 Claude Code 不同：
-- read / grep / find / ls：读文件与搜索（只读），只许读工作区、产物目录、临时目录与 pi 的 SDK 目录；别处的文件用 bash 读。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
+- read / grep / find / ls：读文件与搜索（只读），只许读工作区、产物目录、临时目录与 pi 的 SDK 目录${v2 ? `，以及 skill 目录 ${SKILL_DIR}` : ""}；别处的文件用 bash 读。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
 - pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
-- 你的模型 ID 是 ${values.model}，结果里的 model 字段照写。
-- 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。`;
+- 你的模型 ID 是 ${modelId}，结果里的 model 字段照写。
+- 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。${v2 ? `\n- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。\n\n${PLAYBOOK}` : ""}`;
 
 const resourceLoader = new DefaultResourceLoader({
   cwd,
   agentDir: tmpDir,
   noExtensions: true,
-  noSkills: true,
+  noSkills: !v2,
+  additionalSkillPaths: v2 ? [SKILL_DIR] : [],
+  skillsOverride: (base: { skills: { filePath: string }[]; diagnostics: unknown[] }) => ({ ...base, skills: base.skills.filter((skill) => skill.filePath.startsWith(SKILL_DIR)) }),
   noPromptTemplates: true,
   noThemes: true,
   appendSystemPrompt: [SYSTEM],
@@ -250,6 +254,11 @@ const resourceLoader = new DefaultResourceLoader({
     {
       name: "verify-guard",
       factory: (pi: { on: (event: string, handler: (event: { toolName: string; input: Record<string, unknown> }) => unknown) => void }) => {
+        pi.on("before_provider_request", (event) => {
+          const payload = (event as unknown as { payload?: Record<string, unknown> }).payload ?? {};
+          effortSent ??= JSON.stringify({ reasoning_effort: payload.reasoning_effort, thinking: payload.thinking, output_config: payload.output_config });
+          return undefined;
+        });
         pi.on("tool_call", async (event) => {
           if (!["read", "grep", "find", "ls"].includes(event.toolName)) return undefined;
           const raw = typeof event.input.path === "string" && event.input.path ? event.input.path : ".";
@@ -270,21 +279,30 @@ const { session } = await createAgentSession({
   thinkingLevel: values.thinking,
   modelRuntime,
   resourceLoader,
-  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", "pr_view", "submit_report"],
+  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", "pr_view", ...(v2 ? ["docs_sync", "compare_base", "claims"] : []), "submit_report"],
   customTools,
   sessionManager: SessionManager.inMemory(cwd),
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
 });
 
 const transcript = values.transcript ? fs.createWriteStream(values.transcript) : null;
+// 流式事件每次都带着整条消息，一轮能写出好几 GB；完整内容在 message_end 与工具事件里都有
+const STREAM_EVENTS = new Set(["message_update", "provider_stream_event", "tool_execution_update"]);
 const toolCounts = new Map<string, number>();
 session.subscribe((event: { type: string; toolName?: string; args?: unknown }) => {
-  transcript?.write(`${JSON.stringify({ at: Date.now(), ...event })}\n`);
+  if (!STREAM_EVENTS.has(event.type)) transcript?.write(`${JSON.stringify({ at: Date.now(), ...event })}\n`);
+  if (event.type === "tool_execution_start" && event.toolName === "compare_base") comparedBase = true;
   if (event.type === "tool_execution_start" && event.toolName) {
     toolCounts.set(event.toolName, (toolCounts.get(event.toolName) ?? 0) + 1);
     console.error(`[tool] ${event.toolName} ${JSON.stringify(event.args).slice(0, 160)}`);
   }
 });
+
+// v2 开跑前就把 PR 描述放进提示词：中档模型常常不去读，声明台账也要从描述里取
+if (v2 && !hasDescription(prompt) && values.pr && githubToken) {
+  const pull = await fetchPull();
+  prompt += `\n\nPR 的标签与描述原文（开跑前读好的，不用再调 pr_view）：\n标签：${JSON.stringify(pull.labels.map((label) => label.name))}\n描述：\n${pull.body ?? ""}`;
+}
 
 const started = Date.now();
 let timedOut = false;
@@ -313,7 +331,7 @@ transcript?.end();
 fs.rmSync(tmpDir, { recursive: true, force: true });
 
 const usage = {
-  model: `anthropic/${values.model}`,
+  model: `${provider}/${modelId}`,
   thinking: values.thinking,
   minutes: Math.round((Date.now() - started) / 600) / 100,
   toolCalls: stats.toolCalls,
@@ -322,6 +340,9 @@ const usage = {
   costUsd: Math.round(stats.cost * 10_000) / 10_000,
   sandbox: bwrap ? "bwrap" : "none",
   submitted: report !== null,
+  harness: values.harness,
+  rejections,
+  effortSent,
 };
 console.error(JSON.stringify(usage));
 setOutput("usage", JSON.stringify(usage));
@@ -330,6 +351,15 @@ if (process.env.GITHUB_STEP_SUMMARY)
 if (report) setOutput("structured_output", JSON.stringify(report));
 if (error) console.error(error);
 process.exit(report ? 0 : 1);
+
+async function fetchPull() {
+  const res = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY ?? "LYJW131/lyjwpage"}/pulls/${values.pr}`, {
+    headers: { authorization: `Bearer ${githubToken}`, accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  return (await res.json()) as { title: string; body: string | null; labels: { name: string }[]; head: { sha: string }; base: { ref: string } };
+}
 
 function setOutput(name: string, value: string) {
   const file = process.env.GITHUB_OUTPUT;
