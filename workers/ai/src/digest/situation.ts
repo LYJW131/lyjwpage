@@ -129,6 +129,24 @@ function accentSituations(primary: DigestSituation, family: Family, options: Dig
   return accents;
 }
 
+// 与 familyScores 同权重，挑客类里真正贡献了得分的那一格。
+function topicWeight(option: DigestHighlight): number {
+  switch (option.topic) {
+    case "coding":
+    case "agents":
+      return hours(option);
+    case "music":
+      return hours(option) * 0.5;
+    case "watching":
+    case "gaming":
+      return hours(option) * 1.5;
+    case "trophies":
+      return option.unit === "count" ? option.value * 0.2 : 0;
+    default:
+      return 0;
+  }
+}
+
 function pickHighlights(primary: DigestSituation, family: Family, options: DigestHighlight[], scores: Record<Family, number>): DigestHighlight[] {
   const byScore = (Object.keys(scores) as Family[]).filter((other) => other !== family).sort((a, b) => scores[b] - scores[a]);
   const counterpart = family === "build" ? (scores.gaming > scores.watching ? "gaming" : "watching") : "build";
@@ -139,7 +157,7 @@ function pickHighlights(primary: DigestSituation, family: Family, options: Diges
   const own = [...new Set(available(order))];
   if (primary !== "workAndPlay") {
     const head = own.slice(0, 2);
-    const guest = byScore.filter((other) => scores[other] >= GUEST_SCORE).flatMap((other) => available(FAMILY_TOPICS[other]).slice(0, 1)).find((option) => !head.includes(option));
+    const guest = byScore.filter((other) => scores[other] >= GUEST_SCORE).flatMap((other) => available(FAMILY_TOPICS[other]).sort((a, b) => topicWeight(b) - topicWeight(a)).slice(0, 1)).find((option) => !head.includes(option));
     if (guest) return [...head, guest];
   }
   const picked = own.slice(0, primary === "codingLight" ? 2 : 3);
