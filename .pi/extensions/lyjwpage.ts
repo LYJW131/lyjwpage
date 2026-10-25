@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { segments } from "../../scripts/guard-forbidden-commands.mjs";
 
 const REPO = "lyjw131/lyjwpage";
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const FORBIDDEN_GUARD = "scripts/guard-forbidden-commands.mjs";
 const MERGE_GUARD = "scripts/guard-merge-method.ts";
 const RULES_DIR = ".claude/rules";
@@ -87,10 +89,11 @@ export function commandsOf(command: string, depth = 0): string[] {
 }
 
 const API_FIELD_OPTIONS = new Set(["-f", "--raw-field", "-F", "--field", "--input"]);
-const MERGE_TEXT = /\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']|pulls\/\d+\/merge\b|mergePullRequest|enablePullRequestAutoMerge/;
+const MERGE_TEXT = /\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']|pulls\/[^/\s]+\/merge\b|mergePullRequest|enablePullRequestAutoMerge/;
 const INTERPRETERS = new Set(["node", "python", "python3", "ruby", "perl", "deno", "bun"]);
 const INLINE_FLAGS = new Set(["-e", "-c", "-p", "--eval", "--print"]);
 const REPO_OPTIONS = new Set(["-R", "--repo"]);
+const HTTP_CLIENTS = new Set(["curl", "wget", "http", "https", "xh"]);
 const isGh = (token: string) => program(token) === "gh" || token.includes("$");
 
 function apiMergesPull(tokens: string[]): boolean {
@@ -104,11 +107,12 @@ function apiMergesPull(tokens: string[]): boolean {
     return attached === null ? [] : [attached[1]];
   })[0];
   const method = (explicit ?? (args.some((token) => API_FIELD_OPTIONS.has(token)) ? "POST" : "GET")).toUpperCase();
-  return method !== "GET" && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
+  return method !== "GET" && args.some((token) => /pulls\/[^/\s]+\/merge\b/.test(token));
 }
 
 function httpMerge(tokens: string[]): boolean {
-  if (!tokens.some((token) => /pulls\/\d+\/merge\b/.test(token))) return false;
+  if (!HTTP_CLIENTS.has(program(tokens[programIndex(tokens)] ?? ""))) return false;
+  if (!tokens.some((token) => /api\.github\.com|\/api\/v3\//.test(token) && /pulls\/[^/\s]+\/merge\b/.test(token))) return false;
   return tokens.some((token, i) =>
     /^(-X|--request=|--method=)put$/i.test(token) || (/^put$/i.test(token) && /^(-X|--request|--method)$/.test(tokens[i - 1] ?? "")));
 }
@@ -233,25 +237,25 @@ export default function lyjwpage(pi: ExtensionAPI) {
     acknowledged.clear();
   };
   let tokenReady = adoptGhToken();
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", () => {
     tokenReady = adoptGhToken();
-    reset(ctx.cwd);
+    reset(ROOT);
   });
-  pi.on("session_compact", (_event, ctx) => reset(ctx.cwd));
+  pi.on("session_compact", () => reset(ROOT));
 
   pi.on("before_agent_start", (event) => {
     event.systemPromptOptions.sections.lyjwpage_pi = PI_NOTES;
   });
 
   // lyjw 在输入框用 `!` 跑的命令走 user_bash，不经这里：禁区的手动部署例外靠的就是它。
-  pi.on("tool_call", async (event, ctx) => {
+  pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return undefined;
     const command = event.input.command;
     if (typeof command !== "string") return undefined;
     await tokenReady;
 
     for (const text of commandsOf(command)) {
-      const forbidden = await runHook(ctx.cwd, FORBIDDEN_GUARD, { command: text }, 15_000);
+      const forbidden = await runHook(ROOT, FORBIDDEN_GUARD, { command: text }, 15_000);
       if (forbidden.code !== 0) {
         return { block: true, reason: forbidden.stderr.trim() || `守卫脚本 ${FORBIDDEN_GUARD} 没跑完（退出码 ${forbidden.code}），按拦下处理。` };
       }
@@ -270,7 +274,7 @@ export default function lyjwpage(pi: ExtensionAPI) {
     parameters: MERGE_PARAMETERS,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       await tokenReady;
-      const guard = await runHook(ctx.cwd, MERGE_GUARD, {
+      const guard = await runHook(ROOT, MERGE_GUARD, {
         owner: "lyjw131", repo: "lyjwpage", pullNumber: params.pr, merge_method: params.method, expectedHeadSha: params.expectedHeadSha,
       }, 60_000, { NODE_USE_ENV_PROXY: "1" });
       if (guard.code !== 0) throw new Error(guard.stderr.trim() || `守卫脚本 ${MERGE_GUARD} 没跑完（退出码 ${guard.code}），按拦下处理。`);
@@ -295,8 +299,8 @@ export default function lyjwpage(pi: ExtensionAPI) {
     const extra: string[] = [];
     const filePath = event.input.path;
     if (FILE_TOOLS.has(event.toolName) && !event.isError && typeof filePath === "string") {
-      for (const file of contextFor(ctx.cwd, filePath, rules, loaded)) {
-        const name = path.relative(ctx.cwd, file);
+      for (const file of contextFor(ROOT, path.resolve(ctx.cwd, filePath), rules, loaded)) {
+        const name = path.relative(ROOT, file);
         extra.push(`<project-rule path="${name}">\n${fs.readFileSync(file, "utf8").trim()}\n</project-rule>`);
       }
     }

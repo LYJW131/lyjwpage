@@ -20,7 +20,7 @@ function extension() {
   const handler = handlers.get("tool_call")!;
   const call = async (command: string) =>
     (await handler({ toolName: "bash", toolCallId: "t", input: { command } }, { cwd: root })) as { block: true; reason: string } | undefined;
-  return { call, tools };
+  return { call, tools, handlers: (name: string) => handlers.get(name)! };
 }
 
 test("只在 shell 或 eval 真被调用时展开 -c，echo 打印的示例不算", () => {
@@ -45,6 +45,8 @@ test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
     "gh api -X POST repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh api repos/lyjw131/lyjwpage/pulls/1/merge -f merge_method=squash",
     "echo 667 | xargs gh pr merge",
+    'gh api -X PUT "repos/lyjw131/lyjwpage/pulls/$PR/merge"',
+    "curl -X PUT https://api.github.com/repos/lyjw131/lyjwpage/pulls/${N}/merge",
     "curl -sS -X PUT -H 'Authorization: Bearer x' https://api.github.com/repos/lyjw131/lyjwpage/pulls/1/merge",
     `node -e "require('child_process').execFileSync('gh', ['pr', 'merge', '1', '--squash'])"`,
     `python3 -c "import subprocess; subprocess.run(['gh','pr','merge','1'])"`,
@@ -61,6 +63,8 @@ test("查询类 gh 命令与 git merge 不当合并", () => {
     "gh api repos/lyjw131/lyjwpage/pulls/667/merge",
     'gh pr view "$PR" --json mergeable,mergeStateStatus',
     "echo pr merge is done; gh pr list",
+    "curl -X PUT http://localhost:8080/pulls/1/merge",
+    "echo curl -X PUT https://api.github.com/repos/x/y/pulls/1/merge",
     'git merge origin/main && gh pr checks "$PR"',
     'pnpm merge-message 667 "x" > $TMPDIR/m.txt; gh pr view 667 --json title',
     'rg "gh pr merge" "$DOC"',
@@ -81,13 +85,15 @@ test("合并工具只对本仓库调 gh pr merge，参数不经 shell", () => {
 });
 
 test("tool_call 拦下包装过的禁区命令与 bash 合并，放行普通命令", async () => {
-  const { call, tools } = extension();
+  const { call, tools, handlers } = extension();
   assert.ok(tools.has("lyjwpage_merge_pr"));
   for (const command of ["bash -c 'wrangler deploy'", "gh pr merge 668 --squash --match-head-commit abc"]) {
     assert.equal((await call(command))?.block, true, command);
   }
   assert.equal(await call("ls"), undefined);
   assert.equal(await call("echo bash -c 'cf deploy'"), undefined);
+  const nested = await handlers("tool_call")({ toolName: "bash", toolCallId: "t", input: { command: "ls" } }, { cwd: path.join(root, "scripts") });
+  assert.equal(nested, undefined, "从子目录起的会话也找得到守卫脚本");
 });
 
 test("合并工具在守卫拦下时报错、不调 gh", async () => {
