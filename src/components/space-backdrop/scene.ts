@@ -96,6 +96,8 @@ export function mountSpaceScene(host: HTMLElement) {
         // cast 里的动作与粒子按 actor 自己的计时走，重建 actor 时一并换新的。
         if (s.used) s.cast = s.make();
         s.used = true;
+        // 先挂上的那只可能已经换到这只的默认侧，挂载时让到对侧，保持一侧一只。
+        if (slots.some((o) => o !== s && o.actor && o.side === s.side)) s.side = s.side === "left" ? "right" : "left";
         s.actor = clawdActor(host, {
           ...s.cast,
           phase: s.phase,
