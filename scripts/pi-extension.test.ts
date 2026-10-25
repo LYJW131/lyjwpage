@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import lyjwpage, { apiMergesPull, commandsOf, contextFor, ghMergeInputs, loadRules } from "../.pi/extensions/lyjwpage.ts";
+import lyjwpage, { apiMergesPull, commandsOf, contextFor, expandsAtRuntime, ghMergeInputs, loadRules } from "../.pi/extensions/lyjwpage.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -23,8 +23,42 @@ test("bash -c、sh -lc 与 eval 包着的命令也展开检查", () => {
   assert.ok(commandsOf(`sh -lc "eval 'cf deploy'"`).includes("cf deploy"));
 });
 
+const mergesOf = (command: string) => {
+  const merges = ghMergeInputs(command);
+  assert.ok(Array.isArray(merges), String(merges));
+  return merges;
+};
+
+test("只在 shell 或 eval 真被调用时展开 -c，echo 打印的示例不算", () => {
+  assert.deepEqual(commandsOf("echo bash -c 'cf deploy'"), ["echo bash -c 'cf deploy'"]);
+  assert.ok(commandsOf("env FOO=1 timeout 5 bash -c 'cf deploy'").includes("cf deploy"));
+});
+
+test("单引号里的 $ 与反引号是字面值，别处的算运行时展开", () => {
+  assert.equal(expandsAtRuntime("gh pr merge 1 --subject 'fix: show $PATH and `x`'"), false);
+  assert.equal(expandsAtRuntime('gh pr merge 1 --subject "$T"'), true);
+  assert.equal(expandsAtRuntime("gh pr merge $(cat n)"), true);
+});
+
+test("选项的值不当选项读：正文里的 --repo 与 --squash 不影响解析", () => {
+  const [merge] = mergesOf('gh pr merge 2 --rebase --body "--repo=other/x --squash"');
+  assert.deepEqual([merge.owner, merge.repo, merge.merge_method], ["lyjw131", "lyjwpage", "rebase"]);
+});
+
+test("gh 与 pr merge 之间夹选项、变量转手或未知选项的合并写法一律拦", () => {
+  for (const command of [
+    "gh -R lyjw131/lyjwpage pr merge 2 --rebase",
+    "G=gh; $G pr merge 2 --rebase",
+    "$(printf gh) pr merge 2",
+    "gh pr merge 2 --squash --unknown",
+    "gh pr merge 2 3 --squash",
+  ]) {
+    assert.equal(typeof ghMergeInputs(command), "string", command);
+  }
+});
+
 test("同一条命令里的每次 gh pr merge 都认出来", () => {
-  const merges = ghMergeInputs("gh pr merge 1 -R other/x --squash && bash -c 'gh pr merge 668 --rebase'");
+  const merges = mergesOf("gh pr merge 1 -R other/x --squash && bash -c 'gh pr merge 668 --rebase'");
   assert.deepEqual(merges.map((m) => [m.owner, m.repo, m.pullNumber, m.merge_method]), [
     ["other", "x", 1, "squash"],
     ["lyjw131", "lyjwpage", 668, "rebase"],
@@ -32,17 +66,18 @@ test("同一条命令里的每次 gh pr merge 都认出来", () => {
 });
 
 test("带主机名的 --repo 与 PR URL 按 gh 的格式归一", () => {
-  const [hosted] = ghMergeInputs("gh pr merge 2 --repo github.com/lyjw131/lyjwpage --rebase");
+  const [hosted] = mergesOf("gh pr merge 2 --repo github.com/lyjw131/lyjwpage --rebase");
   assert.deepEqual([hosted.owner, hosted.repo], ["lyjw131", "lyjwpage"]);
-  const [url] = ghMergeInputs("gh pr merge https://github.com/other/x/pull/5 --squash");
+  const [url] = mergesOf("gh pr merge https://github.com/other/x/pull/5 --squash");
   assert.deepEqual([url.owner, url.repo, url.pullNumber], ["other", "x", 5]);
-  const [enterprise] = ghMergeInputs("gh pr merge 3 -R ghe.example.com/lyjw131/lyjwpage -s");
+  const [enterprise] = mergesOf("gh pr merge 3 -R ghe.example.com/lyjw131/lyjwpage -s");
   assert.equal(enterprise.owner, "ghe.example.com/lyjw131");
 });
 
 test("gh api 直接合并的各种写法都认", () => {
   for (const command of [
     "gh api -X PUT repos/lyjw131/lyjwpage/pulls/1/merge",
+    "gh -R lyjw131/lyjwpage api -X PUT repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh api -XPUT repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh api --method=put repos/lyjw131/lyjwpage/pulls/1/merge",
     "bash -c 'gh api --method PUT repos/lyjw131/lyjwpage/pulls/1/merge'",
@@ -61,10 +96,13 @@ test("tool_call 拦下包装过的禁区命令与夹带的本仓库合并", asyn
     "gh pr merge 2 --repo github.com/lyjw131/lyjwpage --rebase",
     "gh pr merge $PR --squash --match-head-commit abc",
     "gh pr merge 668 --repo \"$REPO\" --squash",
+    "gh -R lyjw131/lyjwpage pr merge 2 --rebase",
+    'gh pr merge 2 --rebase --body "--repo=other/x"',
   ]) {
     assert.equal((await call(command))?.block, true, command);
   }
   assert.equal(await call("ls"), undefined);
+  assert.equal(await call("echo bash -c 'cf deploy'"), undefined);
 });
 
 test("经软链新建的 skill 文件也按 .claude/skills 附上 routines 规则", () => {

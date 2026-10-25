@@ -13,7 +13,7 @@ const FILE_TOOLS = new Set(["read", "edit", "write"]);
 const PI_NOTES = [
   "pi 环境下的工具替换（覆盖 AGENTS.md 与 skill 里的对应写法）：",
   "- Cloudflare 的查询与调用（含 Workers Observability 排错）用本地 `cf` CLI，不用旧版 wrangler；这里没有 Cloudflare Code Mode MCP。`cf deploy` 仍是禁区。",
-  "- GitHub 操作用 `gh`；这里没有 GitHub MCP。合并照 `pnpm merge-message` 的输出跑 `gh pr merge <号> --squash|--merge --subject <commit_title> --body <commit_message> --match-head-commit <expectedHeadSha>`，参数都写字面值。守卫有提醒时第一次会拦下并附上提醒，处理完原样再跑一次即放行。",
+  "- GitHub 操作用 `gh`；这里没有 GitHub MCP，也没有云端注入令牌的代理，扩展在会话开始时把 `gh auth token` 设成 `GH_TOKEN`，仓库脚本不用加 `NODE_USE_ENV_PROXY=1`。合并照 `pnpm merge-message` 的输出跑 `gh pr merge <号> --squash|--merge --subject <commit_title> --body <commit_message> --match-head-commit <expectedHeadSha>`，参数都写字面值。守卫有提醒时第一次会拦下并附上提醒，处理完原样再跑一次即放行。",
   "- 禁区命令与合并方式由 `.pi/extensions/lyjwpage.ts` 在 bash 调用前交给仓库的守卫脚本检查。",
   "- 项目 skill 经 `.agents/skills` 软链到 `.claude/skills`；`.claude/rules/` 与子目录 `AGENTS.md` 在读写匹配文件时附在该次工具结果后面。",
 ].join("\n");
@@ -50,41 +50,46 @@ function runHook(cwd: string, script: string, toolInput: unknown, timeout: numbe
 
 const program = (token: string) => path.posix.basename(token);
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
+const WRAPPERS = new Set(["env", "sudo", "nohup", "time", "command", "exec", "nice", "timeout", "xargs"]);
+const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 const MAX_NESTING = 4;
+
+function programIndex(tokens: string[]): number {
+  let i = 0;
+  while (i < tokens.length && (ASSIGNMENT.test(tokens[i]) || WRAPPERS.has(program(tokens[i])) || (i > 0 && (tokens[i].startsWith("-") || /^\d+[smhd]?$/.test(tokens[i]))))) i += 1;
+  return i;
+}
 
 export function commandsOf(command: string, depth = 0): string[] {
   const found = [command];
   if (depth >= MAX_NESTING) return found;
   for (const tokens of segments(command) as string[][]) {
-    tokens.forEach((token, i) => {
-      const name = program(token);
-      if (name === "eval") found.push(...commandsOf(tokens.slice(i + 1).join(" "), depth + 1));
-      if (!SHELLS.has(name)) return;
-      const flag = tokens.findIndex((arg, j) => j > i && /^-[a-zA-Z]*c[a-zA-Z]*$/.test(arg));
-      const inner = flag === -1 ? undefined : tokens[flag + 1];
-      if (inner !== undefined) found.push(...commandsOf(inner, depth + 1));
-    });
+    const at = programIndex(tokens);
+    const name = program(tokens[at] ?? "");
+    if (name === "eval") found.push(...commandsOf(tokens.slice(at + 1).join(" "), depth + 1));
+    if (!SHELLS.has(name)) continue;
+    const flag = tokens.findIndex((arg, j) => j > at && /^-[a-zA-Z]*c[a-zA-Z]*$/.test(arg));
+    const inner = flag === -1 ? undefined : tokens[flag + 1];
+    if (inner !== undefined) found.push(...commandsOf(inner, depth + 1));
   }
   return found;
 }
 
-function ghArgs(tokens: string[]): string[] | null {
-  const at = tokens.findIndex((token) => program(token) === "gh");
-  return at === -1 ? null : tokens.slice(at + 1);
-}
-
-function optionValue(args: string[], names: string[]): string | undefined {
-  for (let i = 0; i < args.length; i += 1) {
-    for (const name of names) {
-      if (args[i] === name) return args[i + 1];
-      if (args[i].startsWith(`${name}=`)) return args[i].slice(name.length + 1);
-      if (/^-[a-zA-Z]$/.test(name) && args[i].startsWith(name) && args[i].length > 2) return args[i].slice(2);
-    }
+export function expandsAtRuntime(command: string): boolean {
+  let single = false;
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i];
+    if (char === "\\" && !single) i += 1;
+    else if (char === "'") single = !single;
+    else if (!single && (char === "$" || char === "`")) return true;
   }
-  return undefined;
+  return false;
 }
 
-const VALUE_OPTIONS = new Set(["-R", "--repo", "--match-head-commit", "-t", "--subject", "-b", "--body", "-F", "--body-file", "-A", "--author-email"]);
+const MERGE_VALUE_OPTIONS = new Set(["-R", "--repo", "--match-head-commit", "-t", "--subject", "-b", "--body", "-F", "--body-file", "-A", "--author-email"]);
+const MERGE_FLAGS = new Set(["-s", "--squash", "-m", "--merge", "-r", "--rebase", "-d", "--delete-branch", "--admin", "--auto", "--disable-auto"]);
+const METHOD_OF: Record<string, string> = { "-s": "squash", "--squash": "squash", "-m": "merge", "--merge": "merge", "-r": "rebase", "--rebase": "rebase" };
+const NOT_CANONICAL = "已拦下：合并只认 `gh pr merge <号> --squash|--merge --subject … --body … --match-head-commit <sha>` 这种写法：gh 打头、gh 与 `pr merge` 之间不放选项、不经变量或别的程序转手，选项只用 gh 认的那几个。";
 
 function repoOf(spec: string): { host: string; owner: string; repo: string } {
   const parts = spec.replace(/^[a-z]+:\/\//i, "").replace(/\.git$/, "").split("/").filter(Boolean);
@@ -92,38 +97,75 @@ function repoOf(spec: string): { host: string; owner: string; repo: string } {
   return { host: parts.length > 2 ? parts[0].toLowerCase() : "github.com", owner, repo };
 }
 
-export function ghMergeInputs(command: string): MergeInput[] {
+function looksLikeMerge(tokens: string[]): boolean {
+  const at = tokens.indexOf("merge");
+  if (at === -1) return false;
+  return tokens[at - 1] === "pr" || tokens.some((token) => program(token) === "gh" || token.includes("$"));
+}
+
+function parseMerge(tokens: string[]): MergeInput | string {
+  if (program(tokens[0]) !== "gh" || tokens[1] !== "pr" || tokens[2] !== "merge") return NOT_CANONICAL;
+  const values: Record<string, string> = {};
+  const positional: string[] = [];
+  let method: string | undefined;
+  const rest = tokens.slice(3);
+  for (let i = 0; i < rest.length; i += 1) {
+    const token = rest[i];
+    const eq = token.startsWith("--") ? token.indexOf("=") : -1;
+    const name = eq === -1 ? token : token.slice(0, eq);
+    if (MERGE_VALUE_OPTIONS.has(name)) {
+      if (eq === -1 && i + 1 >= rest.length) return NOT_CANONICAL;
+      values[name] = eq === -1 ? rest[(i += 1)] : token.slice(eq + 1);
+    } else if (MERGE_FLAGS.has(token)) {
+      if (METHOD_OF[token] !== undefined) {
+        if (method !== undefined && method !== METHOD_OF[token]) return NOT_CANONICAL;
+        method = METHOD_OF[token];
+      }
+    } else if (token.startsWith("-")) {
+      return NOT_CANONICAL;
+    } else {
+      positional.push(token);
+    }
+  }
+  if (positional.length > 1) return NOT_CANONICAL;
+  const target = positional[0];
+  const url = target?.match(/^(?:https?:\/\/)?([^/]+\/[^/]+\/[^/]+)\/pull\/(\d+)\/?$/);
+  if (target !== undefined && url === null && !/^\d+$/.test(target)) return NOT_CANONICAL;
+  const { host, owner, repo } = repoOf(url?.[1] ?? values["-R"] ?? values["--repo"] ?? REPO);
+  const pr = url?.[2] ?? target;
+  return {
+    owner: host === "github.com" ? owner : `${host}/${owner}`,
+    repo,
+    pullNumber: pr === undefined ? undefined : Number(pr),
+    merge_method: method,
+    expectedHeadSha: values["--match-head-commit"],
+  };
+}
+
+export function ghMergeInputs(command: string): MergeInput[] | string {
+  const all = commandsOf(command).flatMap((text) => segments(text) as string[][]);
+  if (expandsAtRuntime(command) && /\bgh\b/.test(command) && /merge/i.test(command)) {
+    return "已拦下：合并命令里不要用变量或命令替换，仓库、PR 号、标题、正文与 sha 都写成字面值（要写字面的 `$` 就放进单引号）。";
+  }
   const merges: MergeInput[] = [];
-  for (const tokens of commandsOf(command).flatMap((text) => segments(text) as string[][])) {
-    const args = ghArgs(tokens);
-    if (args === null || args[0] !== "pr" || args[1] !== "merge") continue;
-    const rest = args.slice(2);
-    const target = rest.find((token, i) => !token.startsWith("-") && !VALUE_OPTIONS.has(rest[i - 1] ?? ""));
-    const url = target?.match(/^(?:https?:\/\/)?([^/]+\/[^/]+\/[^/]+)\/pull\/(\d+)/);
-    const { host, owner, repo } = repoOf(url?.[1] ?? optionValue(rest, ["-R", "--repo"]) ?? REPO);
-    const pr = url?.[2] ?? target?.match(/^\d+$/)?.[0];
-    const method = rest.some((t) => t === "--squash" || t === "-s") ? "squash"
-      : rest.some((t) => t === "--merge" || t === "-m") ? "merge"
-      : rest.some((t) => t === "--rebase" || t === "-r") ? "rebase"
-      : undefined;
-    merges.push({
-      owner: host === "github.com" ? owner : `${host}/${owner}`,
-      repo,
-      pullNumber: pr === undefined ? undefined : Number(pr),
-      merge_method: method,
-      expectedHeadSha: optionValue(rest, ["--match-head-commit"]),
-    });
+  for (const tokens of all) {
+    if (!looksLikeMerge(tokens)) continue;
+    const merge = parseMerge(tokens);
+    if (typeof merge === "string") return merge;
+    merges.push(merge);
   }
   return merges;
 }
 
 export function apiMergesPull(command: string): boolean {
   return commandsOf(command).flatMap((text) => segments(text) as string[][]).some((tokens) => {
-    const args = ghArgs(tokens);
-    if (args === null || args[0] !== "api") return false;
+    const gh = tokens.findIndex((token) => program(token) === "gh");
+    if (gh === -1 || !tokens.slice(gh + 1).includes("api")) return false;
+    const args = tokens.slice(gh + 1);
     if (args.some((token) => /mergePullRequest|enablePullRequestAutoMerge/.test(token))) return true;
-    const method = optionValue(args, ["-X", "--method"])?.toUpperCase();
-    return method === "PUT" && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
+    const put = args.some((token, i) =>
+      /^(-X|--method=?)put$/i.test(token) || ((token === "-X" || token === "--method") && args[i + 1]?.toUpperCase() === "PUT"));
+    return put && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
   });
 }
 
@@ -172,6 +214,15 @@ export function contextFor(cwd: string, filePath: string, rules: Rule[], loaded:
   });
 }
 
+// 本地没有云端那层注入令牌的 GitHub 代理，仓库脚本匿名读 api.github.com 会撞按 IP 共享的匿名限额；借 gh 的登录令牌给 bash 与守卫脚本。
+function adoptGhToken() {
+  if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) return;
+  execFile("gh", ["auth", "token"], { timeout: 5_000 }, (error, stdout) => {
+    const token = String(stdout).trim();
+    if (error === null && token !== "") process.env.GH_TOKEN = token;
+  });
+}
+
 export default function lyjwpage(pi: ExtensionAPI) {
   let rules: Rule[] = [];
   const loaded = new Set<string>();
@@ -181,8 +232,12 @@ export default function lyjwpage(pi: ExtensionAPI) {
   const reset = (cwd: string) => {
     rules = loadRules(cwd);
     loaded.clear();
+    acknowledged.clear();
   };
-  pi.on("session_start", (_event, ctx) => reset(ctx.cwd));
+  pi.on("session_start", (_event, ctx) => {
+    adoptGhToken();
+    reset(ctx.cwd);
+  });
   pi.on("session_compact", (_event, ctx) => reset(ctx.cwd));
 
   pi.on("before_agent_start", (event) => {
@@ -207,11 +262,8 @@ export default function lyjwpage(pi: ExtensionAPI) {
     }
 
     const merges = ghMergeInputs(command);
+    if (typeof merges === "string") return { block: true, reason: merges };
     if (merges.length === 0) return undefined;
-    // 守卫按字面参数认 PR；变量与命令替换要到执行时才展开，认不出真正合的是哪个 PR。
-    if (/[$`]/.test(command)) {
-      return { block: true, reason: "已拦下：`gh pr merge` 所在命令里不要用变量或命令替换，仓库、PR 号、标题、正文与 sha 都写成字面值。" };
-    }
     const notices: string[] = [];
     for (const merge of merges) {
       const isLyjwpage = merge.owner.toLowerCase() === "lyjw131" && merge.repo.toLowerCase() === "lyjwpage";
