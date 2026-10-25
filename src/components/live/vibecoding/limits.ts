@@ -123,7 +123,10 @@ export function isFableLimit(limit: VibeCodingLimit) {
   return isNamedLimit(limit, "fable");
 }
 
-export type WeeklyCap = { weekly: VibeCodingLimit; sharePercent: number; note: string };
+// session 形：这条是周限额，剩下的 5 小时窗口全部用满也补不到的那段画成死区。
+export type WeeklyCap =
+  | { weekly: VibeCodingLimit; sharePercent: number; note: string }
+  | { session: VibeCodingLimit; sharePercent: number; note: string };
 
 // 条拉满对应周限额的百分比。Fable 是 50%；5 小时窗口按 lyjw 的经验值：Pro 与 Max 5x 一周约 7 个窗口，Max 20x 的 5 小时是 20 倍、周限额只有 10 倍，所以翻倍。没见过的套餐不画。
 const FABLE_WEEKLY_SHARE_PERCENT = 50;
@@ -132,14 +135,26 @@ const SESSION_WEEKLY_SHARE_PERCENT: Readonly<Record<string, number>> = {
   "Max 5x": 100 / 7,
   "Max 20x": 200 / 7,
 };
+const SESSION_WINDOW_MS = 5 * 3_600_000;
 
 const FABLE_UNAVAILABLE_NOTE = "Weekly usage is past Fable's 50% share, so the shaded part of this bar can't be used";
 const SESSION_UNAVAILABLE_NOTE = "Weekly quota left is less than this window, so the shaded part of this bar can't be used";
+const WEEKLY_UNAVAILABLE_NOTE = "Even maxing out every 5-hour window before the weekly reset can't reach the shaded part of this bar";
+
+function sessionSharePercent(row: Pick<CodingAgentRow, "id" | "plan">) {
+  if (row.id !== "claude" || !row.plan || !Object.hasOwn(SESSION_WEEKLY_SHARE_PERCENT, row.plan.label)) return null;
+  return SESSION_WEEKLY_SHARE_PERCENT[row.plan.label]!;
+}
 
 function weeklyCap(row: Pick<CodingAgentRow, "id" | "plan" | "limits">, slot: FeaturedLimitSlot): WeeklyCap | null {
+  if (slot === "weekly") {
+    const sharePercent = sessionSharePercent(row);
+    const session = pickSlotLimit(row.limits, "session");
+    return sharePercent != null && session ? { session, sharePercent, note: WEEKLY_UNAVAILABLE_NOTE } : null;
+  }
   const sharePercent =
     slot === "fable" ? FABLE_WEEKLY_SHARE_PERCENT
-    : slot === "session" && row.id === "claude" && row.plan && Object.hasOwn(SESSION_WEEKLY_SHARE_PERCENT, row.plan.label) ? SESSION_WEEKLY_SHARE_PERCENT[row.plan.label]!
+    : slot === "session" ? sessionSharePercent(row)
     : null;
   if (sharePercent == null) return null;
   const weekly = weeklyLimit(row);
@@ -147,9 +162,14 @@ function weeklyCap(row: Pick<CodingAgentRow, "id" | "plan" | "limits">, slot: Fe
   return { weekly, sharePercent, note: slot === "fable" ? FABLE_UNAVAILABLE_NOTE : SESSION_UNAVAILABLE_NOTE };
 }
 
+type CapInput =
+  | Pick<Extract<WeeklyCap, { weekly: unknown }>, "weekly" | "sharePercent">
+  | Pick<Extract<WeeklyCap, { session: unknown }>, "session" | "sharePercent">;
+
 // 这条的用量也计入周限额。周限额剩下的折成条宽后不够这条自己剩下的，差出的右端这一段在这条重置前用不到；返回它占条宽的比例。周限额先于这条重置时，新一周的额度还能用上，不算死区。
-export function unavailableShare(cap: Pick<WeeklyCap, "weekly" | "sharePercent"> | null, limit: Pick<VibeCodingLimit, "resetsAt">, usedPercent: number, now: number) {
+export function unavailableShare(cap: CapInput | null, limit: Pick<VibeCodingLimit, "resetsAt">, usedPercent: number, now: number) {
   if (!cap) return 0;
+  if ("session" in cap) return weeklyUnreachableShare(cap.session, cap.sharePercent, limit, usedPercent, now);
   const { weekly, sharePercent } = cap;
   const expired = weekly.resetsAt != null && weekly.resetsAt * 1000 <= now;
   if (!expired && weekly.resetsAt != null && limit.resetsAt != null && weekly.resetsAt < limit.resetsAt) return 0;
@@ -157,6 +177,20 @@ export function unavailableShare(cap: Pick<WeeklyCap, "weekly" | "sharePercent">
   const left = 100 - usedPercent;
   const reachable = (weeklyLeft * 100) / sharePercent;
   return Math.min(1, Math.max(0, (left - reachable) / 100));
+}
+
+// 乐观估计：当前窗口剩下的，加上它重置后到周重置前每个新窗口（最后一个哪怕只剩几分钟也算满）都用满。
+function weeklyUnreachableShare(session: VibeCodingLimit, sharePercent: number, weekly: Pick<VibeCodingLimit, "resetsAt">, weeklyUsedPercent: number, now: number) {
+  if (weekly.resetsAt == null) return 0;
+  const weeklyResetMs = weekly.resetsAt * 1000;
+  if (weeklyResetMs <= now) return 0;
+  const sessionLive = session.resetsAt != null && session.resetsAt * 1000 > now;
+  const sessionLeft = sessionLive ? 100 - session.usedPercent : 100;
+  const windowMs = session.windowMinutes != null && session.windowMinutes > 0 ? session.windowMinutes * 60_000 : SESSION_WINDOW_MS;
+  const nextWindowAt = sessionLive ? session.resetsAt! * 1000 : now + windowMs;
+  const laterWindows = nextWindowAt < weeklyResetMs ? Math.ceil((weeklyResetMs - nextWindowAt) / windowMs) : 0;
+  const reachable = ((sessionLeft + laterWindows * 100) * sharePercent) / 100;
+  return Math.min(1, Math.max(0, (100 - weeklyUsedPercent - reachable) / 100));
 }
 
 export function hasFeaturedLimits(id: string) {

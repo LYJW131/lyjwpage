@@ -71,3 +71,47 @@ test("周限额先于这条重置时不画死区，晚于或同时重置照画",
   assert.ok(unavailableShare(cap, { resetsAt: 1_000 }, 11, 0) > 0.7);
   assert.ok(unavailableShare(cap, { resetsAt: 500 }, 11, 0) > 0.7);
 });
+
+const HOUR = 3_600_000;
+const weeklyCapOf = (row: { id: string; plan: { tier: string; label: string } | null; limits: VibeCodingLimit[]; limitsError: null }) => {
+  const item = featuredLimitRows(row).find((r) => r.key === "weekly");
+  return item?.kind === "limit" ? item.cap : null;
+};
+const claudeAt = (label: string, sessionUsed: number, sessionResetsAt: number | null, weeklyUsed: number, weeklyResetsAt: number | null) => ({
+  id: "claude",
+  plan: { tier: label, label },
+  limits: [
+    { ...session, usedPercent: sessionUsed, resetsAt: sessionResetsAt },
+    weekly(weeklyUsed, weeklyResetsAt),
+  ],
+  limitsError: null,
+});
+const weeklyShare = (row: ReturnType<typeof claudeAt>, now: number) => {
+  const w = row.limits[1]!;
+  return unavailableShare(weeklyCapOf(row), w, w.usedPercent, now);
+};
+
+test("周条：剩下的 5 小时窗口全用满也补不到的部分画死区", () => {
+  const row = claudeAt("Pro", 40, 2 * HOUR / 1000, 50, 7 * HOUR / 1000);
+  assert.equal(Math.round(weeklyShare(row, 0) * 1000), Math.round((50 - 160 / 7) * 10));
+});
+
+test("周条：最后一个窗口哪怕不满 5 小时也算能用满", () => {
+  const row = claudeAt("Pro", 40, 2 * HOUR / 1000, 50, (2 * HOUR + 60_000) / 1000);
+  assert.equal(Math.round(weeklyShare(row, 0) * 1000), Math.round((50 - 160 / 7) * 10));
+});
+
+test("周条：当前 5 小时已过期按从现在起的满窗口算", () => {
+  const row = claudeAt("Max 20x", 90, 1, 70, 10 * HOUR / 1000);
+  assert.equal(weeklyShare(row, 2_000), 0);
+  const tight = claudeAt("Max 20x", 90, 1, 70, 4 * HOUR / 1000);
+  assert.equal(Math.round(weeklyShare(tight, 2_000) * 1000), Math.round((30 - 200 / 7) * 10));
+});
+
+test("周条：时间充足、周限额已过期、没有重置时间或没见过的套餐都不画", () => {
+  assert.equal(weeklyShare(claudeAt("Pro", 0, 5 * HOUR / 1000, 30, 100 * HOUR / 1000), 0), 0);
+  assert.equal(weeklyShare(claudeAt("Pro", 0, 5 * HOUR / 1000, 30, 1), 2_000), 0);
+  assert.equal(weeklyShare(claudeAt("Pro", 0, 5 * HOUR / 1000, 30, null), 0), 0);
+  assert.equal(weeklyCapOf(claudeAt("Team", 0, 5 * HOUR / 1000, 30, 6 * HOUR / 1000)), null);
+  assert.equal(weeklyCapOf({ ...claudeAt("Pro", 0, null, 30, null), id: "codex" }), null);
+});
