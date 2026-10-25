@@ -1,0 +1,326 @@
+#!/usr/bin/env node
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
+import { childEnv, forbiddenRead, inside, quote, sandboxed } from "./verify-agent/guard.ts";
+
+const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
+用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员，代替 claude-code-action。模型走 Anthropic API，
+钥匙读 ANTHROPIC_API_KEY（读到后从本进程环境删掉）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
+用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
+
+  --role verifier|judge     决定结果 schema 与可写目录
+  --prompt-file FILE        任务提示词（verify-action.ts prompt 的输出）；省略时读环境变量 PROMPT
+  --model ID                默认 claude-haiku-5-5
+  --thinking LEVEL          off|minimal|low|medium|high|xhigh|max，默认 high
+  --out-dir DIR             验证员可写的产物目录（shots/、work/），judge 不写
+  --base REF                pr_diff 工具比对的目标分支，默认 origin/main
+  --pr N                    pr_view 工具读的 PR；读 GitHub 用 GITHUB_TOKEN（只留在本进程，不进 bash）
+  --timeout-min N           整轮上限，默认 40
+  --transcript FILE         把整轮事件写成 JSONL，复盘用
+  --pi-sdk DIR              装了 pi SDK 的 node_modules 目录；默认依次试 PI_SDK_DIR（npm install --prefix 的目录）、npm 全局目录`;
+
+const OPTIONS = {
+  role: { type: "string" },
+  "prompt-file": { type: "string" },
+  model: { type: "string", default: "claude-haiku-5-5" },
+  thinking: { type: "string", default: "high" },
+  "out-dir": { type: "string" },
+  base: { type: "string", default: "origin/main" },
+  pr: { type: "string" },
+  "timeout-min": { type: "string", default: "40" },
+  transcript: { type: "string" },
+  "pi-sdk": { type: "string" },
+  help: { type: "boolean" },
+} as const;
+
+const { values } = (() => {
+  try {
+    return parseArgs({ strict: true, options: OPTIONS });
+  } catch (caught) {
+    console.error(`${(caught as Error).message}\n\n${HELP}`);
+    process.exit(2);
+  }
+})();
+if (values.help) {
+  console.log(HELP);
+  process.exit(0);
+}
+const THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+if (!THINKING.includes(values.thinking)) {
+  console.error(`--thinking 只认 ${THINKING.join("|")}`);
+  process.exit(2);
+}
+const role = values.role;
+if (role !== "verifier" && role !== "judge") {
+  console.error(HELP);
+  process.exit(2);
+}
+const prompt = values["prompt-file"] ? fs.readFileSync(values["prompt-file"], "utf8") : process.env.PROMPT;
+if (!prompt) {
+  console.error("没有提示词：给 --prompt-file 或环境变量 PROMPT");
+  process.exit(2);
+}
+const timeoutMin = Number(values["timeout-min"]);
+if (!(timeoutMin > 0)) {
+  console.error("--timeout-min 要正数");
+  process.exit(2);
+}
+
+const apiKey = process.env.ANTHROPIC_API_KEY;
+const githubToken = process.env.GITHUB_TOKEN;
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.PROMPT;
+if (!apiKey) {
+  console.error("没有 ANTHROPIC_API_KEY");
+  process.exit(2);
+}
+
+const cwd = process.cwd();
+const outDir = values["out-dir"] ? path.resolve(values["out-dir"]) : null;
+const tmpDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-agent-"));
+const schema = role === "verifier" ? VERIFIER_SCHEMA : JUDGE_SCHEMA;
+
+const childEnvNow = () => childEnv(process.env, tmpDir);
+const bwrap = process.platform === "linux" && spawnSync("bwrap", ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-pid", "--die-with-parent", "true"]).status === 0;
+// 没有 PID 命名空间时，Linux 上的子进程能读本进程的 /proc/<pid>/environ 拿到钥匙：CI 里宁可不跑
+if (process.platform === "linux" && process.env.CI && !bwrap) {
+  console.error("CI 里 bwrap 起不来，不跑验证员（bash 子进程会读到 API 钥匙）");
+  process.exit(1);
+}
+const writable = [cwd, tmpDir, ...(outDir ? [outDir] : [])];
+const wrap = (command: string) => sandboxed(command, writable, bwrap);
+
+const sdk = await loadPi(values["pi-sdk"]);
+const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = sdk;
+
+const modelRuntime = await ModelRuntime.create({ authPath: path.join(tmpDir, "auth.json"), modelsPath: path.join(tmpDir, "models.json") });
+await modelRuntime.setRuntimeApiKey("anthropic", apiKey);
+const model = modelRuntime.getModel("anthropic", values.model);
+if (!model) throw new Error(`pi 的模型表里没有 anthropic/${values.model}`);
+
+let report: unknown = null;
+const workLog = (name: string, text: string) => {
+  if (!outDir) return null;
+  const file = path.join(outDir, "work", name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+  return file;
+};
+const tail = (text: string, lines: number) => text.split("\n").slice(-lines).join("\n");
+const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: undefined });
+let logSeq = 0;
+
+const run = (command: string, timeoutMs: number) =>
+  new Promise<{ code: string | number; output: string }>((resolve) => {
+    const child = spawn("bash", ["-c", wrap(command)], { cwd, env: childEnvNow() as NodeJS.ProcessEnv, signal: AbortSignal.timeout(timeoutMs) });
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += chunk));
+    child.stderr.on("data", (chunk) => (output += chunk));
+    child.on("error", (caught) => (output += `\n${caught.message}`));
+    child.on("close", (code, signal) => resolve({ code: code ?? `signal ${signal}`, output }));
+  });
+
+const bash = createBashToolDefinition(cwd, {
+  exposeSessionEnvironment: false,
+  spawnHook: ({ command, cwd: dir, env }: { command: string; cwd: string; env: Record<string, string | undefined> }) => ({ command: wrap(command), cwd: dir, env: { ...childEnvNow(), PATH: env.PATH ?? process.env.PATH } }),
+});
+
+const write = createWriteToolDefinition(cwd);
+const guardedWrite = {
+  ...write,
+  description: `${write.description}\n只能写进 ${outDir ?? "（本角色不许写文件）"}。`,
+  execute: (id: string, params: { path: string }, ...rest: unknown[]) => {
+    const target = path.resolve(cwd, params.path);
+    if (!outDir || !inside(outDir, target)) throw new Error(`只许写进 ${outDir ?? "（不许写）"}：${target}`);
+    return (write.execute as (...args: unknown[]) => unknown)(id, params, ...rest);
+  },
+};
+
+const customTools = [
+  bash,
+  ...(outDir ? [guardedWrite] : []),
+  {
+    name: "pr_diff",
+    label: "PR diff",
+    description: `这次改动：git diff ${values.base}...HEAD。stat=true 只给每个文件的增删行数；paths 限定文件。超过 60KB 截断，全文写进产物目录 work/。`,
+    parameters: {
+      type: "object",
+      properties: { stat: { type: "boolean" }, paths: { type: "array", items: { type: "string" } } },
+    },
+    execute: async (_id: string, params: { stat?: boolean; paths?: string[] }) => {
+      const args = ["diff", ...(params.stat ? ["--stat=200"] : []), `${values.base}...HEAD`, ...(params.paths?.length ? ["--", ...params.paths] : [])];
+      const out = execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      if (out.length <= 60_000) return text(out || "（没有差异）");
+      const file = workLog(`diff-${++logSeq}.patch`, out);
+      return text(`${out.slice(0, 60_000)}\n…（截断，全文 ${file ?? "未保存"}）`);
+    },
+  },
+  {
+    name: "run_tests",
+    label: "Run tests",
+    description:
+      "在仓库根用 node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs 跑给定的测试文件（路径相对仓库根，workers/*/ 下的也从根跑）。返回退出码、tests/pass/fail 计数与失败段落；完整输出写进产物目录 work/。",
+    parameters: {
+      type: "object",
+      required: ["files"],
+      properties: { files: { type: "array", minItems: 1, items: { type: "string" } }, name: { type: "string", description: "日志文件名前缀" } },
+    },
+    execute: async (_id: string, params: { files: string[]; name?: string }) => {
+      const started = Date.now();
+      const { code, output } = await run(`node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs ${params.files.map(quote).join(" ")}`, 10 * 60_000);
+      const file = workLog(`${(params.name ?? "tests").replace(/[^\w.-]/g, "_")}-${++logSeq}.log`, output);
+      const counts = output.match(/^# (tests|pass|fail|cancelled|skipped) \d+$/gm)?.join(", ") ?? "没读到计数";
+      const failures = output.match(/^not ok .*$[\s\S]*?(?=^(?:ok|not ok) |\n# tests)/gm)?.join("\n").slice(0, 6000) ?? "";
+      return text(`退出码 ${code}，${Math.round((Date.now() - started) / 1000)} 秒；${counts}${file ? `；日志 ${file}` : ""}\n${failures || tail(output, 15)}`);
+    },
+  },
+  ...(values.pr && githubToken
+    ? [
+        {
+          name: "pr_view",
+          label: "PR view",
+          description: "读这个 PR 的标题、描述、标签、head 与目标分支（GitHub API，只读）。bash 里没有 GitHub 令牌，gh 用不了，查 PR 用这个。",
+          parameters: { type: "object", properties: {} },
+          execute: async () => {
+            const res = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY ?? "LYJW131/lyjwpage"}/pulls/${values.pr}`, {
+              headers: { authorization: `Bearer ${githubToken}`, accept: "application/vnd.github+json" },
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (!res.ok) throw new Error(`GitHub ${res.status}`);
+            const pull = (await res.json()) as { title: string; body: string | null; labels: { name: string }[]; head: { sha: string }; base: { ref: string } };
+            return text(JSON.stringify({ title: pull.title, labels: pull.labels.map((label) => label.name), head: pull.head.sha, base: pull.base.ref, body: pull.body ?? "" }, null, 2));
+          },
+        },
+      ]
+    : []),
+  {
+    name: "submit_report",
+    label: "Submit report",
+    description: "交最终结果，整轮到此结束。参数照结果 schema；只调一次，调之前把要跑的检查都跑完。",
+    parameters: schema,
+    execute: async (_id: string, params: unknown) => {
+      report = params;
+      return { ...text("已收到结果。"), terminate: true };
+    },
+  },
+];
+
+const SYSTEM = `你在 pi 里运行，工具和 Claude Code 不同：
+- read / grep / find / ls：读文件与搜索（只读）。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
+- pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
+- 你的模型 ID 是 ${values.model}，结果里的 model 字段照写。
+- 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。`;
+
+const resourceLoader = new DefaultResourceLoader({
+  cwd,
+  agentDir: tmpDir,
+  noExtensions: true,
+  noSkills: true,
+  noPromptTemplates: true,
+  noThemes: true,
+  appendSystemPrompt: [SYSTEM],
+  extensionFactories: [
+    {
+      name: "verify-guard",
+      factory: (pi: { on: (event: string, handler: (event: { toolName: string; input: Record<string, unknown> }) => unknown) => void }) => {
+        pi.on("tool_call", (event) => {
+          if (!["read", "grep", "find", "ls"].includes(event.toolName)) return undefined;
+          const target = path.resolve(cwd, String(event.input.path ?? "."));
+          if (forbiddenRead(target)) return { block: true, reason: `不许读 ${target}` };
+          return undefined;
+        });
+      },
+    },
+  ],
+});
+await resourceLoader.reload();
+
+const { session } = await createAgentSession({
+  cwd,
+  agentDir: tmpDir,
+  model,
+  thinkingLevel: values.thinking,
+  modelRuntime,
+  resourceLoader,
+  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", "pr_view", "submit_report"],
+  customTools,
+  sessionManager: SessionManager.inMemory(cwd),
+  settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
+});
+
+const transcript = values.transcript ? fs.createWriteStream(values.transcript) : null;
+const toolCounts = new Map<string, number>();
+session.subscribe((event: { type: string; toolName?: string; args?: unknown }) => {
+  transcript?.write(`${JSON.stringify({ at: Date.now(), ...event })}\n`);
+  if (event.type === "tool_execution_start" && event.toolName) {
+    toolCounts.set(event.toolName, (toolCounts.get(event.toolName) ?? 0) + 1);
+    console.error(`[tool] ${event.toolName} ${JSON.stringify(event.args).slice(0, 160)}`);
+  }
+});
+
+const started = Date.now();
+const timer = setTimeout(() => void session.abort(), timeoutMin * 60_000);
+let error: unknown = null;
+try {
+  await session.prompt(prompt);
+  if (!report) await session.prompt("你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。");
+} catch (caught) {
+  error = caught;
+} finally {
+  clearTimeout(timer);
+}
+const stats = session.getSessionStats();
+session.dispose();
+transcript?.end();
+fs.rmSync(tmpDir, { recursive: true, force: true });
+
+const usage = {
+  model: `anthropic/${values.model}`,
+  thinking: values.thinking,
+  minutes: Math.round((Date.now() - started) / 600) / 100,
+  toolCalls: stats.toolCalls,
+  tools: Object.fromEntries(toolCounts),
+  tokens: stats.tokens,
+  costUsd: Math.round(stats.cost * 10_000) / 10_000,
+  sandbox: bwrap ? "bwrap" : "none",
+  submitted: report !== null,
+};
+console.error(JSON.stringify(usage));
+setOutput("usage", JSON.stringify(usage));
+if (process.env.GITHUB_STEP_SUMMARY)
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### pi ${role}\n\n${usage.model}（thinking ${usage.thinking}）：${usage.minutes} 分钟，${usage.toolCalls} 次工具调用，$${usage.costUsd}\n`);
+if (report) setOutput("structured_output", JSON.stringify(report));
+if (error) console.error(error);
+process.exit(report ? 0 : 1);
+
+function setOutput(name: string, value: string) {
+  const file = process.env.GITHUB_OUTPUT;
+  if (!file) {
+    console.log(`${name}=${value}`);
+    return;
+  }
+  const delimiter = `EOF_${randomBytes(12).toString("hex")}`;
+  fs.appendFileSync(file, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
+}
+
+async function loadPi(dir: string | undefined) {
+  const roots = [dir, process.env.PI_SDK_DIR && path.join(process.env.PI_SDK_DIR, "node_modules"), globalRoot()].filter((root): root is string => Boolean(root));
+  for (const root of roots) {
+    const entry = path.join(root, "@earendil-works/pi-coding-agent/dist/index.js");
+    if (fs.existsSync(entry)) return import(pathToFileURL(entry).href);
+  }
+  throw new Error(`在 ${roots.join("、")} 里找不到 @earendil-works/pi-coding-agent：npm install --prefix <目录> 后用 PI_SDK_DIR 指过去`);
+}
+
+function globalRoot() {
+  try {
+    return execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+  } catch {
+    return undefined;
+  }
+}

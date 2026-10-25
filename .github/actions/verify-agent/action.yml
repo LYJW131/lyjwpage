@@ -1,0 +1,86 @@
+name: Verify agent
+description: 用 pi 的 SDK 跑验证员 / 判定员（scripts/verify-agent.ts），模型走 Anthropic API
+
+inputs:
+  role:
+    required: true
+  pr:
+    required: true
+  base:
+    required: true
+  out-dir:
+    default: ""
+  prompt:
+    required: true
+  anthropic-api-key:
+    required: true
+  github-token:
+    required: true
+  default-branch:
+    required: true
+  model:
+    default: claude-haiku-5-5
+  thinking:
+    default: high
+  timeout-min:
+    default: "40"
+  pi-version:
+    default: 1.4.0
+
+outputs:
+  structured_output:
+    value: ${{ steps.run.outputs.structured_output }}
+  usage:
+    value: ${{ steps.run.outputs.usage }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pi" "@earendil-works/pi-coding-agent@$PI_VERSION"
+      env:
+        PI_VERSION: ${{ inputs.pi-version }}
+    # 拿 API 钥匙的 runner 只用默认分支上的版本，PR 改不到它；默认分支还没有这个文件时（引入它的那个 PR）才用 PR 自己的
+    - shell: bash
+      run: |
+        runner="$RUNNER_TEMP/verify-runner"
+        mkdir -p "$runner"
+        if git cat-file -e "origin/$DEFAULT_BRANCH:scripts/verify-agent.ts" 2>/dev/null; then
+          git archive "origin/$DEFAULT_BRANCH" scripts shared | tar -x -C "$runner"
+        else
+          echo "::warning::默认分支还没有 scripts/verify-agent.ts，这次用 PR 里的版本"
+          git archive HEAD scripts shared | tar -x -C "$runner"
+        fi
+        printf '%s' "$PROMPT" > "$runner/prompt.txt"
+        # 验证员照 .claude/ 里的 skill 干活：换回默认分支上的版本，PR 里改的放 .claude-pr/（提示词按这个约定写）
+        for item in .claude CLAUDE.md .mcp.json; do
+          [ -e "$item" ] || git cat-file -e "origin/$DEFAULT_BRANCH:$item" 2>/dev/null || continue
+          if [ -e "$item" ] && ! git diff --quiet "origin/$DEFAULT_BRANCH" HEAD -- "$item"; then
+            mkdir -p .claude-pr
+            cp -a "$item" ".claude-pr/$item"
+          fi
+          rm -rf "$item"
+          if git cat-file -e "origin/$DEFAULT_BRANCH:$item" 2>/dev/null; then git checkout -q "origin/$DEFAULT_BRANCH" -- "$item"; fi
+        done
+      env:
+        DEFAULT_BRANCH: ${{ inputs.default-branch }}
+        PROMPT: ${{ inputs.prompt }}
+    - id: run
+      shell: bash
+      run: >-
+        node "$RUNNER_TEMP/verify-runner/scripts/verify-agent.ts"
+        --role "$ROLE" --pr "$PR" --base "$BASE" ${OUT_DIR:+--out-dir "$OUT_DIR"}
+        --prompt-file "$RUNNER_TEMP/verify-runner/prompt.txt"
+        --model "$MODEL" --thinking "$THINKING" --timeout-min "$TIMEOUT_MIN"
+        ${OUT_DIR:+--transcript "$OUT_DIR/work/agent-transcript.jsonl"}
+      env:
+        ROLE: ${{ inputs.role }}
+        PR: ${{ inputs.pr }}
+        BASE: ${{ inputs.base }}
+        OUT_DIR: ${{ inputs.out-dir }}
+        MODEL: ${{ inputs.model }}
+        THINKING: ${{ inputs.thinking }}
+        TIMEOUT_MIN: ${{ inputs.timeout-min }}
+        PI_SDK_DIR: ${{ runner.temp }}/pi
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}

@@ -126,25 +126,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
-      - id: claude
-        uses: anthropics/claude-code-action@v1
-        env:
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
-          # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+      - uses: ./.github/actions/verify-agent
+        id: claude
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ github.token }}
-          # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
-          allowed_bots: '*'
-          show_full_output: true
+          role: verifier
+          pr: ${{ env.PR }}
+          base: origin/${{ needs.plan.outputs.base }}
+          out-dir: ${{ runner.temp }}/verify-out
           prompt: ${{ steps.prompt.outputs.prompt }}
-          # Bash 沙箱只许写工作目录与 $TMPDIR，产物目录在 runner.temp 下，不加进来截图和 work/ 都写不进去
-          claude_args: >-
-            --model haiku --effort high
-            --add-dir ${{ runner.temp }}/verify-out
-            --allowedTools "Bash,Read,Write,Glob,Grep,WebFetch"
-            --json-schema '${{ steps.prompt.outputs.schema }}'
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github-token: ${{ github.token }}
+          default-branch: ${{ github.event.repository.default_branch }}
       - id: ci
         if: always()
         timeout-minutes: 6
