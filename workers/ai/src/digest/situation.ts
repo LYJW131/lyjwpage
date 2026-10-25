@@ -155,14 +155,15 @@ function pickHighlights(primary: DigestSituation, family: Family, options: Diges
     : PICK_ORDER[primary] ?? [];
   const available = (topics: DigestTopic[]) => topics.flatMap((topic) => options.filter((option) => option.topic === topic));
   const own = [...new Set(available(order))];
+  const strongest = (other: Family) => available(FAMILY_TOPICS[other]).sort((a, b) => topicWeight(b) - topicWeight(a));
   if (primary !== "workAndPlay") {
     const head = own.slice(0, 2);
-    const guest = byScore.filter((other) => scores[other] >= GUEST_SCORE).flatMap((other) => available(FAMILY_TOPICS[other]).sort((a, b) => topicWeight(b) - topicWeight(a)).slice(0, 1)).find((option) => !head.includes(option));
-    if (guest) return [...head, guest];
+    const guest = byScore.filter((other) => scores[other] >= GUEST_SCORE).flatMap((other) => strongest(other).slice(0, 1)).find((option) => !head.includes(option));
+    if (guest && head.length === 2) return [...head, guest];
   }
   const picked = own.slice(0, primary === "codingLight" ? 2 : 3);
   if (picked.length >= 2) return picked;
-  const rest = available(byScore.flatMap((other) => FAMILY_TOPICS[other])).filter((option) => !picked.includes(option));
+  const rest = byScore.flatMap(strongest).filter((option) => !picked.includes(option));
   return [...picked, ...rest].slice(0, 2);
 }
 

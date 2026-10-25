@@ -44,6 +44,7 @@ test("situations, accents and picks follow the day's lead", () => {
     [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), tokens(2.4e8), hoursOption("music", 5)], { ...NO_SIGNALS, weekend: true }, "agentsLead [soundtrack,weekend] coding,agents,music"],
     [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), tokens(2.4e8), hoursOption("music", 3)], NO_SIGNALS, "agentsLead [] coding,agents,tokens"],
     [[minutesOption("coding", 30), hoursOption("agents", 4, "agent time"), hoursOption("music", 10)], NO_SIGNALS, "musicLong [] music,agents"],
+    [[hoursOption("coding", 1.5), hoursOption("music", 4)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [soundtrack] music,coding"],
     [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "handsOn [] coding,tokens,agents"],
     [[hoursOption("agents", 10, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] agents,tokens"],
     [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time")], { ...NO_SIGNALS, workoutMinutes: 45 }, "handsOn [workoutToo] coding,agents"],
