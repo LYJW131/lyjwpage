@@ -15,6 +15,7 @@ type Side = "left" | "right";
 type Slot = {
   make: () => ClawdCast;
   cast: ClawdCast;
+  used: boolean;
   side: Side;
   width: number;
   phase: number;
@@ -31,7 +32,7 @@ export function mountSpaceScene(host: HTMLElement) {
   };
   const slot = (make: () => ClawdCast, side: Side, phase: number): Slot => {
     const cast = make();
-    return { make, cast, side, phase, width: cast.w * CLAWD_PX, actor: null, swapping: false };
+    return { make, cast, used: false, side, phase, width: cast.w * CLAWD_PX, actor: null, swapping: false };
   };
   const slots = [slot(astronautCast, "left", 0), slot(walkerCast, "right", 37)];
   let pointerCursor = false;
@@ -93,7 +94,8 @@ export function mountSpaceScene(host: HTMLElement) {
       const wide = column.left >= s.width + 72;
       if (wide && !s.actor) {
         // cast 里的动作与粒子按 actor 自己的计时走，重建 actor 时一并换新的。
-        s.cast = s.make();
+        if (s.used) s.cast = s.make();
+        s.used = true;
         s.actor = clawdActor(host, {
           ...s.cast,
           phase: s.phase,
