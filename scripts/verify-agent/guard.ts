@@ -34,6 +34,9 @@ export const forbiddenRead = (target: string) => [target, realPath(target)].some
 
 export const realInside = (dir: string, target: string) => inside(dir, target) && inside(realPath(dir), realPath(target));
 
+// read / grep / find / ls 跑在 runner 进程里、不进 bwrap：只许读点名的根目录，grep 或 find 从 / 递归就进得了 /proc/<pid>/environ
+export const readAllowed = (roots: string[], target: string) => roots.some((root) => realInside(root, target)) && !forbiddenRead(target);
+
 export const quote = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
 
 export function sandboxed(command: string, writable: string[], bwrap: boolean) {

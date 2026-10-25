@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { childEnv, forbiddenRead, inside, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 
 test("childEnv：凭据与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
   const env = childEnv(
@@ -63,4 +63,18 @@ test("符号链接：指向 /proc/self/environ 的链接照样拦，写守卫按
   assert.equal(realInside(out, path.join(out, "work", "file-link")), false);
   assert.equal(realInside(out, path.join(out, "work", "dir-link", "victim.txt")), false);
   assert.equal(realInside(out, path.join(out, "work", "dir-link", "new.txt")), false);
+});
+
+test("readAllowed：只许读点名的根目录；从 / 或 /proc 递归、根目录里的 .env 与指出根目录的链接都拒", (t) => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "verify-agent-")));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const repo = path.join(root, "repo");
+  fs.mkdirSync(path.join(repo, "src"), { recursive: true });
+  fs.symlinkSync(os.homedir(), path.join(repo, "home-link"));
+  const roots = [repo];
+
+  assert.equal(readAllowed(roots, repo), true);
+  assert.equal(readAllowed(roots, path.join(repo, "src", "a.ts")), true);
+  for (const target of ["/", "/proc", "/proc/1/environ", root, path.join(repo, ".env.local"), path.join(repo, "home-link"), path.join(repo, "home-link", ".ssh")])
+    assert.equal(readAllowed(roots, target), false, target);
 });

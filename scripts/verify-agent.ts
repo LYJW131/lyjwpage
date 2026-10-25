@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
-import { childEnv, forbiddenRead, quote, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, quote, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
 用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员，代替 claude-code-action。模型走 Anthropic API，
@@ -112,7 +112,8 @@ if (process.platform === "linux" && process.env.CI && !bwrap) {
 const writable = [cwd, tmpDir, ...(outDir ? [outDir] : [])];
 const wrap = (command: string) => sandboxed(command, writable, bwrap);
 
-const sdk = await loadPi(values["pi-sdk"]);
+const { sdk, sdkDir } = await loadPi(values["pi-sdk"]);
+const readRoots = [cwd, tmpDir, sdkDir, ...(outDir ? [outDir] : [])];
 const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = sdk;
 
 const modelRuntime = await ModelRuntime.create({ authPath: path.join(tmpDir, "auth.json"), modelsPath: path.join(tmpDir, "models.json") });
@@ -228,7 +229,7 @@ const customTools = [
 ];
 
 const SYSTEM = `你在 pi 里运行，工具和 Claude Code 不同：
-- read / grep / find / ls：读文件与搜索（只读）。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
+- read / grep / find / ls：读文件与搜索（只读），只许读工作区、产物目录、临时目录与 pi 的 SDK 目录；别处的文件用 bash 读。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
 - pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
 - 你的模型 ID 是 ${values.model}，结果里的 model 字段照写。
 - 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。`;
@@ -248,7 +249,7 @@ const resourceLoader = new DefaultResourceLoader({
         pi.on("tool_call", (event) => {
           if (!["read", "grep", "find", "ls"].includes(event.toolName)) return undefined;
           const target = path.resolve(cwd, String(event.input.path ?? "."));
-          if (forbiddenRead(target)) return { block: true, reason: `不许读 ${target}` };
+          if (!readAllowed(readRoots, target)) return { block: true, reason: `只许读 ${readRoots.join("、")}（/proc、gh 凭据与 .env* 除外）：${target}` };
           return undefined;
         });
       },
@@ -338,8 +339,9 @@ function setOutput(name: string, value: string) {
 async function loadPi(dir: string | undefined) {
   const roots = [dir, process.env.PI_SDK_DIR && path.join(process.env.PI_SDK_DIR, "node_modules"), globalRoot()].filter((root): root is string => Boolean(root));
   for (const root of roots) {
-    const entry = path.join(root, "@earendil-works/pi-coding-agent/dist/index.js");
-    if (fs.existsSync(entry)) return import(pathToFileURL(entry).href);
+    const dir = path.join(root, "@earendil-works/pi-coding-agent");
+    const entry = path.join(dir, "dist/index.js");
+    if (fs.existsSync(entry)) return { sdk: await import(pathToFileURL(entry).href), sdkDir: dir };
   }
   throw new Error(`在 ${roots.join("、")} 里找不到 @earendil-works/pi-coding-agent：npm install --prefix <目录> 后用 PI_SDK_DIR 指过去`);
 }
