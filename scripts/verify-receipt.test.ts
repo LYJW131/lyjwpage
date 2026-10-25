@@ -127,7 +127,7 @@ test("--judge 时还要 PASS 的判定盖住 head", () => {
   assert.equal(evaluate({ ...base, judge: { sha: HEAD, verdict: "PASS" } }).pass, true);
 });
 
-test("没要求判定时，旧 FAIL 判定之后改了规则文档就不再拦", () => {
+test("没要求判定时，旧 FAIL 判定之后只改了规则文档照样拦", () => {
   const base = {
     head: HEAD,
     receipt: { sha: HEAD, level: "unit-test-verified" },
@@ -137,7 +137,7 @@ test("没要求判定时，旧 FAIL 判定之后改了规则文档就不再拦",
     patchId: patchIds({ [OLD]: "p1", [HEAD]: "p1" }),
   };
   assert.equal(evaluate({ ...base, rulesChanged: () => false }).pass, false);
-  assert.equal(evaluate({ ...base, rulesChanged: () => true }).pass, true);
+  assert.equal(evaluate({ ...base, rulesChanged: () => true }).pass, false);
 });
 
 test("check 读 PR head、描述与分页评论，描述在回执之后改过就不算", async () => {

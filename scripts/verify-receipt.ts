@@ -180,7 +180,8 @@ export function evaluate({
       if (body !== undefined && judge.body !== body) problems.push("判定之后 PR 描述的验证清单或 lyjw 原话改过（或判定没带描述摘要）：等 Verify Action 按新描述重判");
     }
   } else if (judge?.verdict === "FAIL") {
-    const judgeCoverage = coverage(judge.sha, head, patchId, notesOnly, rulesChanged);
+    // 不传 rulesChanged：规则改了不等于判定员列的缺陷修好了，查规则出错也不能放掉 FAIL；要解开就修代码，或贴 needs-judge 让判定员重判
+    const judgeCoverage = coverage(judge.sha, head, patchId, notesOnly);
     if (judgeCoverage !== "stale") {
       result.judge = { ...judge, coverage: judgeCoverage };
       problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送");
