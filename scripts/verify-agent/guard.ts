@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 // bash 与测试跑的是 PR 的代码：名字像凭据的变量一律不给，GitHub 的输出文件也不给（不然 PR 代码能改写这一步的结果）
@@ -16,7 +17,22 @@ export function inside(dir: string, target: string) {
 
 const FORBIDDEN_READ = [/^\/proc(\/|$)/, /^\/sys(\/|$)/, /\/\.config\/gh(\/|$)/, /\/\.git-credentials$/, /\/\.env(\.[^/]*)?$/, /\/\.dev\.vars$/];
 
-export const forbiddenRead = (target: string) => FORBIDDEN_READ.some((pattern) => pattern.test(target));
+// bash 能在仓库与产物目录里建符号链接（比如指向 /proc/self/environ），守卫一律按解开链接后的真实路径判
+export function realPath(target: string, depth = 0): string {
+  try {
+    return fs.realpathSync(target);
+  } catch {
+    if (depth > 40) return target;
+    const link = fs.lstatSync(target, { throwIfNoEntry: false });
+    if (link?.isSymbolicLink()) return realPath(path.resolve(path.dirname(target), fs.readlinkSync(target)), depth + 1);
+    const parent = path.dirname(target);
+    return parent === target ? target : path.join(realPath(parent, depth + 1), path.basename(target));
+  }
+}
+
+export const forbiddenRead = (target: string) => [target, realPath(target)].some((candidate) => FORBIDDEN_READ.some((pattern) => pattern.test(candidate)));
+
+export const realInside = (dir: string, target: string) => inside(dir, target) && inside(realPath(dir), realPath(target));
 
 export const quote = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
 

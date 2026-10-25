@@ -65,12 +65,23 @@ runs:
       env:
         DEFAULT_BRANCH: ${{ inputs.default-branch }}
         PROMPT: ${{ inputs.prompt }}
+    # 凭据只经这两个文件进 runner（它读完就删）：放进 run 那一步的环境，PR 的代码能从 /proc/<pid>/environ 读到
+    - shell: bash
+      run: |
+        umask 077
+        printf '%s' "$ANTHROPIC_API_KEY" > "$RUNNER_TEMP/verify-runner/anthropic-key"
+        printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/verify-runner/github-token"
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
     - id: run
       shell: bash
       run: >-
         node "$RUNNER_TEMP/verify-runner/scripts/verify-agent.ts"
         --role "$ROLE" --pr "$PR" --base "$BASE" ${OUT_DIR:+--out-dir "$OUT_DIR"}
         --prompt-file "$RUNNER_TEMP/verify-runner/prompt.txt"
+        --api-key-file "$RUNNER_TEMP/verify-runner/anthropic-key"
+        --github-token-file "$RUNNER_TEMP/verify-runner/github-token"
         --model "$MODEL" --thinking "$THINKING" --timeout-min "$TIMEOUT_MIN"
         ${OUT_DIR:+--transcript "$OUT_DIR/work/agent-transcript.jsonl"}
       env:
@@ -82,5 +93,6 @@ runs:
         THINKING: ${{ inputs.thinking }}
         TIMEOUT_MIN: ${{ inputs.timeout-min }}
         PI_SDK_DIR: ${{ runner.temp }}/pi
-        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+    - if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/verify-runner/anthropic-key" "$RUNNER_TEMP/verify-runner/github-token"

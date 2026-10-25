@@ -6,11 +6,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
-import { childEnv, forbiddenRead, inside, quote, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, forbiddenRead, quote, realInside, sandboxed } from "./verify-agent/guard.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
 用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员，代替 claude-code-action。模型走 Anthropic API，
-钥匙读 ANTHROPIC_API_KEY（读到后从本进程环境删掉）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
+钥匙经 --api-key-file 传（本地可用 ANTHROPIC_API_KEY）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
 用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
 
   --role verifier|judge     决定结果 schema 与可写目录
@@ -22,6 +22,8 @@ const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prom
   --pr N                    pr_view 工具读的 PR；读 GitHub 用 GITHUB_TOKEN（只留在本进程，不进 bash）
   --timeout-min N           整轮上限，默认 40
   --transcript FILE         把整轮事件写成 JSONL，复盘用
+  --api-key-file FILE       从文件读 Anthropic 钥匙并删掉文件（CI 里必须这样传）；本地可用 ANTHROPIC_API_KEY
+  --github-token-file FILE  同上，给 pr_view 的 GitHub 令牌；本地可用 GITHUB_TOKEN
   --pi-sdk DIR              装了 pi SDK 的 node_modules 目录；默认依次试 PI_SDK_DIR（npm install --prefix 的目录）、npm 全局目录`;
 
 const OPTIONS = {
@@ -35,6 +37,8 @@ const OPTIONS = {
   "timeout-min": { type: "string", default: "40" },
   transcript: { type: "string" },
   "pi-sdk": { type: "string" },
+  "api-key-file": { type: "string" },
+  "github-token-file": { type: "string" },
   help: { type: "boolean" },
 } as const;
 
@@ -50,6 +54,7 @@ if (values.help) {
   console.log(HELP);
   process.exit(0);
 }
+const FOLLOW_UP_MS = 5 * 60_000;
 const THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 if (!THINKING.includes(values.thinking)) {
   console.error(`--thinking 只认 ${THINKING.join("|")}`);
@@ -71,12 +76,24 @@ if (!(timeoutMin > 0)) {
   process.exit(2);
 }
 
-const apiKey = process.env.ANTHROPIC_API_KEY;
-const githubToken = process.env.GITHUB_TOKEN;
+// 环境变量删了 /proc/self/environ 里也还在：CI 里凭据只经文件进来，读完就删
+const fromFile = (file: string | undefined) => {
+  if (!file) return undefined;
+  const value = fs.readFileSync(file, "utf8").trim();
+  fs.rmSync(file, { force: true });
+  return value || undefined;
+};
+const apiKey = fromFile(values["api-key-file"]) ?? process.env.ANTHROPIC_API_KEY;
+const githubToken = fromFile(values["github-token-file"]) ?? process.env.GITHUB_TOKEN;
 delete process.env.ANTHROPIC_API_KEY;
+delete process.env.GITHUB_TOKEN;
 delete process.env.PROMPT;
 if (!apiKey) {
-  console.error("没有 ANTHROPIC_API_KEY");
+  console.error("没有 Anthropic 钥匙：给 --api-key-file 或 ANTHROPIC_API_KEY");
+  process.exit(2);
+}
+if (process.env.CI && !values["api-key-file"]) {
+  console.error("CI 里钥匙要经 --api-key-file 传，不走环境变量");
   process.exit(2);
 }
 
@@ -136,7 +153,7 @@ const guardedWrite = {
   description: `${write.description}\n只能写进 ${outDir ?? "（本角色不许写文件）"}。`,
   execute: (id: string, params: { path: string }, ...rest: unknown[]) => {
     const target = path.resolve(cwd, params.path);
-    if (!outDir || !inside(outDir, target)) throw new Error(`只许写进 ${outDir ?? "（不许写）"}：${target}`);
+    if (!outDir || !realInside(outDir, target)) throw new Error(`只许写进 ${outDir ?? "（不许写）"}：${target}`);
     return (write.execute as (...args: unknown[]) => unknown)(id, params, ...rest);
   },
 };
@@ -172,7 +189,7 @@ const customTools = [
     },
     execute: async (_id: string, params: { files: string[]; name?: string }) => {
       const started = Date.now();
-      const { code, output } = await run(`node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs ${params.files.map(quote).join(" ")}`, 10 * 60_000);
+      const { code, output } = await run(`node --test --test-reporter=tap --experimental-strip-types --import ./src/lib/testing/register-alias.mjs ${params.files.map(quote).join(" ")}`, 10 * 60_000);
       const file = workLog(`${(params.name ?? "tests").replace(/[^\w.-]/g, "_")}-${++logSeq}.log`, output);
       const counts = output.match(/^# (tests|pass|fail|cancelled|skipped) \d+$/gm)?.join(", ") ?? "没读到计数";
       const failures = output.match(/^not ok .*$[\s\S]*?(?=^(?:ok|not ok) |\n# tests)/gm)?.join("\n").slice(0, 6000) ?? "";
@@ -264,16 +281,26 @@ session.subscribe((event: { type: string; toolName?: string; args?: unknown }) =
 });
 
 const started = Date.now();
-const timer = setTimeout(() => void session.abort(), timeoutMin * 60_000);
+let timedOut = false;
+const bounded = async (text: string, ms: number) => {
+  const timer = setTimeout(() => {
+    timedOut = true;
+    void session.abort();
+  }, ms);
+  try {
+    await session.prompt(text);
+  } finally {
+    clearTimeout(timer);
+  }
+};
 let error: unknown = null;
 try {
-  await session.prompt(prompt);
-  if (!report) await session.prompt("你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。");
+  await bounded(prompt, timeoutMin * 60_000);
+  if (!report && !timedOut) await bounded("你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。", FOLLOW_UP_MS);
 } catch (caught) {
   error = caught;
-} finally {
-  clearTimeout(timer);
 }
+if (timedOut) console.error(`超过上限，已中止（submit_report ${report ? "已交" : "没交"}）`);
 const stats = session.getSessionStats();
 session.dispose();
 transcript?.end();
