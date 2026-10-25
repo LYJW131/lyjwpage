@@ -71,7 +71,7 @@ export const SHIPPING_COMMITS = 8;
 export const SHIPPING_DEPLOYS = 4;
 // 锻炼的计分权重高，一次长散步就能盖过一整天的代码；代码达到这个时长的日子，主线让给其余得分最高的一类，锻炼只做附带。
 export const FITNESS_LEAD_MAX_BUILD_HOURS = 2;
-// 别的一类得分到这里（约 4 小时音乐、1.3 小时看番或游戏），第三格让给它，不再用主线同一类的格子填满；音乐的门槛与附带情境 soundtrack 对齐。
+// 别的一类能上卡的那一格得分到这里（约 4 小时音乐、1.3 小时看番或游戏、16K 步），第三格让给它，不再用主线同一类的格子填满；音乐的门槛与附带情境 soundtrack 对齐。
 export const GUEST_SCORE = 2;
 
 // 卡片上的 site 格有提交数就只放提交数，部署数要从 signals 另看。
@@ -129,7 +129,7 @@ function accentSituations(primary: DigestSituation, family: Family, options: Dig
   return accents;
 }
 
-// 同类里按 familyScores 的权重比较，挑真正贡献了得分的那一格，须与它同步；fitness 一类只有一格，不参与比较。
+// 一格自己的得分，权重须与 familyScores 同步；锻炼时长没有格子可放，fitness 只算步数。
 function topicWeight(option: DigestHighlight): number {
   switch (option.topic) {
     case "coding":
@@ -142,6 +142,8 @@ function topicWeight(option: DigestHighlight): number {
       return hours(option) * 1.5;
     case "trophies":
       return option.unit === "count" ? option.value * 0.2 : 0;
+    case "fitness":
+      return option.unit === "count" ? option.value / 8_000 : 0;
     default:
       return 0;
   }
@@ -158,7 +160,7 @@ function pickHighlights(primary: DigestSituation, family: Family, options: Diges
   const strongest = (other: Family) => available(FAMILY_TOPICS[other]).sort((a, b) => topicWeight(b) - topicWeight(a));
   if (primary !== "workAndPlay") {
     const head = own.slice(0, 2);
-    const guest = byScore.filter((other) => scores[other] >= GUEST_SCORE).flatMap((other) => strongest(other).slice(0, 1)).find((option) => !head.includes(option));
+    const guest = byScore.flatMap((other) => strongest(other).slice(0, 1)).find((option) => topicWeight(option) >= GUEST_SCORE && !head.includes(option));
     if (guest && head.length === 2) return [...head, guest];
   }
   const picked = own.slice(0, primary === "codingLight" ? 2 : 3);

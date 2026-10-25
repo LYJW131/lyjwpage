@@ -45,6 +45,7 @@ test("situations, accents and picks follow the day's lead", () => {
     [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), tokens(2.4e8), hoursOption("music", 3)], NO_SIGNALS, "agentsLead [] coding,agents,tokens"],
     [[minutesOption("coding", 30), hoursOption("agents", 4, "agent time"), hoursOption("music", 10)], NO_SIGNALS, "musicLong [] music,agents"],
     [[hoursOption("coding", 1.5), hoursOption("music", 4)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [soundtrack] music,coding"],
+    [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), tokens(2.4e8), countOption("fitness", 200, "steps")], { ...NO_SIGNALS, workoutMinutes: 40 }, "agentsLead [workoutToo] coding,agents,tokens"],
     [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "handsOn [] coding,tokens,agents"],
     [[hoursOption("agents", 10, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] agents,tokens"],
     [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time")], { ...NO_SIGNALS, workoutMinutes: 45 }, "handsOn [workoutToo] coding,agents"],
@@ -54,7 +55,7 @@ test("situations, accents and picks follow the day's lead", () => {
     [[hoursOption("gaming", 2), countOption("trophies", 4, "trophies"), hoursOption("coding", 1)], NO_SIGNALS, "trophyHunt [] trophies,gaming"],
     [[hoursOption("coding", 6), hoursOption("agents", 1, "agent time"), hoursOption("gaming", 3)], NO_SIGNALS, "workAndPlay [] coding,gaming,agents"],
     [[countOption("fitness", 9_000, "steps"), hoursOption("music", 1)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [] fitness,music"],
-    [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), countOption("fitness", 14_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "agentsLead [workoutToo] coding,agents,fitness"],
+    [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), countOption("fitness", 14_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "agentsLead [workoutToo] coding,agents"],
     [[hoursOption("coding", 2), hoursOption("music", 10), countOption("fitness", 24_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "musicLong [workoutToo] music,fitness"],
     [[countOption("fitness", 16_000, "steps"), minutesOption("coding", 30)], NO_SIGNALS, "walking [] fitness,coding"],
   ];
