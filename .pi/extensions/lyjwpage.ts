@@ -115,11 +115,23 @@ function apiMergesPull(tokens: string[]): boolean {
   return put && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
 }
 
+const REPO_OPTIONS = new Set(["-R", "--repo"]);
+
+function prMerge(tokens: string[]): boolean {
+  for (let i = tokens.indexOf("pr"); i !== -1; i = tokens.indexOf("pr", i + 1)) {
+    let j = i + 1;
+    while (j < tokens.length && tokens[j].startsWith("-")) j += REPO_OPTIONS.has(tokens[j]) ? 2 : 1;
+    if (tokens[j] === "merge") return true;
+  }
+  return false;
+}
+
 // 合并不在 bash 里解析：gh 的选项别名、先后与 shell 引号的组合拦不全，统一交给 lyjwpage_merge_pr 工具，它不经 shell 直接调 gh。
+// 这里只防 agent 顺手写出的合并：命令文本里看得见的才拦，跑一个事先写好的脚本文件拦不到。
 export function mergesViaShell(command: string): boolean {
+  if (/pulls\/\d+\/merge\b|mergePullRequest|enablePullRequestAutoMerge|\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']/.test(command)) return true;
   if (expandsAtRuntime(command) && /\bgh\b/.test(command) && /merge/i.test(command)) return true;
-  return commandsOf(command).flatMap((text) => segments(text) as string[][]).some((tokens) =>
-    tokens.some((token, i) => token === "pr" && tokens[i + 1] === "merge") || apiMergesPull(tokens));
+  return commandsOf(command).flatMap((text) => segments(text) as string[][]).some((tokens) => prMerge(tokens) || apiMergesPull(tokens));
 }
 
 export function mergeArgs(input: MergeRequest): string[] {

@@ -48,6 +48,10 @@ test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
     "gh api -XPUT repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh -R lyjw131/lyjwpage api --method=put repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+    "gh pr --repo lyjw131/lyjwpage merge 2 --rebase",
+    "gh api -X POST repos/lyjw131/lyjwpage/pulls/1/merge",
+    `node -e "require('child_process').execFileSync('gh', ['pr', 'merge', '1', '--squash'])"`,
+    `python3 -c "import subprocess; subprocess.run(['gh','pr','merge','1'])"`,
   ]) {
     assert.ok(mergesViaShell(command), command);
   }
