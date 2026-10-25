@@ -63,7 +63,7 @@ export type DigestScene =
 const hours = (option: DigestHighlight | undefined) => (!option ? 0 : option.unit === "hours" ? option.value : option.unit === "minutes" ? option.value / 60 : 0);
 
 // coding 格是驾驶员时间（shared/pulse-types.ts#codingDriverSeconds），agents 格含两者同时的时段；代码一类按两者较大的计分，agent 自己跑的日子也算写代码的一天。
-// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
+// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。这些权重须与 topicWeight 同步。
 // 安静的门槛对齐模型判 quiet 时的真实表现：15 分钟音乐加步数算安静，1.5 小时代码或 2.5 小时音乐不算。
 export const QUIET_SCORE = 1;
 // 提交和部署各只列最近几条（提交见 shared/github-repo.ts#RECENT_COMMIT_LIMIT，部署见 shared/site-deployments.ts#fetchSiteDeployments），活跃的日子几乎都满额，「频繁上线」分不出日子，只在代码少到不够判「代理主力」「亲手写」时做主线，其余做附带。
