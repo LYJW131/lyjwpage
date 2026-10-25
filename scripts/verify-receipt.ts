@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { bodyDigest } from "./verify-action/body.ts";
-import { ensureCommits, gitNotesOnly, gitRulesChanged, type NotesOnly, type RulesChanged } from "./verify-receipt/notes-only.ts";
+import { gitNotesOnly, gitRulesChanged, type NotesOnly, type RulesChanged } from "./verify-receipt/notes-only.ts";
 
 const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
@@ -193,9 +193,17 @@ export function evaluate({
   return result;
 }
 
+function ensureCommit(sha: string) {
+  try {
+    execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" });
+  } catch {
+    execFileSync("git", ["fetch", "-q", "origin", sha], { stdio: "ignore" });
+  }
+}
+
 // 不用 git patch-id：它忽略空白，也分不清同一路径的不同二进制内容，这两种改动都可能改变用户看到的东西。
 export function gitPatchId(sha: string) {
-  ensureCommits(sha);
+  ensureCommit(sha);
   const base = execFileSync("git", ["merge-base", "origin/main", sha], { encoding: "utf8" }).trim();
   const diff = execFileSync("git", ["diff", "--binary", "--full-index", base, sha], {
     encoding: "utf8",

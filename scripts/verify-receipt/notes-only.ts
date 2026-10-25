@@ -31,7 +31,7 @@ export function parseRawDiff(raw: string) {
   });
 }
 
-export function ensureCommits(...shas: string[]) {
+function ensureCommits(...shas: string[]) {
   for (const sha of shas) {
     try {
       execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" });
