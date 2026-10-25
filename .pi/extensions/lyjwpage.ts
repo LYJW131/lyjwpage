@@ -91,7 +91,6 @@ export function commandsOf(command: string, depth = 0): string[] {
 const API_FIELD_OPTIONS = new Set(["-f", "--raw-field", "-F", "--field", "--input"]);
 const MERGE_TEXT = /\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']|pulls\/[^/\s]+\/merge\b|mergePullRequest|enablePullRequestAutoMerge/;
 const INTERPRETERS = new Set(["node", "python", "python3", "ruby", "perl", "deno", "bun"]);
-const INLINE_FLAGS = new Set(["-e", "-c", "-p", "--eval", "--print"]);
 const REPO_OPTIONS = new Set(["-R", "--repo"]);
 const HTTP_CLIENTS = new Set(["curl", "wget", "http", "https", "xh"]);
 const isGh = (token: string) => program(token) === "gh" || token.includes("$");
@@ -128,8 +127,8 @@ function prMerge(tokens: string[]): boolean {
 }
 
 function inlineScriptMerges(tokens: string[]): boolean {
-  if (!INTERPRETERS.has(program(tokens[programIndex(tokens)] ?? ""))) return false;
-  return tokens.some((token, i) => INLINE_FLAGS.has(tokens[i - 1] ?? "") && MERGE_TEXT.test(token));
+  const name = program(tokens[programIndex(tokens)] ?? "");
+  return (INTERPRETERS.has(name) || /^python\d/.test(name)) && tokens.some((token) => MERGE_TEXT.test(token));
 }
 
 // 合并不在 bash 里解析：gh 的选项别名、先后与 shell 引号的组合拦不全，统一交给 lyjwpage_merge_pr 工具，它不经 shell 直接调 gh。

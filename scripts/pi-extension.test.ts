@@ -30,7 +30,7 @@ test("只在 shell 或 eval 真被调用时展开 -c，echo 打印的示例不�
   assert.deepEqual(commandsOf("echo bash -c 'cf deploy'"), ["echo bash -c 'cf deploy'"]);
 });
 
-test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
+test("bash 命令文本里看得见的合并都拦，交给 lyjwpage_merge_pr", () => {
   for (const command of [
     "gh pr merge 668 --squash",
     "gh -R lyjw131/lyjwpage pr merge 2 --rebase",
@@ -50,6 +50,9 @@ test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
     "curl -sS -X PUT -H 'Authorization: Bearer x' https://api.github.com/repos/lyjw131/lyjwpage/pulls/1/merge",
     `node -e "require('child_process').execFileSync('gh', ['pr', 'merge', '1', '--squash'])"`,
     `python3 -c "import subprocess; subprocess.run(['gh','pr','merge','1'])"`,
+    `perl -E 'system("gh pr merge 1 --squash")'`,
+    `node --eval="require('child_process').execSync('gh pr merge 1')"`,
+    `deno eval "new Deno.Command('gh', { args: ['pr', 'merge', '1'] })"`,
   ]) {
     assert.ok(mergesViaShell(command), command);
   }
