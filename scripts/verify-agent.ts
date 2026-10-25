@@ -114,6 +114,10 @@ const wrap = (command: string) => sandboxed(command, writable, bwrap);
 
 const { sdk, sdkDir } = await loadPi(values["pi-sdk"]);
 const readRoots = [cwd, tmpDir, sdkDir, ...(outDir ? [outDir] : [])];
+// 守卫要和内置工具算出同一个路径（它们会去掉 @ 前缀、展开 ~）：直接用 pi 自己的解析函数，不另写一份
+const piPaths: { resolveToCwd: (file: string, cwd: string) => string; resolveReadPathAsync: (file: string, cwd: string) => Promise<string> } = await import(
+  pathToFileURL(path.join(sdkDir, "dist/core/tools/path-utils.js")).href
+);
 const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = sdk;
 
 const modelRuntime = await ModelRuntime.create({ authPath: path.join(tmpDir, "auth.json"), modelsPath: path.join(tmpDir, "models.json") });
@@ -246,9 +250,10 @@ const resourceLoader = new DefaultResourceLoader({
     {
       name: "verify-guard",
       factory: (pi: { on: (event: string, handler: (event: { toolName: string; input: Record<string, unknown> }) => unknown) => void }) => {
-        pi.on("tool_call", (event) => {
+        pi.on("tool_call", async (event) => {
           if (!["read", "grep", "find", "ls"].includes(event.toolName)) return undefined;
-          const target = path.resolve(cwd, String(event.input.path ?? "."));
+          const raw = typeof event.input.path === "string" && event.input.path ? event.input.path : ".";
+          const target = event.toolName === "read" ? await piPaths.resolveReadPathAsync(raw, cwd) : piPaths.resolveToCwd(raw, cwd);
           if (!readAllowed(readRoots, target)) return { block: true, reason: `只许读 ${readRoots.join("、")}（/proc、gh 凭据与 .env* 除外）：${target}` };
           return undefined;
         });
