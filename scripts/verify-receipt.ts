@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { bodyDigest } from "./verify-action/body.ts";
-import { gitNotesOnly, type NotesOnly } from "./verify-receipt/notes-only.ts";
+import { gitNotesOnly, gitRulesChanged, type NotesOnly, type RulesChanged } from "./verify-receipt/notes-only.ts";
 
 const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
@@ -64,6 +64,7 @@ check 的选项：
 回执或判定按的提交不是当前 head 时，比两边相对 main 的补丁（逐字节，含空白与二进制，只忽略行号）：
 相同就沿用（coverage=carried，常见于只把 main 合进分支）；补丁不同，但那个提交到 head 只改了文档或代码注释，
 也沿用（coverage=notes-only，见 verify-receipt/notes-only.ts）；其余作废（coverage=stale）。
+那个提交到 head 之间改了规则文档或验证流程自己的文件（含合进来的 main 带的），回执一律作废。
 比补丁要用本地 git：先 git fetch origin main。`;
 
 export type Comment = { user?: { id?: number } | null; body?: string | null; html_url?: string | null };
@@ -120,9 +121,10 @@ export function patchDigest(diff: string) {
   return createHash("sha256").update(normalized).digest("hex");
 }
 
-export function coverage(sha: string, head: string, patchId: PatchId, notesOnly?: NotesOnly): Coverage {
+export function coverage(sha: string, head: string, patchId: PatchId, notesOnly?: NotesOnly, rulesChanged?: RulesChanged): Coverage {
   if (sha === head) return "exact";
   try {
+    if (rulesChanged?.(sha, head)) return "stale";
     const before = patchId(sha);
     if (before && before === patchId(head)) return "carried";
     return notesOnly?.(sha, head) ? "notes-only" : "stale";
@@ -139,6 +141,7 @@ export function evaluate({
   wantJudge,
   patchId,
   notesOnly,
+  rulesChanged,
   body,
 }: {
   head: string;
@@ -148,6 +151,7 @@ export function evaluate({
   wantJudge: boolean;
   patchId: PatchId;
   notesOnly?: NotesOnly;
+  rulesChanged?: RulesChanged;
   body?: string;
 }): Evaluation {
   const result: Evaluation = { head, receipt: null, judge: null, pass: false, next: null };
@@ -156,12 +160,12 @@ export function evaluate({
   if (!receipt) {
     problems.push("没有验证回执：等 Verify Action 跑完（PR 转为待审或推送时触发），没跑就重跑这个 PR 上 Verify 的那次运行（gh run rerun）");
   } else {
-    const receiptCoverage = coverage(receipt.sha, head, patchId, notesOnly);
+    const receiptCoverage = coverage(receipt.sha, head, patchId, notesOnly, rulesChanged);
     result.receipt = { ...receipt, coverage: receiptCoverage };
     const rank = PASSING_RANK[receipt.level] ?? 0;
     if (rank === 0) problems.push(`回执等级是 ${receipt.level}：不是通过，修好后推送，或环境恢复后重跑 Verify Action`);
     else if (rank < PASSING_RANK[need]) problems.push(`回执等级 ${receipt.level} 低于要求的 ${need}：在 PR 描述的验证清单里补上能验到 ${need} 的项，重跑 Verify Action`);
-    if (receiptCoverage === "stale") problems.push(`回执按的 ${receipt.sha.slice(0, 7)} 和当前 head 的补丁不同：等 Verify Action 按新 head 跑完`);
+    if (receiptCoverage === "stale") problems.push(`回执按的 ${receipt.sha.slice(0, 7)} 和当前 head 的补丁不同，或之间改了规则文档：等 Verify Action 按新 head 跑完`);
     if (body !== undefined && receipt.body !== body) problems.push("回执之后 PR 描述的验证清单或 lyjw 原话改过（或回执没带描述摘要）：等 Verify Action 按新描述跑完");
   }
 
@@ -169,15 +173,19 @@ export function evaluate({
     if (!judge) {
       problems.push("没有判定：等 Verify Action 的判定 job 跑完");
     } else {
-      const judgeCoverage = coverage(judge.sha, head, patchId, notesOnly);
+      const judgeCoverage = coverage(judge.sha, head, patchId, notesOnly, rulesChanged);
       result.judge = { ...judge, coverage: judgeCoverage };
       if (judge.verdict !== "PASS") problems.push("判定是 FAIL：修完判定员列的项再推送，Action 会重判");
-      if (judgeCoverage === "stale") problems.push(`判定按的 ${judge.sha.slice(0, 7)} 和当前 head 的补丁不同：等 Verify Action 按新 head 重判`);
+      if (judgeCoverage === "stale") problems.push(`判定按的 ${judge.sha.slice(0, 7)} 和当前 head 的补丁不同，或之间改了规则文档：等 Verify Action 按新 head 重判`);
       if (body !== undefined && judge.body !== body) problems.push("判定之后 PR 描述的验证清单或 lyjw 原话改过（或判定没带描述摘要）：等 Verify Action 按新描述重判");
     }
-  } else if (judge?.verdict === "FAIL" && coverage(judge.sha, head, patchId, notesOnly) !== "stale") {
-    result.judge = { ...judge, coverage: coverage(judge.sha, head, patchId, notesOnly) };
-    problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送");
+  } else if (judge?.verdict === "FAIL") {
+    // 不传 rulesChanged：规则改了不等于判定员列的缺陷修好了，查规则出错也不能放掉 FAIL；要解开就修代码，或贴 needs-judge 让判定员重判
+    const judgeCoverage = coverage(judge.sha, head, patchId, notesOnly);
+    if (judgeCoverage !== "stale") {
+      result.judge = { ...judge, coverage: judgeCoverage };
+      problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送");
+    }
   }
 
   result.pass = problems.length === 0;
@@ -222,12 +230,13 @@ async function github(path: string, fetchImpl: FetchLike): Promise<unknown> {
 
 export async function check(
   { pr, need, wantJudge }: { pr: number; need: string; wantJudge: boolean },
-  deps: { fetch?: FetchLike; patchId?: PatchId; notesOnly?: NotesOnly } = {},
+  deps: { fetch?: FetchLike; patchId?: PatchId; notesOnly?: NotesOnly; rulesChanged?: RulesChanged } = {},
 ) {
   const fetchImpl: FetchLike = deps.fetch ?? fetch;
   const patchId = deps.patchId ?? gitPatchId;
   // 测试只注入 patchId 时也别真去跑 git
   const notesOnly = deps.notesOnly ?? (deps.patchId ? undefined : gitNotesOnly);
+  const rulesChanged = deps.rulesChanged ?? (deps.patchId ? undefined : gitRulesChanged);
   const pull = (await github(`pulls/${pr}`, fetchImpl)) as { head: { sha: string }; body?: string | null };
   const head = pull.head.sha;
   const comments: Comment[] = [];
@@ -236,7 +245,7 @@ export async function check(
     comments.push(...batch);
     if (batch.length < 100) break;
   }
-  return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId, notesOnly, body: await bodyDigest(pull.body) }) };
+  return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId, notesOnly, rulesChanged, body: await bodyDigest(pull.body) }) };
 }
 
 const USAGE = "用法：check --pr <号> [--need 等级] [--judge]，或 sign --sha <提交> (--level 等级 | --verdict PASS|FAIL)；见 --help";

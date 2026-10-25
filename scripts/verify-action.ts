@@ -10,7 +10,7 @@ import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type
 import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 import { evaluate, gitPatchId, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
-import { gitNotesOnly } from "./verify-receipt/notes-only.ts";
+import { gitNotesOnly, gitRulesChanged } from "./verify-receipt/notes-only.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { machineLine, runProof, type ProofSummary } from "./verify-action/machine.ts";
 import { judgePrompt, verifierPrompt } from "./verify-action/prompts.ts";
@@ -101,6 +101,7 @@ async function plan(gh: Client, pr: number) {
         wantJudge: planned.judge,
         patchId: gitPatchId,
         notesOnly: gitNotesOnly,
+        rulesChanged: gitRulesChanged,
         body: await bodyDigest(pull.body),
       });
     } catch (error) {

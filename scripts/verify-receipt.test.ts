@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { bodyDigest } from "./verify-action/body.ts";
-import { notesOnlyFiles, parseRawDiff } from "./verify-receipt/notes-only.ts";
+import { isRuleOrVerifierFile, notesOnlyFiles, parseRawDiff } from "./verify-receipt/notes-only.ts";
 import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, stampTitle, type Stamp } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -66,13 +66,30 @@ test("parseRawDiff：模式变了记 modeChanged，新增与删除不算", () =>
 
 test("notesOnlyFiles：文档档的文件直接放过，代码文件要逐个证明只改了注释", () => {
   const compare = (statuses: Record<string, string>) => (files: string[]) => files.map((file) => ({ file, status: statuses[file] ?? "code" }));
-  assert.deepEqual(notesOnlyFiles(["docs/a.md", ".claude/skills/x/SKILL.md"], () => assert.fail()), ["docs/a.md", ".claude/skills/x/SKILL.md"]);
+  assert.deepEqual(notesOnlyFiles(["docs/a.md", ".claude/memory/x.md"], () => assert.fail()), ["docs/a.md", ".claude/memory/x.md"]);
   assert.deepEqual(notesOnlyFiles(["README.md", "scripts/a.ts"], compare({ "scripts/a.ts": "comment-only" })), ["README.md", "scripts/a.ts"]);
   assert.equal(notesOnlyFiles(["scripts/a.ts"], compare({ "scripts/a.ts": "directive" })), null);
   assert.equal(notesOnlyFiles(["scripts/new.ts"], compare({ "scripts/new.ts": "new" })), null);
   assert.equal(notesOnlyFiles([".github/workflows/verify.yml"], compare({})), null);
   assert.equal(notesOnlyFiles([".claude/settings.json"], compare({})), null);
   assert.equal(notesOnlyFiles(["src/components/a.tsx"], compare({})), null);
+});
+
+test("isRuleOrVerifierFile：规则文档与验证员自己的文件算，普通文档与记忆不算", () => {
+  for (const file of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", "workers/ai/CLAUDE.md", "HUMAN.md", "REVIEW.md", "DESIGN.md", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/routines.md", "scripts/verify-action/prompts.ts", "scripts/revert-proof.ts"]) {
+    assert.equal(isRuleOrVerifierFile(file), true, file);
+  }
+  for (const file of ["docs/a.md", ".claude/memory/x.md", "README.md", "scripts/a.ts"]) assert.equal(isRuleOrVerifierFile(file), false, file);
+});
+
+test("coverage：之间改了规则文档，补丁相同或只改文档也作废，判断出错也作废", () => {
+  const same = patchIds({ [OLD]: "p1", [HEAD]: "p1" });
+  const differ = patchIds({ [OLD]: "p1", [HEAD]: "p2" });
+  assert.equal(coverage(OLD, HEAD, same, undefined, () => true), "stale");
+  assert.equal(coverage(OLD, HEAD, differ, () => ["AGENTS.md"], () => true), "stale");
+  assert.equal(coverage(OLD, HEAD, same, undefined, () => false), "carried");
+  assert.equal(coverage(OLD, HEAD, same, undefined, () => { throw new Error("no git"); }), "stale");
+  assert.equal(coverage(HEAD, HEAD, () => assert.fail(), undefined, () => assert.fail()), "exact");
 });
 
 test("回执盖住 head 且等级够就通过，主线程不再重验", () => {
@@ -108,6 +125,19 @@ test("--judge 时还要 PASS 的判定盖住 head", () => {
   assert.match(evaluate({ ...base, judge: { sha: HEAD, verdict: "FAIL" } }).next ?? "", /FAIL/);
   assert.match(evaluate({ ...base, judge: { sha: OLD, verdict: "PASS" } }).next ?? "", /重判/);
   assert.equal(evaluate({ ...base, judge: { sha: HEAD, verdict: "PASS" } }).pass, true);
+});
+
+test("没要求判定时，旧 FAIL 判定之后只改了规则文档照样拦", () => {
+  const base = {
+    head: HEAD,
+    receipt: { sha: HEAD, level: "unit-test-verified" },
+    judge: { sha: OLD, verdict: "FAIL" },
+    need: "unit-test-verified",
+    wantJudge: false,
+    patchId: patchIds({ [OLD]: "p1", [HEAD]: "p1" }),
+  };
+  assert.equal(evaluate({ ...base, rulesChanged: () => false }).pass, false);
+  assert.equal(evaluate({ ...base, rulesChanged: () => true }).pass, false);
 });
 
 test("check 读 PR head、描述与分页评论，描述在回执之后改过就不算", async () => {
