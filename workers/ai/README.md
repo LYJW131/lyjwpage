@@ -69,7 +69,7 @@
 - 情境：`src/digest/situation.ts#digestScene` 按规则从可选格（`src/digest/facts.ts#digestHighlightOptions`，数字与图例按事实清单同样的取粗）和 `digestSignals`（周末、窗口内锻炼时长、当地日期）判出主情境与附带情境，并按主情境挑两三格，别的一类能上卡的那一格得分够 `GUEST_SCORE` 时第三格让给它；整体太少时判 `quiet`，摘要不带标题和格子，站点照旧显示时钟卡。情境清单与每种的中文说明在 `DIGEST_SITUATIONS`，阈值的取舍写在同文件的注释里。
 - 文案库：`src/digest/taglines.ts#DIGEST_TAGLINES` 按情境存好的三到五字中文标语，由 `pnpm --dir workers/ai digest:taglines` 用 Claude 批量写出后人工删改（用法见 `scripts/digest-taglines.ts` 的 `USAGE`）。改情境说明或删了太多行后重跑它补齐。
 - 挑选：`compose.ts#taglineCandidates` 按当地日期从主情境抽几条、每个附带情境抽两条做候选；上一份的标题还在主情境那几条里就沿用（`compose.ts#keepsHeadline`，`model` 记 `rules`；附带情境的句子跨主情境共用，不沿用），否则经 `AI` 绑定让 Clef（`DIGEST_PICKER_MODEL`）按事实挑一条；每个选项标明写给哪个情境、是主线还是附带（`compose.ts#taglineCriteria`），提示词要它优先主线。没有 `AI` 绑定、Clef 出错或答到候选外时取第一条候选，也记 `rules`。
-- 轮换池：摘要另带 `headlines`（`compose.ts#headlinePool`），定下的标题打头，其余取主情境当天抽样的前几条，凑满 `HEADLINE_POOL` 条；站点每次加载随机挑一条、按分钟轮换（`src/components/live/digest-card.tsx#useRotatingHeadline`）。
+- 轮换池：摘要另带 `headlines`（`compose.ts#headlinePool`），定下的标题打头，其余取主情境当天抽样的前几条，凑满 `HEADLINE_POOL` 条；附带情境里有另一类活动（`compose.ts#POOL_SHARING_ACCENTS`，如听歌）时，它的句子与主线交替，占池子约一半；站点每次加载随机挑一条、按分钟轮换（`src/components/live/digest-card.tsx#useRotatingHeadline`）。
 
 摘要不经 `ChatQuota`：它不由访客触发，Clef 调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
 

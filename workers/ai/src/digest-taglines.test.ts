@@ -74,13 +74,22 @@ test("the tagline library covers every situation with enough well-formed, distin
 
 test("the headline pool leads with the picked line and fills from the lead theme without repeats", () => {
   const weekendLine = DIGEST_TAGLINES.weekend[0];
-  const pool = headlinePool(weekendLine, "gaming", LOCAL_DATE);
+  const pool = headlinePool(weekendLine, "gaming", ["weekend"], LOCAL_DATE);
   assert.equal(pool[0], weekendLine);
   assert.equal(pool.length, HEADLINE_POOL);
   assert.ok(pool.slice(1).every((line) => DIGEST_TAGLINES.gaming.includes(line)));
-  const own = headlinePool(taglineCandidates("gaming", [], LOCAL_DATE)[3], "gaming", LOCAL_DATE);
+  const own = headlinePool(taglineCandidates("gaming", [], LOCAL_DATE)[3], "gaming", [], LOCAL_DATE);
   assert.equal(new Set(own).size, HEADLINE_POOL);
-  assert.deepEqual(headlinePool(own[0], "gaming", LOCAL_DATE), own);
+  assert.deepEqual(headlinePool(own[0], "gaming", [], LOCAL_DATE), own);
+});
+
+test("another activity riding along as an accent gets every other line of the pool", () => {
+  const pool = headlinePool(DIGEST_TAGLINES.agentsLead[0], "agentsLead", ["soundtrack", "shipping", "weekend"], LOCAL_DATE);
+  assert.equal(pool.length, HEADLINE_POOL);
+  assert.equal(new Set(pool).size, HEADLINE_POOL);
+  const music = pool.filter((line) => DIGEST_TAGLINES.soundtrack.includes(line)).length;
+  assert.ok(music >= HEADLINE_POOL / 2 - 1, `${music} soundtrack lines`);
+  assert.ok(pool.every((line) => DIGEST_TAGLINES.agentsLead.includes(line) || DIGEST_TAGLINES.soundtrack.includes(line)));
 });
 
 test("candidates stay put through the day and rotate at midnight", () => {
