@@ -45,6 +45,8 @@ test("situations, accents and picks follow the day's lead", () => {
     [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), tokens(2.4e8), hoursOption("music", 3)], NO_SIGNALS, "agentsLead [] coding,agents,tokens"],
     [[minutesOption("coding", 30), hoursOption("agents", 4, "agent time"), hoursOption("music", 10)], NO_SIGNALS, "musicLong [] music,agents"],
     [[hoursOption("coding", 1.5), hoursOption("music", 4)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [soundtrack] music,coding"],
+    [[hoursOption("coding", 6), tokens(1e6), hoursOption("gaming", 1), countOption("trophies", 10, "trophies"), hoursOption("music", 5.5)], NO_SIGNALS, "handsOn [soundtrack] coding,tokens,music"],
+    [[hoursOption("coding", 2.5), commits(3), hoursOption("music", 4)], NO_SIGNALS, "codingLight [soundtrack] coding,site,music"],
     [[hoursOption("coding", 1.5), hoursOption("agents", 4, "agent time"), tokens(2.4e8), countOption("fitness", 200, "steps")], { ...NO_SIGNALS, workoutMinutes: 40 }, "agentsLead [workoutToo] coding,agents,tokens"],
     [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "handsOn [] coding,tokens,agents"],
     [[hoursOption("agents", 10, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] agents,tokens"],

@@ -71,7 +71,7 @@ export const SHIPPING_COMMITS = 8;
 export const SHIPPING_DEPLOYS = 4;
 // 锻炼的计分权重高，一次长散步就能盖过一整天的代码；代码达到这个时长的日子，主线让给其余得分最高的一类，锻炼只做附带。
 export const FITNESS_LEAD_MAX_BUILD_HOURS = 2;
-// 别的一类能上卡的那一格得分到这里（约 4 小时音乐、1.3 小时看番或游戏、16K 步），第三格让给它，不再用主线同一类的格子填满；音乐的门槛与附带情境 soundtrack 对齐。
+// 主线以外得分最高的一格（按 topicWeight）到这里，第三格让给它，不再用主线同一类的格子填满；codingLight 的两格上限也让它破例。音乐取到的门槛与附带情境 soundtrack 对齐。
 export const GUEST_SCORE = 2;
 
 // 卡片上的 site 格有提交数就只放提交数，部署数要从 signals 另看。
@@ -160,7 +160,7 @@ function pickHighlights(primary: DigestSituation, family: Family, options: Diges
   const strongest = (other: Family) => available(FAMILY_TOPICS[other]).sort((a, b) => topicWeight(b) - topicWeight(a));
   if (primary !== "workAndPlay") {
     const head = own.slice(0, 2);
-    const guest = byScore.flatMap((other) => strongest(other).slice(0, 1)).find((option) => topicWeight(option) >= GUEST_SCORE && !head.includes(option));
+    const guest = byScore.flatMap(strongest).filter((option) => !head.includes(option) && topicWeight(option) >= GUEST_SCORE).sort((x, y) => topicWeight(y) - topicWeight(x))[0];
     if (guest && head.length === 2) return [...head, guest];
   }
   const picked = own.slice(0, primary === "codingLight" ? 2 : 3);
