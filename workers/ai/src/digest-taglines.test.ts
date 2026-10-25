@@ -90,6 +90,9 @@ test("another activity riding along as an accent gets every other line of the po
   const music = pool.filter((line) => DIGEST_TAGLINES.soundtrack.includes(line)).length;
   assert.ok(music >= HEADLINE_POOL / 2 - 1, `${music} soundtrack lines`);
   assert.ok(pool.every((line) => DIGEST_TAGLINES.agentsLead.includes(line) || DIGEST_TAGLINES.soundtrack.includes(line)));
+  const both = headlinePool(DIGEST_TAGLINES.agentsLead[0], "agentsLead", ["soundtrack", "workoutToo"], LOCAL_DATE);
+  assert.ok(both.some((line) => DIGEST_TAGLINES.workoutToo.includes(line)));
+  assert.ok(both.some((line) => DIGEST_TAGLINES.soundtrack.includes(line)));
 });
 
 test("candidates stay put through the day and rotate at midnight", () => {

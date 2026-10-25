@@ -62,7 +62,8 @@ export const POOL_SHARING_ACCENTS: readonly DigestSituation[] = ["soundtrack", "
 // 与 Clef 的候选同种子同序：池子的前几条就是当天候选，同一天里池子不变。
 export function headlinePool(headline: string, primary: DigestSituation, accents: DigestSituation[], date: string): string[] {
   const own = sample(primary, date, HEADLINE_POOL);
-  const shared = accents.filter((accent) => POOL_SHARING_ACCENTS.includes(accent)).flatMap((accent) => sample(accent, date, HEADLINE_POOL));
+  const samples = accents.filter((accent) => POOL_SHARING_ACCENTS.includes(accent)).map((accent) => sample(accent, date, HEADLINE_POOL));
+  const shared = Array.from({ length: HEADLINE_POOL }, (_, index) => samples.map((lines) => lines[index])).flat().filter((line) => line !== undefined);
   const mixed = own.flatMap((line, index) => (index < shared.length ? [line, shared[index]] : [line]));
   return [...new Set([headline, ...mixed])].slice(0, HEADLINE_POOL);
 }
