@@ -66,7 +66,7 @@
 
 具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图（任一读不到就整轮失败，采集 Worker 留着上一份摘要），压成一份英文事实清单，连同情境说明、文案库与挑选说明算出输入哈希：与上一份相同就回 `unchanged`。变了才往下走，全程不调付费模型：
 
-- 情境：`src/digest/situation.ts#digestScene` 按规则从可选格（`src/digest/facts.ts#digestHighlightOptions`，数字与图例按事实清单同样的取粗）和 `digestSignals`（周末、窗口内锻炼时长、当地日期）判出主情境与附带情境，并按主情境挑两三格；整体太少时判 `quiet`，摘要不带标题和格子，站点照旧显示时钟卡。情境清单与每种的中文说明在 `DIGEST_SITUATIONS`，阈值的取舍写在同文件的注释里。
+- 情境：`src/digest/situation.ts#digestScene` 按规则从可选格（`src/digest/facts.ts#digestHighlightOptions`，数字与图例按事实清单同样的取粗）和 `digestSignals`（周末、窗口内锻炼时长、当地日期）判出主情境与附带情境，并按主情境挑两三格，别的一类能上卡的那一格得分够 `GUEST_SCORE` 时第三格让给它；整体太少时判 `quiet`，摘要不带标题和格子，站点照旧显示时钟卡。情境清单与每种的中文说明在 `DIGEST_SITUATIONS`，阈值的取舍写在同文件的注释里。
 - 文案库：`src/digest/taglines.ts#DIGEST_TAGLINES` 按情境存好的三到五字中文标语，由 `pnpm --dir workers/ai digest:taglines` 用 Claude 批量写出后人工删改（用法见 `scripts/digest-taglines.ts` 的 `USAGE`）。改情境说明或删了太多行后重跑它补齐。
 - 挑选：`compose.ts#taglineCandidates` 按当地日期从主情境抽几条、每个附带情境抽两条做候选；上一份的标题还在主情境那几条里就沿用（`compose.ts#keepsHeadline`，`model` 记 `rules`；附带情境的句子跨主情境共用，不沿用），否则经 `AI` 绑定让 Clef（`DIGEST_PICKER_MODEL`）按事实挑一条；每个选项标明写给哪个情境、是主线还是附带（`compose.ts#taglineCriteria`），提示词要它优先主线。没有 `AI` 绑定、Clef 出错或答到候选外时取第一条候选，也记 `rules`。
 - 轮换池：摘要另带 `headlines`（`compose.ts#headlinePool`），定下的标题打头，其余取主情境当天抽样的前几条，凑满 `HEADLINE_POOL` 条；站点每次加载随机挑一条、按分钟轮换（`src/components/live/digest-card.tsx#useRotatingHeadline`）。

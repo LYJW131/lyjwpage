@@ -63,7 +63,7 @@ export type DigestScene =
 const hours = (option: DigestHighlight | undefined) => (!option ? 0 : option.unit === "hours" ? option.value : option.unit === "minutes" ? option.value / 60 : 0);
 
 // coding 格是驾驶员时间（shared/pulse-types.ts#codingDriverSeconds），agents 格含两者同时的时段；代码一类按两者较大的计分，agent 自己跑的日子也算写代码的一天。
-// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
+// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。这些权重须与 topicWeight 同步。
 // 安静的门槛对齐模型判 quiet 时的真实表现：15 分钟音乐加步数算安静，1.5 小时代码或 2.5 小时音乐不算。
 export const QUIET_SCORE = 1;
 // 提交和部署各只列最近几条（提交见 shared/github-repo.ts#RECENT_COMMIT_LIMIT，部署见 shared/site-deployments.ts#fetchSiteDeployments），活跃的日子几乎都满额，「频繁上线」分不出日子，只在代码少到不够判「代理主力」「亲手写」时做主线，其余做附带。
@@ -71,6 +71,8 @@ export const SHIPPING_COMMITS = 8;
 export const SHIPPING_DEPLOYS = 4;
 // 锻炼的计分权重高，一次长散步就能盖过一整天的代码；代码达到这个时长的日子，主线让给其余得分最高的一类，锻炼只做附带。
 export const FITNESS_LEAD_MAX_BUILD_HOURS = 2;
+// 主线以外得分最高的一格（按 topicWeight）到这里，第三格让给它，不再用主线同一类的格子填满；codingLight 的两格上限也让它破例。音乐取到的门槛与附带情境 soundtrack 对齐。
+export const GUEST_SCORE = 2;
 
 // 卡片上的 site 格有提交数就只放提交数，部署数要从 signals 另看。
 function shippingDay(options: DigestHighlight[], signals: DigestSignals): boolean {
@@ -127,6 +129,26 @@ function accentSituations(primary: DigestSituation, family: Family, options: Dig
   return accents;
 }
 
+// 一格自己的得分，权重须与 familyScores 同步；锻炼时长没有格子可放，fitness 只算步数。
+function topicWeight(option: DigestHighlight): number {
+  switch (option.topic) {
+    case "coding":
+    case "agents":
+      return hours(option);
+    case "music":
+      return hours(option) * 0.5;
+    case "watching":
+    case "gaming":
+      return hours(option) * 1.5;
+    case "trophies":
+      return option.unit === "count" ? option.value * 0.2 : 0;
+    case "fitness":
+      return option.unit === "count" ? option.value / 8_000 : 0;
+    default:
+      return 0;
+  }
+}
+
 function pickHighlights(primary: DigestSituation, family: Family, options: DigestHighlight[], scores: Record<Family, number>): DigestHighlight[] {
   const byScore = (Object.keys(scores) as Family[]).filter((other) => other !== family).sort((a, b) => scores[b] - scores[a]);
   const counterpart = family === "build" ? (scores.gaming > scores.watching ? "gaming" : "watching") : "build";
@@ -134,9 +156,16 @@ function pickHighlights(primary: DigestSituation, family: Family, options: Diges
     ? [FAMILY_TOPICS[family][0], FAMILY_TOPICS[counterpart][0], ...FAMILY_TOPICS[family].slice(1), ...FAMILY_TOPICS[counterpart].slice(1)]
     : PICK_ORDER[primary] ?? [];
   const available = (topics: DigestTopic[]) => topics.flatMap((topic) => options.filter((option) => option.topic === topic));
-  const picked = [...new Set(available(order))].slice(0, primary === "codingLight" ? 2 : 3);
+  const own = [...new Set(available(order))];
+  const strongest = (other: Family) => available(FAMILY_TOPICS[other]).sort((a, b) => topicWeight(b) - topicWeight(a));
+  if (primary !== "workAndPlay") {
+    const head = own.slice(0, 2);
+    const guest = byScore.flatMap(strongest).filter((option) => !head.includes(option) && topicWeight(option) >= GUEST_SCORE).sort((x, y) => topicWeight(y) - topicWeight(x))[0];
+    if (guest && head.length === 2) return [...head, guest];
+  }
+  const picked = own.slice(0, primary === "codingLight" ? 2 : 3);
   if (picked.length >= 2) return picked;
-  const rest = available(byScore.flatMap((other) => FAMILY_TOPICS[other])).filter((option) => !picked.includes(option));
+  const rest = byScore.flatMap(strongest).filter((option) => !picked.includes(option));
   return [...picked, ...rest].slice(0, 2);
 }
 
