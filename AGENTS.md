@@ -16,7 +16,7 @@
 - 第三人称提到站点主人（文档、注释、skill、记忆、PR、提交说明、报告与汇报文档、给 agent 的简报）一律写 lyjw，不写站主、owner、用户、他或真名；当面对话仍称「你」。站点界面文案与代码标识符不在此列。
 - 协作约定（分工、什么要等 lyjw 点头、怎么汇报）与合并分档见 `HUMAN.md`；合并分档的要点：只有大改代码逻辑的 PR 等机器评审，小改动、文档与 skill、lyjw 让推进的事门槛过了直接合，有 UI / UX 变化的等 lyjw 看图点头。
 - 改了 Claude Projects 的项目记忆，同一轮同步进仓库镜像 `.claude/memory/` 并开小 docs PR，本地 `pnpm docs:check` 过了就合（规则见 `.claude/memory/README.md`）。
-- 只在部分目录用得上的规则在 `.claude/rules/`，碰到匹配文件时自动载入；别的工具读不到这里时直接打开对应文件。
+- 只在部分目录用得上的规则在 `.claude/rules/`，讨论串与别的工具不自动载入，改匹配的文件前直接打开读。
 
 # 禁区
 
@@ -28,7 +28,7 @@
 # 项目入口与验证
 
 - lyjw 和 Claude 共用的词（晨报、盯防、泳道、可滞后视图等）查根 `GLOSSARY.md`。
-- 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
+- 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（讨论串里不自动载入，改那个目录前先打开读）。
 - 主站开发入口是 `pnpm dev`（`http://localhost:3211`，连生产 Worker）；改后端、新增状态端点或新卡片用 `pnpm dev:worker` 加 `pnpm dev:local`；看此刻没发生的状态用 `pnpm dev:override` / `pnpm dev:scene` 注入夹具，用法见 `workers/core/README.md`「本地开发」。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：在浏览器里实际打开受影响页面，至少桌面与 375px 手机（375px 另用 WebKit 截一张），覆盖交互、数据状态与控制台错误，做法、附图时机与收尾按 `.claude/skills/lyjwpage-verify/SKILL.md`「2. UI 浏览器端到端」。开发服务器保持运行并给出地址，让 lyjw 能亲自测试。
