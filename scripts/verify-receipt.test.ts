@@ -76,7 +76,7 @@ test("notesOnlyFiles：文档档的文件直接放过，代码文件要逐个证
 });
 
 test("isRuleOrVerifierFile：规则文档与验证员自己的文件算，普通文档与记忆不算", () => {
-  for (const file of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", "workers/ai/CLAUDE.md", "HUMAN.md", "REVIEW.md", "DESIGN.md", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/routines.md", "scripts/verify-action/prompts.ts"]) {
+  for (const file of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", "workers/ai/CLAUDE.md", "HUMAN.md", "REVIEW.md", "DESIGN.md", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/routines.md", "scripts/verify-action/prompts.ts", "scripts/revert-proof.ts"]) {
     assert.equal(isRuleOrVerifierFile(file), true, file);
   }
   for (const file of ["docs/a.md", ".claude/memory/x.md", "README.md", "scripts/a.ts"]) assert.equal(isRuleOrVerifierFile(file), false, file);
