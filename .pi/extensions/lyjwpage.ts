@@ -86,25 +86,6 @@ export function commandsOf(command: string, depth = 0): string[] {
   return found;
 }
 
-export function expandsAtRuntime(command: string): boolean {
-  let quote: "'" | '"' | null = null;
-  for (let i = 0; i < command.length; i += 1) {
-    const char = command[i];
-    if (quote === "'") {
-      if (char === "'") quote = null;
-    } else if (char === "\\") {
-      i += 1;
-    } else if (char === "$" || char === "`") {
-      return true;
-    } else if (char === '"') {
-      quote = quote === '"' ? null : '"';
-    } else if (char === "'" && quote === null) {
-      quote = "'";
-    }
-  }
-  return false;
-}
-
 const API_FIELD_OPTIONS = new Set(["-f", "--raw-field", "-F", "--field", "--input"]);
 const MERGE_TEXT = /\bgh\s+pr\s+merge\b|["']pr["']\s*,\s*["']merge["']|pulls\/\d+\/merge\b|mergePullRequest|enablePullRequestAutoMerge/;
 const INTERPRETERS = new Set(["node", "python", "python3", "ruby", "perl", "deno", "bun"]);
@@ -126,6 +107,12 @@ function apiMergesPull(tokens: string[]): boolean {
   return method !== "GET" && args.some((token) => /pulls\/\d+\/merge\b/.test(token));
 }
 
+function httpMerge(tokens: string[]): boolean {
+  if (!tokens.some((token) => /pulls\/\d+\/merge\b/.test(token))) return false;
+  return tokens.some((token, i) =>
+    /^(-X|--request=|--method=)put$/i.test(token) || (/^put$/i.test(token) && /^(-X|--request|--method)$/.test(tokens[i - 1] ?? "")));
+}
+
 function prMerge(tokens: string[]): boolean {
   if (!tokens.some(isGh)) return false;
   for (let i = tokens.indexOf("pr"); i !== -1; i = tokens.indexOf("pr", i + 1)) {
@@ -144,9 +131,8 @@ function inlineScriptMerges(tokens: string[]): boolean {
 // 合并不在 bash 里解析：gh 的选项别名、先后与 shell 引号的组合拦不全，统一交给 lyjwpage_merge_pr 工具，它不经 shell 直接调 gh。
 // 这里只防 agent 顺手写出的合并：命令文本里看得见的才拦，跑一个事先写好的脚本文件拦不到。
 export function mergesViaShell(command: string): boolean {
-  if (expandsAtRuntime(command) && /\bgh\b/.test(command) && /\bmerge\b/i.test(command)) return true;
   return commandsOf(command).flatMap((text) => segments(text) as string[][]).some((tokens) =>
-    prMerge(tokens) || apiMergesPull(tokens) || inlineScriptMerges(tokens));
+    prMerge(tokens) || apiMergesPull(tokens) || httpMerge(tokens) || inlineScriptMerges(tokens));
 }
 
 export function mergeArgs(input: MergeRequest): string[] {

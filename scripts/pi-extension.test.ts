@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import lyjwpage, { commandsOf, contextFor, expandsAtRuntime, loadRules, mergeArgs, mergesViaShell } from "../.pi/extensions/lyjwpage.ts";
+import lyjwpage, { commandsOf, contextFor, loadRules, mergeArgs, mergesViaShell } from "../.pi/extensions/lyjwpage.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -30,12 +30,6 @@ test("只在 shell 或 eval 真被调用时展开 -c，echo 打印的示例不�
   assert.deepEqual(commandsOf("echo bash -c 'cf deploy'"), ["echo bash -c 'cf deploy'"]);
 });
 
-test("单引号里的 $ 是字面值，双引号里的撇号不开单引号", () => {
-  assert.equal(expandsAtRuntime("gh pr view 1 --json title --jq '.title | \"$x\"'"), false);
-  assert.equal(expandsAtRuntime('gh pr merge 2 --body "it\'s fine" --repo "$REPO"'), true);
-  assert.equal(expandsAtRuntime("gh pr merge $(cat n)"), true);
-});
-
 test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
   for (const command of [
     "gh pr merge 668 --squash",
@@ -43,7 +37,6 @@ test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
     "gh pr merge 2 -R other/x --repo lyjw131/lyjwpage --rebase",
     "gh pr merge 1 -R other/x --squash && bash -c 'gh pr merge 668 --rebase'",
     "G=gh; $G pr merge 2",
-    "$(printf gh) pr merge 2",
     "gh api -X PUT repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh api -XPUT repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh -R lyjw131/lyjwpage api --method=put repos/lyjw131/lyjwpage/pulls/1/merge",
@@ -52,6 +45,7 @@ test("bash 里任何写法的合并都拦，交给 lyjwpage_merge_pr", () => {
     "gh api -X POST repos/lyjw131/lyjwpage/pulls/1/merge",
     "gh api repos/lyjw131/lyjwpage/pulls/1/merge -f merge_method=squash",
     "echo 667 | xargs gh pr merge",
+    "curl -sS -X PUT -H 'Authorization: Bearer x' https://api.github.com/repos/lyjw131/lyjwpage/pulls/1/merge",
     `node -e "require('child_process').execFileSync('gh', ['pr', 'merge', '1', '--squash'])"`,
     `python3 -c "import subprocess; subprocess.run(['gh','pr','merge','1'])"`,
   ]) {
@@ -67,6 +61,9 @@ test("查询类 gh 命令与 git merge 不当合并", () => {
     "gh api repos/lyjw131/lyjwpage/pulls/667/merge",
     'gh pr view "$PR" --json mergeable,mergeStateStatus',
     "echo pr merge is done; gh pr list",
+    'git merge origin/main && gh pr checks "$PR"',
+    'pnpm merge-message 667 "x" > $TMPDIR/m.txt; gh pr view 667 --json title',
+    'rg "gh pr merge" "$DOC"',
     "rg 'gh pr merge' docs",
     "cat > notes.md <<'EOF'\n用 gh pr merge 合并，或 gh api -X PUT repos/x/y/pulls/1/merge。\nEOF",
     "git merge origin/main",
