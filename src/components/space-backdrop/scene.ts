@@ -1,3 +1,4 @@
+import { aokoStanding } from "./aoko";
 import { clawdAstronaut, type FloatTarget } from "./clawd-astronaut";
 import { spaceField } from "./space-field";
 
@@ -5,6 +6,8 @@ const CLAWD_PX = 2.7;
 const CLAWD_WIDTH = 40 * CLAWD_PX;
 // 两侧留白窄于此就不放 Clawd：他会被卡片挡住大半，还把卡片边上的点阵掏空。
 const MIN_GUTTER = CLAWD_WIDTH + 72;
+// 右侧留白窄于此就不放青子立绘：再窄人物只剩手掌大，看不清。
+const AOKO_MIN_GUTTER = 180;
 const EDGE = 12;
 // 背景整层出现是 lyjw 要的慢速渐显，有意长于 DESIGN.md「Motion」的常规时长。Clawd 和星空同时渐显：星空给 Clawd 让出的空洞随星空出现，Clawd 晚到就会先露出一块空白。
 const FADE_MS = 2000;
@@ -29,6 +32,7 @@ export function mountSpaceScene(host: HTMLElement) {
   let pointer: { x: number; y: number } | null = null;
   let column = columnRect();
   let actor: ReturnType<typeof clawdAstronaut> | null = null;
+  let aoko: ReturnType<typeof aokoStanding> | null = null;
 
   const gutterCenter = (s: Side) => (s === "left" ? column.left / 2 : (column.right + innerWidth) / 2);
   const home = (): FloatTarget => ({ x: gutterCenter(side) / innerWidth, y: 0.62 });
@@ -68,6 +72,7 @@ export function mountSpaceScene(host: HTMLElement) {
     const inRight = pointer.x > column.right + EDGE;
     if (!inLeft && !inRight) return null;
     const next: Side = inLeft ? "left" : "right";
+    if (next === "right" && aoko) return null;
     if (next !== side) {
       swapTo(next);
       return null;
@@ -85,6 +90,15 @@ export function mountSpaceScene(host: HTMLElement) {
       actor.stop();
       actor = null;
     }
+    const aokoWide = innerWidth - column.right >= AOKO_MIN_GUTTER;
+    if (aokoWide && !aoko) {
+      aoko = aokoStanding(host.parentElement ?? document.body, { gutter: () => ({ left: column.right, right: innerWidth }), reducedMotion });
+      fadeIn(aoko.el);
+    } else if (!aokoWide && aoko) {
+      aoko.stop();
+      aoko = null;
+    }
+    aoko?.layout();
   };
 
   const onPointer = (e: PointerEvent) => {
@@ -113,6 +127,7 @@ export function mountSpaceScene(host: HTMLElement) {
     document.documentElement.removeEventListener("pointerleave", onLeave);
     clearTimeout(swapTimer);
     actor?.stop();
+    aoko?.stop();
     field.stop();
   };
 }
