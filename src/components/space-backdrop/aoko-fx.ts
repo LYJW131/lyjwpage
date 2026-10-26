@@ -44,6 +44,13 @@ export function fxState(t: number): FxState {
 
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
+// 呼吸一轮的秒数，aoko.ts 着色器的胸口起伏也用它；breathAt 是同一条曲线（吸气四成、略停、慢慢呼出），改形状两边一起改。
+export const BREATH_S = 4.4;
+function breathAt(t: number) {
+  const p = (t / BREATH_S) % 1;
+  return (p < 0.4 ? smooth(0, 0.4, p) : 1 - smooth(0.42, 0.95, p)) * (0.85 + 0.15 * Math.sin(t * 0.37));
+}
+
 // 同一张图只取一次：秘技按到第一个键就开始预取，立绘挂上时拿到的是同一个 promise。取失败的不留，下次重取。
 const images = new Map<string, Promise<HTMLImageElement>>();
 export function loadImage(src: string) {
@@ -139,13 +146,15 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
       ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
     }
 
-    // img0628 的亮环接近白青、外侧带一圈蓝晕：贴图本身偏青，叠两遍再垫一圈光晕。
+    // img0628 的亮环接近白青、外侧带一圈蓝晕：贴图本身偏青，叠两遍再垫一圈光晕。光环跟着她吸气微微胀开、光晕跟着变亮。
     const ring = 0.6 + 0.4 * power + 0.3 * flash;
+    const breath = breathAt(t);
     ctx.save();
     ctx.translate(RING_X, RING_Y);
+    ctx.scale(1 + 0.04 * breath, 1 + 0.04 * breath);
     const halo = ctx.createRadialGradient(0, 0, RING_R * 0.8, 0, 0, RING_R * 1.18);
     halo.addColorStop(0, tone(SCENE.deep, 0));
-    halo.addColorStop(0.5, tone(SCENE.sky, 0.16 + 0.22 * power));
+    halo.addColorStop(0.5, tone(SCENE.sky, 0.16 + 0.22 * power + 0.1 * breath));
     halo.addColorStop(1, tone(SCENE.deep, 0));
     ctx.fillStyle = halo;
     ctx.fillRect(-RING_R * 1.2, -RING_R * 1.2, RING_R * 2.4, RING_R * 2.4);
@@ -156,6 +165,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     ctx.globalAlpha = Math.min(1, ring * 0.55) * show.ring;
     circle(ctx, s.band, RING_R);
     ctx.restore();
+    ctx.save();
     ctx.globalAlpha = Math.min(1, ring) * show.ring;
     ctx.rotate(-t * 0.07);
     circle(ctx, s.runes, RUNE_R / 0.96);
@@ -164,13 +174,14 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     // img0628 里穿过圆心的一横一竖两道细线：在光环以内、往两头淡掉，画到环外硬收尾就像一道划痕。
     ctx.globalAlpha = (0.16 + 0.3 * power + 0.4 * flash) * show.ring;
     for (const [dx, dy] of [[1, 0], [0, 1]]) {
-      const line = ctx.createLinearGradient(RING_X - dx * RING_R, RING_Y - dy * RING_R, RING_X + dx * RING_R, RING_Y + dy * RING_R);
+      const line = ctx.createLinearGradient(-dx * RING_R, -dy * RING_R, dx * RING_R, dy * RING_R);
       line.addColorStop(0, tone(SCENE.white, 0));
       line.addColorStop(0.5, tone(SCENE.white, 1));
       line.addColorStop(1, tone(SCENE.white, 0));
       ctx.fillStyle = line;
-      ctx.fillRect(RING_X - dx * RING_R - dy * 0.75, RING_Y - dy * RING_R - dx * 0.75, dx * 2 * RING_R + dy * 1.5, dy * 2 * RING_R + dx * 1.5);
+      ctx.fillRect(-dx * RING_R - dy * 0.75, -dy * RING_R - dx * 0.75, dx * 2 * RING_R + dy * 1.5, dy * 2 * RING_R + dx * 1.5);
     }
+    ctx.restore();
     ctx.globalAlpha = 1;
   };
 
