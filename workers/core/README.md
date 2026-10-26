@@ -7,7 +7,7 @@
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口；`src/cron-round.ts`：定时一轮（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档，每几轮顺带做一次断流检测，见下文「断流告警」）。本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`，理由写在那里），采集 Worker 每分钟调 `StateCore.cronRound(scheduledTime)`，`src/cron-heartbeat.ts#cronSlot` 把它归进时刻表的一格，`StateHub.claimCronSlot` 让每格只跑第一次调用（排定的那一分钟被 Cloudflare 晚投或漏投时，格内后面的分钟或迟到的投递补上）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
+- `src/index.ts`：默认 Worker 入口；`src/cron-round.ts`：定时一轮（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档，每几轮顺带做一次断流检测，见下文「断流告警」）。本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`，理由写在那里），采集 Worker 每分钟调 `StateCore.cronRound(scheduledTime)`，`src/cron-heartbeat.ts#cronSlot` 把它归进时刻表的一格，`StateHub.claimCronSlot` 让每格只跑第一次调用（排定的那一分钟被 Cloudflare 晚投或漏投时，这一格里后面到达的任一调用补上；晚过一整格才到的投递只能补它到达时所在的格）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
   `ready()`（恒为 `true`，契约只加不改而保留）、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
   `playstationPower()`、`appleDeveloperToken()`（core 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`、`cronRound(scheduledTime)`（采集 Worker 每分钟驱动的定时一轮，见上一条）。
