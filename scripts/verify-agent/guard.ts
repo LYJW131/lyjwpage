@@ -49,8 +49,9 @@ export function sandboxed(command: string, writable: string[], bwrap: boolean) {
 export function filterGrepOutput(text: string, searchDir: string): { text: string; dropped: number } {
   let dropped = 0;
   const kept = text.split("\n").filter((line) => {
-    const match = /^(.+?)[:-]\d+[:-]/.exec(line);
-    if (!match || !forbiddenRead(path.resolve(searchDir, match[1]))) return true;
+    // 路径里本身可能有「-数字-」，每个分界处都试一次，任一前缀落在禁读文件上就去掉
+    const prefixes = [...line.matchAll(/[:-]\d+[:-]/g)].map((match) => line.slice(0, match.index));
+    if (!prefixes.some((prefix) => prefix && forbiddenRead(path.resolve(searchDir, prefix)))) return true;
     dropped++;
     return false;
   });

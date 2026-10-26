@@ -125,9 +125,9 @@ test("removedIdentifiers：只收 diff 里删掉、新代码里又没出现的�
   assert.deepEqual(removedIdentifiers(patch).sort(), ["OLD_LIMIT", "verify-ab.yml"]);
 });
 
-test("filterGrepOutput：递归搜到 .env*、.dev.vars 里的行去掉，普通文件的命中与上下文行保留", () => {
-  const out = ["src/a.ts:3: MARK", "envprobe/.env.local:1: MARK=1", "workers/core/.dev.vars-2- MARK", "README.md-4- context", "无法解析的一行"].join("\n");
+test("filterGrepOutput：递归搜到 .env*、.dev.vars 里的行去掉（路径里带「-数字-」也认得出），普通文件的命中与上下文行保留", () => {
+  const out = ["src/a.ts:3: MARK", "envprobe/.env.local:1: MARK=1", "workers/core/.dev.vars-2- MARK", "x-1-y/.env.local:1: MARK", "x-1-y/.env.local-2- MARK", "README.md-4- context", "无法解析的一行"].join("\n");
   const { text, dropped } = filterGrepOutput(out, "/repo");
-  assert.equal(dropped, 2);
+  assert.equal(dropped, 4);
   assert.equal(text, ["src/a.ts:3: MARK", "README.md-4- context", "无法解析的一行"].join("\n"));
 });
