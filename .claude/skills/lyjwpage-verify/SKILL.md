@@ -21,7 +21,8 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 `.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述或目标分支时跑（草稿不跑，同一 PR 的新运行顶掉旧的）。没有手动触发：手动触发跑在默认分支的缓存作用域里，PR 代码能写脏所有 PR 共读的缓存；要补跑就重跑这个 PR 已有的那次运行（`gh run rerun <run-id>`）。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
 
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
-- `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。
+- `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。原始结果另存一份小产物 `verify-ab-cc`，留给下一条的 A/B 对照。
+- `verify-pi`：A/B 对照的 B 组，同样的准备步骤和提示词交给 pi 验证员，结果只进产物：`verify-ab-pi` 是读数用的 result.json、usage.json 与结论，`verify-out-pi` 是含 transcript 的全量，不发回执，`publish` 不等它；自身出错只标出来：pr-gate 不把它算进 pending 与 failing（`scripts/pr-gate/checks.ts#ADVISORY_CHECKS`），没跑成或还在跑记进 notes 提醒；步骤都 `continue-on-error` 好让产物照样上传，最后一步在 pi 没交结果时让 job 红。读数：下载两组的 `verify-ab-*`，同一 head 上两组按 `scripts/verify-action/report.ts#reconcile` 各算一次等级，逐项比结论，分歧的人工裁定。pi 验证员仍是 Haiku（thinking high），用 pi 的 SDK 自搭的 runner（`scripts/verify-agent.ts`，装在 `.github/actions/verify-agent`）走 Anthropic API（Secret `ANTHROPIC_API_KEY`）：工具是只读的 read / grep / find / ls（只许读工作区、产物目录、临时目录、pi 的 SDK 目录与 runner 自带的 skill 目录）、bash、只许写产物目录的 write，加上 `pr_diff`、`run_tests`、`pr_view`，以及 `claims`（声明台账）、`compare_base`（同一命令在目标分支与 HEAD 上对照）、`docs_sync`（改了的说法在文档与 `.claude/` 里有没有跟着改），结果经 `submit_report` 按 schema 交、交上来不再复核（等级由回执按行重算）；判定做法写在 `scripts/verify-agent/playbook.ts#PLAYBOOK`，探针写法是按需加载的 skill `scripts/verify-agent/skills/verify-probes`；runner 只用默认分支上的版本，钥匙经文件传、读完即删，bash 子进程和 runner 自己调的 git（bash 能写 `.git/config`）都去掉令牌与密钥、Linux 上进 bwrap 的 PID 命名空间；读写守卫按解开符号链接后的真实路径判。
 - `verify` 里脚本能跑的不交给 Haiku：Haiku 之前先跑撤回证明（上面「1. 本地门禁」那段），之后读 head 上 CI `check` 的结论（最多等 5 分钟，不等 CI 才启动），两项写进回执的「脚本：」一行（`scripts/verify-action/machine.ts#machineLine`），不影响回执等级。
 - `judge`：PR 贴了 `needs-judge` 标签（或作者不是 lyjw 的账号）时同时派 Opus（effort high）当判定员，和验证员并行，见「3b」。
 - `publish`：截图推到孤立分支 `verify-shots`、嵌进评论；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`；漏项、SKIPPED、没有检查行、PASS 没写证据、`live-ui-verified` 没有截图都记 `verifier-blocked`）；判定按明细收口（`judgeVerdict`：没列要求、有没做到或没写依据的要求、有回归或待修项，都签 FAIL）。再以 lyjw131[bot] 发回执与判定两条评论（publish job 拿 App 令牌，只跑默认分支上的脚本，PR 改的 publish 逻辑合进 main 后才生效）。PR 的 head 已经变了就什么都不发；验证员或判定员读过之后描述或目标分支又改了，或 job 成功却没交回读到的版本，那一条不发（`scripts/verify-action.ts#staleRead`；改描述或目标分支触发的新运行会重做）。
@@ -45,7 +46,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - 描述里的 HTML 注释照样算：注释里的条目也会被验，同名标题都收、同编号条目接在一起（`scripts/verify-action/body.ts#parseBody`）。旧清单直接删，不要注释掉留着。
 - 没写清单时验证员按 diff 自己挑检查，回执评论里会注明；没写原话时判定员按 PR 描述推断，并在第一条写明。
 - 回执和判定只对签发时的清单与原话算数（没写原话时按描述全文；摘要记在评论里机器读的 `verify-stamp` JSON 行）：之后改了，旧的作废，等 Action 按新描述重跑；只改标题不重跑。
-- 验证员与判定员读的 `.claude/`、`CLAUDE.md` 是 main 上的（claude-code-action 对 PR 一律换回 base 的），PR 里改的 skill 合并后才生效；`AGENTS.md`、`REVIEW.md` 不换，读的是 PR 里的。
+- 验证员与判定员读的 `.claude/`、`CLAUDE.md` 是 main 上的（claude-code-action 对 PR 一律换回 base 的，B 组的 pi 验证员由 `.github/actions/verify-agent` 换回默认分支的），PR 里改的 skill 合并后才生效；`AGENTS.md`、`REVIEW.md` 不换，读的是 PR 里的。
 - 回执是 `verifier-blocked` / `verifier-failed` 或等级不够：看评论里的证据与「没验到」，修代码或补清单后推送（改描述也会重跑）。环境问题（预览没部署、Action 自己出错）在 Actions 页重跑那一次。
 - Action 验不到的（只有 `dev:scene` 夹具才有的状态、真机行为），写进 PR 描述交给 lyjw；不在线程里自签回执顶替，自签的不算数。
 

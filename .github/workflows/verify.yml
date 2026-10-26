@@ -145,6 +145,25 @@ jobs:
             --add-dir ${{ runner.temp }}/verify-out
             --allowedTools "Bash,Read,Write,Glob,Grep,WebFetch"
             --json-schema '${{ steps.prompt.outputs.schema }}'
+      # 验证员能在产物目录里建符号链接，upload-artifact 会把链接指向的文件内容一起传上去
+      - if: always()
+        run: |
+          [ ! -L "$RUNNER_TEMP/verify-out" ] || rm "$RUNNER_TEMP/verify-out"
+          find "$RUNNER_TEMP/verify-out" -type l -delete 2>/dev/null || true
+      # A/B 对照的 A 组原始结果：回执评论只渲染了一部分
+      - if: always()
+        continue-on-error: true
+        run: |
+          rm -rf "$RUNNER_TEMP/verify-out/ab"
+          mkdir "$RUNNER_TEMP/verify-out/ab"
+          set -o noclobber
+          printf '%s' "$RESULT" > "$RUNNER_TEMP/verify-out/ab/result.json"
+          printf '%s' "$OUTCOME" > "$RUNNER_TEMP/verify-out/ab/outcome"
+          [ -f "$EXECUTION" ] && cp "$EXECUTION" "$RUNNER_TEMP/verify-out/ab/execution.json" || true
+        env:
+          RESULT: ${{ steps.claude.outputs.structured_output }}
+          OUTCOME: ${{ steps.claude.outcome }}
+          EXECUTION: ${{ steps.claude.outputs.execution_file }}
       - id: ci
         if: always()
         timeout-minutes: 6
@@ -160,6 +179,145 @@ jobs:
           path: ${{ runner.temp }}/verify-out
           if-no-files-found: ignore
           retention-days: 14
+      # 读数只下这一份小的，保留到读数的时候
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: verify-ab-cc
+          path: ${{ runner.temp }}/verify-out/ab
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # A/B 对照的 B 组：同一份提示词交给 pi 验证员（scripts/verify-agent.ts），结果只进产物、不发回执，publish 不等它。
+  # 实验任务出错只标出来：pr-gate 按 scripts/pr-gate/checks.ts#ADVISORY_CHECKS 不挡合并、只在 notes 里提醒；步骤都 continue-on-error，好让产物照样上传
+  verify-pi:
+    needs: plan
+    if: needs.plan.outputs.need != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        continue-on-error: true
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        continue-on-error: true
+      - uses: actions/setup-node@v5
+        continue-on-error: true
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        continue-on-error: true
+      - uses: ./.github/actions/verify-tools
+        continue-on-error: true
+        timeout-minutes: 14
+        with:
+          browsers: "true"
+      - name: Install actionlint
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          curl -fsSL -m 60 -o "$RUNNER_TEMP/actionlint.tgz" "https://github.com/rhysd/actionlint/releases/download/v$V/actionlint_${V}_linux_amd64.tar.gz"
+          echo "$SHA  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          sudo tar xzf "$RUNNER_TEMP/actionlint.tgz" -C /usr/local/bin actionlint
+        env:
+          V: 1.7.12
+          SHA: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      - name: Install browser system deps
+        if: needs.plan.outputs.ui == 'true'
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          deps() { sudo timeout -k 10 300 "$(command -v playwright)" install-deps chromium webkit; }
+          deps || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            deps
+          }
+      - id: preview
+        if: needs.plan.outputs.ui == 'true'
+        continue-on-error: true
+        timeout-minutes: 21
+        run: node scripts/verify-action.ts wait-preview --pr "$PR" --timeout-min 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - id: proof
+        timeout-minutes: 10
+        continue-on-error: true
+        run: node scripts/verify-action.ts proof --pr "$PR" --base "origin/$BASE" --out-dir "$RUNNER_TEMP/verify-out"
+        env:
+          BASE: ${{ needs.plan.outputs.base }}
+      - id: prompt
+        continue-on-error: true
+        run: node scripts/verify-action.ts prompt --role verifier --pr "$PR" --preview "$PREVIEW" --out-dir "$RUNNER_TEMP/verify-out"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIEW: ${{ steps.preview.outputs.preview }}
+      - uses: ./.github/actions/verify-agent
+        id: pi
+        if: steps.prompt.outcome == 'success'
+        continue-on-error: true
+        # 盖住 runner 的首轮上限（action 的 timeout-min）加追问（verify-agent.ts#FOLLOW_UP_MS），外加装 pi
+        timeout-minutes: 30
+        with:
+          role: verifier
+          pr: ${{ env.PR }}
+          base: origin/${{ needs.plan.outputs.base }}
+          out-dir: ${{ runner.temp }}/verify-out
+          prompt: ${{ steps.prompt.outputs.prompt }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github-token: ${{ github.token }}
+          default-branch: ${{ github.event.repository.default_branch }}
+      - if: always()
+        continue-on-error: true
+        run: |
+          [ ! -L "$RUNNER_TEMP/verify-out" ] || rm "$RUNNER_TEMP/verify-out"
+          find "$RUNNER_TEMP/verify-out" -type l -delete 2>/dev/null || true
+      - if: always()
+        continue-on-error: true
+        run: |
+          rm -rf "$RUNNER_TEMP/verify-out/ab"
+          mkdir "$RUNNER_TEMP/verify-out/ab"
+          set -o noclobber
+          printf '%s' "$RESULT" > "$RUNNER_TEMP/verify-out/ab/result.json"
+          printf '%s' "$USAGE" > "$RUNNER_TEMP/verify-out/ab/usage.json"
+          printf '%s' "${OUTCOME:-skipped}" > "$RUNNER_TEMP/verify-out/ab/outcome"
+        env:
+          RESULT: ${{ steps.pi.outputs.structured_output }}
+          USAGE: ${{ steps.pi.outputs.usage }}
+          OUTCOME: ${{ steps.pi.outcome }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: verify-out-pi
+          path: ${{ runner.temp }}/verify-out
+          if-no-files-found: ignore
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: verify-ab-pi
+          path: ${{ runner.temp }}/verify-out/ab
+          if-no-files-found: ignore
+          retention-days: 90
+      # 前面各步都 continue-on-error，job 结论只看这一步：pi 没交结果就让 job 红，pr-gate 在 notes 里提醒（ADVISORY_CHECKS 不挡合并）
+      - if: always() && steps.pi.outcome != 'success'
+        run: |
+          echo "::error::pi 验证员没交结果（${OUTCOME:-skipped}）"
+          exit 1
+        env:
+          OUTCOME: ${{ steps.pi.outcome }}
 
   judge:
     needs: plan
