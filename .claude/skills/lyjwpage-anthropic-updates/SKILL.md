@@ -77,7 +77,7 @@ python3 -I "$SCRATCH/fetch.py" scan > "$SCRATCH/scan.json"
 python3 -I "$SCRATCH/fetch.py" x-plan > "$SCRATCH/x-plan.json"
 ```
 
-`$SCRATCH/x-plan.json` 是一串调用，每个有 `file`、`maxPages` 和 `code`。逐个跑：把 `code` 里的 `__TOKEN__` 换成 `null`，交给 `portal_codemode_execute`，返回的 JSON 原样写进 `$SCRATCH/x/<file>.1.json`；返回里 `next` 不为空、`stop` 不为真、页数没到 `maxPages`，就把 `__TOKEN__` 换成带引号的 `next` 再跑，写 `<file>.2.json`，依此类推。互不相关的调用可以并行。某个调用报错或连接器不在，把错误原文写进 `$SCRATCH/x/<file>.error.txt`，不重试别的路子。全部跑完：
+`$SCRATCH/x-plan.json` 是一串调用，每个有 `file`、`maxPages` 和 `code`。逐个跑：把 `code` 里的 `__TOKEN__` 换成 `null`，交给 `portal_codemode_execute`，返回的 JSON 原样写进 `$SCRATCH/x/<file>.1.json`；返回里 `next` 不为空、`stop` 不为真、页数没到 `maxPages`，就把 `__TOKEN__` 换成带引号的 `next` 再跑，写 `<file>.2.json`，依此类推。互不相关的调用可以并行。某个调用报错或连接器不在，把错误原文写进 `$SCRATCH/x/<file>.error.txt`，不重试别的路子。末页还有 `next`、没 `stop`、页数又没到 `maxPages` 的调用，`x-ingest` 当作没读完、算失败，书签不动。全部跑完：
 
 ```sh
 python3 -I "$SCRATCH/fetch.py" x-ingest "$SCRATCH/x" > "$SCRATCH/x-scan.json"

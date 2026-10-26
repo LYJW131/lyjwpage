@@ -264,13 +264,15 @@ def x_plan():
     return calls
 
 
-def x_pages(folder, name):
+def x_pages(folder, name, max_pages):
     if os.path.exists(os.path.join(folder, f"{name}.error.txt")):
         raise RuntimeError(open(os.path.join(folder, f"{name}.error.txt")).read()[:300])
     pages = sorted((f for f in os.listdir(folder) if re.fullmatch(re.escape(name) + r"\.\d+\.json", f)), key=lambda f: int(f.split(".")[-2]))
     if not pages:
         raise RuntimeError("读者没留下这个调用的结果")
     out = [json.load(open(os.path.join(folder, f))) for f in pages]
+    if out[-1].get("next") and not out[-1].get("stop") and len(out) < max_pages:
+        raise RuntimeError(f"只读了 {len(out)} 页，末页还有下一页，分页没读完")
     return out
 
 
@@ -283,7 +285,7 @@ def x_ingest(folder):
     for group, accounts in X_ACCOUNTS.items():
         for name in accounts:
             try:
-                pages = x_pages(folder, name)
+                pages = x_pages(folder, name, X_TIMELINE_MAX_PAGES)
                 tweets = {t["id"]: t for p in pages for t in p["items"]}
             except Exception as e:
                 errors[name] = str(e)[:200]
@@ -301,7 +303,7 @@ def x_ingest(folder):
     for key in X_SELF:
         known = state["cursors"].get(key)
         try:
-            pages = x_pages(folder, key)
+            pages = x_pages(folder, key, 1 if known is None else X_SELF_MAX_PAGES)
         except Exception as e:
             report[key] = {"ok": False, "error": str(e)}
             continue
