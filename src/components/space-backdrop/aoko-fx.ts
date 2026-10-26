@@ -161,10 +161,16 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     circle(ctx, s.runes, RUNE_R / 0.96);
     ctx.restore();
 
+    // img0628 里穿过圆心的一横一竖两道细线：在光环以内、往两头淡掉，画到环外硬收尾就像一道划痕。
     ctx.globalAlpha = (0.16 + 0.3 * power + 0.4 * flash) * show.ring;
-    ctx.fillStyle = tone(SCENE.white, 1);
-    ctx.fillRect(RING_X - 1, RING_Y - RING_R * 1.5, 2, RING_R * 3);
-    ctx.fillRect(RING_X - RING_R * 1.6, RING_Y - 1, RING_R * 3.2, 2);
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const line = ctx.createLinearGradient(RING_X - dx * RING_R, RING_Y - dy * RING_R, RING_X + dx * RING_R, RING_Y + dy * RING_R);
+      line.addColorStop(0, tone(SCENE.white, 0));
+      line.addColorStop(0.5, tone(SCENE.white, 1));
+      line.addColorStop(1, tone(SCENE.white, 0));
+      ctx.fillStyle = line;
+      ctx.fillRect(RING_X - dx * RING_R - dy * 0.75, RING_Y - dy * RING_R - dx * 0.75, dx * 2 * RING_R + dy * 1.5, dy * 2 * RING_R + dx * 1.5);
+    }
     ctx.globalAlpha = 1;
   };
 
