@@ -2,7 +2,8 @@ import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUploa
 import { PROJECT_DOCS } from "../tools/project-docs";
 
 const PROTECTED_PATH_SEGMENTS = new Set([
-  ".git", ".github", ".claude", "agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md",
+  // review.md 经 AGENTS.md 的 @ 引入，检出 PR 分支的评审 agent 会当指令加载。
+  ".git", ".github", ".claude", "review.md", "agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md",
   ".cursor", ".cursorrules", ".codex", ".agents", ".gemini", ".vscode", ".devcontainer", ".husky", ".idea",
   "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts", ".gitmodules",
   "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb",
@@ -10,7 +11,7 @@ const PROTECTED_PATH_SEGMENTS = new Set([
 
 // 规则文档与 PROJECT_DOCS 都从 main 读，合并前不生效，所以放行，只在 PR 的重点审查里标出；
 // 拒绝名单只留分支上会被执行或被 agent 当指令加载的东西（PR 工作流、Workers Builds 预览、检出分支的 Claude 会话）。
-const RULE_DOC_NAMES = new Set(["human.md", "review.md", "design.md", "glossary.md"]);
+const RULE_DOC_NAMES = new Set(["human.md", "design.md", "glossary.md"]);
 const RULE_DOC_PATHS = new Set([
   "docs/ops-facts.md",
   "docs/api-contracts.md",

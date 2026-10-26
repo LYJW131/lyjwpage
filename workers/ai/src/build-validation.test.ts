@@ -15,7 +15,7 @@ for (const path of [
   "src/.cursor/rules/x.mdc", "src/.Claude/settings.json", "src/.vscode/tasks.json", ".Claude/x.test.js", ".GitHub/x.test.js", "foo.test.mjs",
   "src/.CURSORRULES", "shared/.Codex/config.json", "docs/.AGENTS/rules.md", "public/.Gemini/settings.json",
   "workers/ai/src/.Windsurf/rules/x.md", "src/.windsurfrules", "src/.windsurf-config/rule.md", "docs/.devContainer/config.json",
-  "src/.Husky/pre-commit", "src/.Idea/tasks.xml", "src/Scripts/check.test.ts", "src/Package.JSON", "src/.Git/config",
+  "src/.Husky/pre-commit", "REVIEW.md", "docs/review.md", "src/.Idea/tasks.xml", "src/Scripts/check.test.ts", "src/Package.JSON", "src/.Git/config",
   "src/.GiThUb/workflows/ci.yml", "src/NEXT.CONFIG.ts", "workers/ai/src/WRANGLER.TEST.TOML",
   "tests/route.test.ts", "workers/ai/tests/route.test.ts", "workers/ai/foo.spec.ts", "reporters/agent.test.ts",
 ]) {
@@ -92,7 +92,7 @@ test("plan rejections name the exact problem so the planner can fix it", () => {
 });
 
 const directiveDocs = [
-  "HUMAN.md", "REVIEW.md", "DESIGN.md", "GLOSSARY.md", "docs/ops-facts.md", "docs/api-contracts.md",
+  "HUMAN.md", "DESIGN.md", "GLOSSARY.md", "docs/ops-facts.md", "docs/api-contracts.md",
   "human.md", "docs/Ops-Facts.md", "docs/explainer/DESIGN.md", "src/Glossary.md",
 ];
 
