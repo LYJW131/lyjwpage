@@ -253,7 +253,13 @@ def x_plan():
     calls, x = [], cursors.get("x") or {}
     for accounts in X_ACCOUNTS.values():
         for name, uid in accounts.items():
-            bound = {"since_id": x[name]} if name in x else {"start_time": since}
+            cursor = x.get(name)
+            if cursor is None:
+                bound = {"start_time": since}
+            elif cursor.startswith("t:"):
+                bound = {"start_time": cursor[2:]}
+            else:
+                bound = {"since_id": cursor}
             args = {"id": uid, "exclude": "replies,retweets", "max_results": X_TIMELINE_PAGE, **bound, **X_FIELDS}
             calls.append({"file": name, "maxPages": X_TIMELINE_MAX_PAGES, "code": x_js("x_get_users_posts", args, X_TIMELINE_TEXT)})
     for key, fn in X_SELF.items():
@@ -261,6 +267,13 @@ def x_plan():
         first = known is None
         args = {"id": X_ME, "max_results": X_SELF_FIRST if first else X_SELF_PAGE, **X_FIELDS}
         calls.append({"file": key, "maxPages": 1 if first else X_SELF_MAX_PAGES, "code": x_js(fn, args, X_SELF_TEXT, known or (), first)})
+    path = os.path.join(STATE_DIR, "pending.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            pending = json.load(f)
+        pending["xPlannedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with open(path, "w") as f:
+            json.dump(pending, f)
     return calls
 
 
@@ -296,6 +309,9 @@ def x_ingest(folder):
                 truncated.append(name)
             if tweets:
                 cursors[name] = max(tweets, key=int)
+            elif pending.get("xPlannedAt") and (name not in cursors or cursors[name].startswith("t:")):
+                # 新账号这段时间没发帖时记下扫到的时刻，下一轮从这里接着读，而不是又只看最近一天半。
+                cursors[name] = "t:" + pending["xPlannedAt"]
             for t in sorted(tweets.values(), key=lambda t: int(t["id"])):
                 new.append({"group": group, "account": name, "url": f"https://x.com/{name}/status/{t['id']}", **t})
     pending["cursors"]["x"] = cursors

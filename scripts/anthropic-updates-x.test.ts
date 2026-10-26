@@ -15,7 +15,7 @@ function run(cursors: Record<string, unknown>, pages: Record<string, Page[]>, er
   const x = path.join(dir, "x");
   mkdirSync(x);
   writeFileSync(path.join(dir, "state.json"), JSON.stringify({ cursors, ledger: [] }));
-  writeFileSync(path.join(dir, "pending.json"), JSON.stringify({ seen: {}, cursors: {} }));
+  writeFileSync(path.join(dir, "pending.json"), JSON.stringify({ seen: {}, cursors: {}, xPlannedAt: "2026-10-26T00:00:00Z" }));
   const all: Record<string, Page[]> = { "x-likes": [{ items: [], stop: true }], "x-bookmarks": [{ items: [], stop: true }] };
   for (const name of ACCOUNTS) all[name] = [{ items: [] }];
   for (const [name, list] of Object.entries({ ...all, ...pages })) {
@@ -73,4 +73,15 @@ test("时间线翻满上限仍有下一页时推进书签并标 truncatedAccount
   const { report, pending } = run({ x: { AnthropicAI: "1" } }, { AnthropicAI: Array.from({ length: max }, (_, i) => ({ items: [tweet(String(100 + i))], next: "more" })) });
   assert.deepEqual(report.x.truncatedAccounts, ["AnthropicAI"]);
   assert.equal(pending.x.AnthropicAI, String(100 + max - 1));
+});
+
+test("新账号这段时间没发帖时记下扫描时刻，下一轮从这个时刻接着读", () => {
+  const { pending } = run({ x: { AnthropicAI: "100" } }, {});
+  assert.equal(pending.x.claudeai, "t:2026-10-26T00:00:00Z");
+  assert.equal(pending.x.AnthropicAI, "100");
+
+  const dir = mkdtempSync(path.join(tmpdir(), "x-plan-"));
+  writeFileSync(path.join(dir, "state.json"), JSON.stringify({ cursors: { x: pending.x } }));
+  const plan = JSON.parse(execFileSync("python3", ["-I", FETCH, "x-plan"], { env: { ...process.env, ANTHROPIC_UPDATES_DIR: dir }, encoding: "utf8" }));
+  assert.match(plan.find((c: { file: string }) => c.file === "claudeai").code, /"start_time": "2026-10-26T00:00:00Z"/);
 });
