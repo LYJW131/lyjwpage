@@ -1,4 +1,5 @@
-import { aokoFx, fxState, loadImage, ORB, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { aokoFx, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { smooth } from "./aoko-paint";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
 
 const SRC = "/mascots/aoko.webp";
@@ -29,6 +30,9 @@ const BLINK_OPEN = 0.17;
 const BLINK_TOTAL = BLINK_CLOSE + BLINK_HOLD + BLINK_OPEN;
 const BLINK_GAP: [number, number] = [2.5, 6.5];
 const DOUBLE_BLINK_CHANCE = 0.2;
+// 召唤时分层显现的总时长（秒）：地面法阵 → 人物从脚下往上显形 → 身后光环 → 手臂环与电弧。
+// 人物不做半透明淡入而是逐像素显形（显出来的地方就是不透明的），光环等人物整个显完才亮，所以身后的法阵始终被她挡住。
+const REVEAL_S = 3.6;
 
 function lidAt(dt: number) {
   if (dt < 0 || dt >= BLINK_TOTAL) return 0;
@@ -52,11 +56,13 @@ const REFRACT = ARM_RING_SHAPES.rings
 const VERT = `attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `precision mediump float;
-uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow,flash;uniform vec3 rift[${RIFTS}];varying vec2 v;
+uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow,flash,appear;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
 const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
+float hsh(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hsh(i),hsh(i+vec2(1.,0.)),f.x),mix(hsh(i+vec2(0.,1.)),hsh(i+1.),f.x),f.y);}
 void main(){
   vec2 P=v*(S+2.*PAD)-PAD;
   vec2 u=P/S;
@@ -140,13 +146,21 @@ ${REFRACT}
   c.rgb+=iris*(.12+.38*shine)*GLOW*c.a;
   float glint=smoothstep(6.,1.5,length(P-vec2(440.,170.)))+smoothstep(6.,1.5,length(P-vec2(523.,172.)));
   c.rgb+=glint*clamp(cy*2.,0.,1.)*.55*shine*c.a;
+  if(appear<1.){
+    float front=appear*1.3-.15-(1.-P.y/S.y)-(vn(P/40.)*.7+vn(P/12.)*.3-.5)*.18;
+    c.rgb+=GLOW*smoothstep(.05,0.,front)*1.5*c.a;
+    c*=smoothstep(0.,.006,front);
+  }
   gl_FragColor=c;
 }`;
 
 type AokoOptions = {
   gutter: () => { left: number; right: number };
   reducedMotion?: boolean;
+  summon?: boolean;
 };
+
+export const preloadAoko = () => [...[SRC, RIG, BLINK, ARM, FILL].map(loadImage), ...preloadFx()];
 
 // 手层在手掌一带（wg=1）的位移，须与 FRAG 里的 dh 同步：平移 d，再以掌心为中心放大 zoom。
 function handPose(t: number): HandPose {
@@ -204,10 +218,11 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   const lid = gl.getUniformLocation(program, "lid");
   const glow = gl.getUniformLocation(program, "glow");
   const burst = gl.getUniformLocation(program, "flash");
+  const appearAt = gl.getUniformLocation(program, "appear");
   const riftAt = gl.getUniformLocation(program, "rift");
   const riftData = new Float32Array(RIFTS * 3);
 
-  return (t: number, closed: number, light: number, flash: number) => {
+  return (t: number, closed: number, light: number, flash: number, appear: number) => {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -215,12 +230,13 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
     gl.uniform1f(lid, closed);
     gl.uniform1f(glow, light);
     gl.uniform1f(burst, flash);
+    gl.uniform1f(appearAt, appear);
     gl.uniform3fv(riftAt, rifts(t, riftData));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
 }
 
-export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = false }: AokoOptions) {
+export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = false, summon = false }: AokoOptions) {
   const root = document.createElement("div");
   root.setAttribute("aria-hidden", "true");
   // 在星空层（opacity-70）之外挂载，立绘不跟着点阵一起变暗。
@@ -237,13 +253,16 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   parent.appendChild(root);
   const fx = aokoFx(back, front);
 
-  let render: ((t: number, closed: number, light: number, flash: number) => void) | null = null;
+  let render: ((t: number, closed: number, light: number, flash: number, appear: number) => void) | null = null;
   let stopped = false;
   let raf = 0;
   let last = 0;
   const t0 = performance.now();
   const gap = () => BLINK_GAP[0] + Math.random() * (BLINK_GAP[1] - BLINK_GAP[0]);
   let blinkAt = 1.5 + Math.random() * 2;
+  // 贴图都到了才开始计时，不然头几段渐显落在空画布上。
+  let revealAt: number | null = null;
+  if (summon && !reducedMotion) front.style.opacity = "0";
   const frame = (now: number) => {
     if (stopped) return;
     raf = requestAnimationFrame(frame);
@@ -261,8 +280,12 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   };
   const draw = (t: number, closed = 0) => {
     const state = reducedMotion ? STILL : fxState(t);
-    render?.(t, closed, glowOf(state), state.flash);
-    fx.render(state, handPose(t));
+    const p = revealAt === null ? 1 : (t - revealAt) / REVEAL_S;
+    render?.(t, closed, glowOf(state), state.flash, smooth(0.12, 0.55, p));
+    if (revealAt === null) return fx.render(state, handPose(t));
+    front.style.opacity = String(smooth(0.7, 1, p));
+    fx.render(state, handPose(t), { floor: smooth(0, 0.25, p), ring: smooth(0.55, 0.85, p) });
+    if (p >= 1) revealAt = null;
   };
 
   const layout = () => {
@@ -295,12 +318,14 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     fx.setHand({ img: arm, box: ARM_BOX, palm: PALM });
     render = rigRenderer(canvas, art, rig, blink, arm, fill);
     if (!render) {
+      front.style.opacity = "";
       const ctx = canvas.getContext("2d");
       const k = canvas.width / (SRC_W + 2 * PAD);
       ctx?.drawImage(art, PAD * k, PAD * k, SRC_W * k, SRC_H * k);
       fx.render(STILL, handPose(0));
       return;
     }
+    if (summon && !reducedMotion) revealAt = (performance.now() - t0) / 1000;
     draw(0);
     if (!reducedMotion) raf = requestAnimationFrame(frame);
   });

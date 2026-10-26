@@ -8,7 +8,8 @@ import { type Hand, type HandPose, armRings, cutArm, glints } from "./aoko-rings
 export type { FxState } from "./aoko-paint";
 export type { HandPose } from "./aoko-rings";
 
-const ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
+export const FX_ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
+const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine"];
 
 // 在 img0628-HD（2100×1260）上量的位置，按两眼中点和瞳距换算进立绘：镜头瞳距 196px、立绘 85px。
 const SHOT_K = 85 / 196;
@@ -43,15 +44,28 @@ export function fxState(t: number): FxState {
 
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
+// 同一张图只取一次：秘技按到第一个键就开始预取，立绘挂上时拿到的是同一个 promise。取失败的不留，下次重取。
+const images = new Map<string, Promise<HTMLImageElement>>();
 export function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
+  const cached = images.get(src);
+  if (cached) return cached;
+  const load = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.decoding = "async";
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
   });
+  images.set(src, load);
+  load.catch(() => images.delete(src));
+  return load;
 }
+
+export const preloadFx = () => FX_NAMES.map((name) => loadImage(FX_ASSET(name)));
+
+// 召唤时分层渐显：地面法阵先亮，身后光环随后，各自 0–1。
+export type Reveal = { floor: number; ring: number };
+const SHOWN: Reveal = { floor: 1, ring: 1 };
 
 type Sprites = Record<"band" | "runes" | "ring" | "octa", HTMLImageElement> & Record<"bolt" | "boltFine", HTMLCanvasElement>;
 
@@ -92,10 +106,12 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     ctx.globalCompositeOperation = "lighter";
   };
 
-  const drawBack = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState) => {
+  const drawBack = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, show: Reveal) => {
     const { power, flash, t } = state;
     begin(ctx);
+    ctx.globalAlpha = show.floor;
     if (floor) paintFloor(ctx, floor, t * 0.03, 0.8 + 0.2 * power, FLOOR);
+    ctx.globalAlpha = show.ring;
 
     for (let i = 0; i < 16; i++) {
       const p = (t * (0.08 + hash(i) * 0.1) + hash(i + 40)) % 1;
@@ -135,17 +151,17 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     ctx.fillRect(-RING_R * 1.2, -RING_R * 1.2, RING_R * 2.4, RING_R * 2.4);
     ctx.save();
     ctx.rotate(t * 0.04);
-    ctx.globalAlpha = Math.min(1, ring);
+    ctx.globalAlpha = Math.min(1, ring) * show.ring;
     circle(ctx, s.band, RING_R);
-    ctx.globalAlpha = Math.min(1, ring * 0.55);
+    ctx.globalAlpha = Math.min(1, ring * 0.55) * show.ring;
     circle(ctx, s.band, RING_R);
     ctx.restore();
-    ctx.globalAlpha = Math.min(1, ring);
+    ctx.globalAlpha = Math.min(1, ring) * show.ring;
     ctx.rotate(-t * 0.07);
     circle(ctx, s.runes, RUNE_R / 0.96);
     ctx.restore();
 
-    ctx.globalAlpha = 0.16 + 0.3 * power + 0.4 * flash;
+    ctx.globalAlpha = (0.16 + 0.3 * power + 0.4 * flash) * show.ring;
     ctx.fillStyle = tone(SCENE.white, 1);
     ctx.fillRect(RING_X - 1, RING_Y - RING_R * 1.5, 2, RING_R * 3);
     ctx.fillRect(RING_X - RING_R * 1.6, RING_Y - 1, RING_R * 3.2, 2);
@@ -206,14 +222,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     }
   };
 
-  const ready = Promise.all([
-    loadImage(ASSET("band")),
-    loadImage(ASSET("runes")),
-    loadImage(ASSET("ring")),
-    loadImage(ASSET("octa")),
-    loadImage(ASSET("bolt")),
-    loadImage(ASSET("bolt-fine")),
-  ]).then(([band, runes, ring, octa, bolt, boltFine]) => {
+  const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine]) => {
     sprites = { band, runes, ring, octa, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
     floor = floorTextures(runes);
   })
@@ -235,11 +244,11 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     setHand(next: Hand) {
       hand = next;
     },
-    render(state: FxState, pose: HandPose) {
+    render(state: FxState, pose: HandPose, show = SHOWN) {
       if (!sprites) return;
       const b = back.getContext("2d");
       const f = front.getContext("2d");
-      if (b) drawBack(b, sprites, state);
+      if (b) drawBack(b, sprites, state, show);
       if (f) drawFront(f, sprites, state, pose);
     },
   };

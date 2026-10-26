@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// 从《魔法使之夜》青子施法那段演出拆出的图层，导出立绘特效用的贴图到 public/mascots/aoko-fx-*.webp。
+// 从《魔法使之夜》解包的演出图层里导出立绘特效与召唤秘技用的贴图到 public/mascots/aoko-fx-*.webp。
 // 图层不在仓库里（TYPE-MOON 素材），用法：
-//   node scripts/aoko-fx-assets.ts <图层目录>
+//   node scripts/aoko-fx-assets.ts <演出用图层目录>
 // 目录里要有 imgNNNN-HD.png 这批放大版。需要 ImageMagick 7（magick）。
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -28,6 +28,16 @@ const BOLTS = [
 ];
 const BOLT_SIZE = "800x480!";
 
+// 召唤秘技（aoko-summon.ts）用的：法印与星芒按原比例缩进透明正方形；闪电是别的演出里从画面边缘劈进来的整帧（2493×1500），保留整帧。
+const SEALS = [
+  { src: "img1623", out: "seal-star", size: 512 },
+  { src: "img1627", out: "seal-wheel", size: 512 },
+  { src: "img0456", out: "burst", size: 512 },
+  { src: "img1046", out: "flare", size: 640 },
+];
+const STRIKES = ["img2349", "img2350", "img2351", "img2352", "img2353", "img2354"];
+const STRIKE_SIZE = "1280x770!";
+
 function sourceDir() {
   try {
     const { positionals } = parseArgs({ strict: true, allowPositionals: true, options: {} });
@@ -48,4 +58,11 @@ for (const c of CIRCLES) {
 for (const b of BOLTS) {
   execFileSync("magick", [join(dir, `${b.src}-HD.png`), "-resize", BOLT_SIZE, ...webp, join(outDir, `aoko-fx-${b.out}.webp`)]);
 }
+for (const s of SEALS) {
+  const box = `${s.size}x${s.size}`;
+  execFileSync("magick", [join(dir, `${s.src}-HD.png`), "-resize", box, "-background", "none", "-gravity", "center", "-extent", box, ...webp, join(outDir, `aoko-fx-${s.out}.webp`)]);
+}
+STRIKES.forEach((src, i) => {
+  execFileSync("magick", [join(dir, `${src}-HD.png`), "-resize", STRIKE_SIZE, ...webp, join(outDir, `aoko-fx-strike-${i + 1}.webp`)]);
+});
 console.log(`写到 ${outDir}`);
