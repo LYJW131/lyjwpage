@@ -39,7 +39,7 @@
 - **Hand-offs carry lyjw's constraints:** [[handoff-carry-user-constraints]].
 - **Secrets** piped on the Mac with `rotate-secret`, never pasted: [[credentials-pipe-only]]. Secret checks that flag memory get fixed, not the memory: [[repo-memory-mirror]].
 - **Commit identity:** as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
-- **X/Twitter:** call api.x.com directly: [[x-api-via-proxy]].
+- **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. api.x.com via proxy (app-only, public only) is the fallback when the connector is missing: [[x-api-via-proxy]].
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment

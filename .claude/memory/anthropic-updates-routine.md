@@ -12,7 +12,7 @@ Sources (expanded 2026-10-14 06:32Z at lyjw's request "信息来源可以多一�
 - anthropic: bcherny, _catwu, trq212, alexalbert__, felixrieseberg
 - builders: poteto (土豆 = Lauren Tan), mattpocockuk ("the person lyjw sent"), karpathy, HamelHusain
 
-X cursors are kept per account (`cursors.x` = {username: since_id}). A new source or account reports only its last 36h on first sight. GitHub releases.atom is blocked in cloud sessions, so use raw CHANGELOG files instead.
+Since 2026-10-26 (lyjw「改mcp 顺便一起看我的点赞和收藏」) X is read through the `LYJW MCP Portal` connector ([[x-mcp-portal]]), not the api.x.com proxy: `fetch.py x-plan` emits JS snippets, the reader runs them via `portal_codemode_execute`, `fetch.py x-ingest` books them. New sources `x-likes` / `x-bookmarks` (lyjw's own likes and bookmarks; cursor = last 50 seen ids). X cursors are kept per account (`cursors.x` = {username: since_id}). A new source or account reports only its last 36h on first sight. GitHub releases.atom is blocked in cloud sessions, so use raw CHANGELOG files instead.
 
 **State:** `/mnt/project-files/anthropic-updates/` — `state.json` (cursors for claude-code version and x since_id, `ledger` of open "可吸收" items), `seen/<source>.txt` seen-key sets, `runs/` records, `<Shanghai date>.md` summary (appends when the file exists). `fetch.py scan` writes `pending.json`; `commit <sources>` advances only after the summary is read back.
 
