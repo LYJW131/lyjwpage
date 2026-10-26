@@ -263,9 +263,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
       # 拿钥匙的 action 用默认分支上的版本：PR 能改仓库里那份，前面跑过的 PR 代码也能改工作区里那份
+      # 先删掉同名目录：前面跑过的 PR 代码可能预先放了带钩子的 .git 或指出去的符号链接
+      - id: clean
+        if: steps.prompt.outcome == 'success'
+        continue-on-error: true
+        run: rm -rf .verify-agent-main
       - uses: actions/checkout@v5
         id: trusted
-        if: steps.prompt.outcome == 'success'
+        if: steps.clean.outcome == 'success'
         continue-on-error: true
         with:
           ref: ${{ github.event.repository.default_branch }}
