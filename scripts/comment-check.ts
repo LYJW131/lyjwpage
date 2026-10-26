@@ -25,7 +25,7 @@ TYPESAFE_API_KEY 调 Jev（云端出口代理会自动带上）。退出码 0 �
 
 export const JEV_MODEL = "jev-1.14.0";
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-// 官方起步阈值是 0.7 / 0.3；标注集补进线上漏报后，0.6 召回明显更高、精确率几乎不掉，所以 YES 取 0.6。
+// 官方起步阈值是 0.7 / 0.3；在含线上漏报的标注集上 0.6 召回明显更高、精确率几乎不掉，所以 YES 取 0.6。
 // [MAYBE, YES) 一档也列出来供参考，但不让结论变 neutral。改这几个值先用 scripts/comment-check-calibrate.ts 在标注集上比一遍
 export const YES = 0.6;
 export const MAYBE = 0.5;
