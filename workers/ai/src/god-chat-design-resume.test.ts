@@ -139,8 +139,10 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   const events = await parseEvents(response);
   assert.ok(events.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 2));
   assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1, peeked: 0 });
+  // 改签名的首字符：末字符的低位是 base64url 填充位，改末尾可能解出同样的签名
+  const [body, signature] = token.split(".");
   for (const invalid of [
-    `${token.slice(0, -2)}xx`,
+    `${body}.${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}`,
     await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1, sessionId: "sesn_test" }, env.BUILD_SESSION_SECRET!),
     await signBuildToken({ kind: "design", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!),
     await signBuildToken({ kind: "plan", id, expiresAt: Date.now() + 10000, sessionId: "sesn_test" }, env.BUILD_SESSION_SECRET!),
