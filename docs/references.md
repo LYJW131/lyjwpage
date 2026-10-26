@@ -176,6 +176,10 @@
   - 是什么：Cubism SDK 的自动眨眼，默认闭眼 0.1s、闭住 0.05s、睁眼 0.15s，下一次眨眼的时刻随机。
   - 取了什么：三段时序与随机间隔；按人眼实测「闭比睁快约四成」改成闭 0.09s ease-in、停 0.04s、睁 0.17s ease-out，间隔取 2.5–6.5s，另加两成概率连眨。眼皮不是插值参数，而是上下眼线朝闭眼贴图的闭眼线会合。
   - 状态：采用。落在 `src/components/space-backdrop/aoko.ts#lidAt`。
+- **《魔法使之夜》里苍崎青子施法的那段演出**（TYPE-MOON，游戏内拆出的图层，不在仓库里）
+  - 是什么：一组整帧镜头与透明图层：俯视的地面大法阵（img0607/0609）、伸掌时身后的竖直光环与电弧（img0627–0630）、平视远景里脚下的扁椭圆法阵（img0633）、环绕手臂的法阵（img0664/0667）、发射瞬间的星芒（img0660），以及拆开的法阵与电弧贴图。
+  - 取了什么：法阵与电弧直接用拆出的贴图；身后光环与电弧的位置和大小在 img0628 上量，按两眼中点和瞳距换算到立绘上；人物被法阵照亮的配色取 img0611 与 img0612 的对照；地面法阵的八片刃照 img0607/0609 用代码画。地面法阵按 lyjw 的要求比镜头里小，套在臂上的环按立绘「手掌正对观者」的透视画成近乎正圆，与 img0667 侧视里的扁椭圆不同。
+  - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
   - 取了什么：彩铅的做法，一个主斜向的短排线、浅深两色叠层、形体边缘颜色加厚、暗部换方向交叉排线、断续出头的深色轮廓、灯旁的暖黄光晕；配色按原片关键帧取色。没装 skill，也没拷代码：排线改成按种子生成的图块，每帧拿它填形状。手写字用 [霞鹜漫黑](https://github.com/lxgw/LxgwMarkerGothic)（OFL），只取第 08 章用到的字。还取了原片把项目里的梗画成屋里摆设的做法，第 08 章每个机位的彩蛋照这个放。

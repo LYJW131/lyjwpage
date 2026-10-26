@@ -1,3 +1,5 @@
+import { aokoFx, fxState, loadImage, ORB, STILL, type FxState, type HandPose } from "./aoko-fx";
+
 const SRC = "/mascots/aoko.webp";
 // 绑定图 RGB 分别是头发、裙摆、头部的权重（0 不动，1 摆幅最大），与立绘同框；离线生成，换立绘要一起重出。
 const RIG = "/mascots/aoko-rig.png";
@@ -9,6 +11,7 @@ const BLINK_BOX = [360, 52, 256];
 const ARM = "/mascots/aoko-arm.webp";
 const FILL = "/mascots/aoko-fill.webp";
 const ARM_BOX = [204, 146, 252, 268];
+const PALM = [320, 265];
 // 着色器坐标系：位置与摆幅都按这套原图像素写，与贴图实际分辨率无关。
 const SRC_W = 934;
 const SRC_H = 1873;
@@ -16,6 +19,7 @@ const SRC_H = 1873;
 const PAD = 28;
 const MAX_WIDTH = 320;
 const EDGE = 12;
+const FX_OVERHANG = 360;
 const FRAME_MS = 1000 / 30;
 // 眨眼时序取 Live2D CubismEyeBlink 的默认值（闭 0.1s、停 0.05s、睁 0.15s）并按实测「闭比睁快约四成」微调；间隔随机，免得像钟摆。
 const BLINK_CLOSE = 0.09;
@@ -35,8 +39,9 @@ function lidAt(dt: number) {
 const VERT = `attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `precision mediump float;
-uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid;varying vec2 v;
+uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow;varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
+const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
 void main(){
   vec2 P=v*(S+2.*PAD)-PAD;
@@ -89,15 +94,23 @@ void main(){
   float wg=smoothstep(455.,365.,Q0.x)*smoothstep(372.,300.,Q0.y);
   float was=smoothstep(0.,.5,texture2D(arm,clamp(u0,0.,1.)).a*inside(u0))*smoothstep(.03,.25,wg);
   c=c*(1.-was)+texture2D(fill,clamp(u0,0.,1.))*was;
-  vec2 palm=vec2(320.,265.);
+  vec2 palm=vec2(${PALM[0]}.,${PALM[1]}.);
   vec2 dh=wg*(vec2(-.5,-1.)*5.*sin(t*.8+.4)+vec2(.4,-.3)*2.*sin(t*1.9)+(Q0-palm)*.014*(.5+.5*sin(t*2.4-.8)));
   vec2 au=(Q0-dh-AB)/AS;
   vec4 ar=texture2D(arm,clamp(au,0.,1.))*inside(au);
   c=ar+c*(1.-ar.a);
-  const vec2 ORB=vec2(368.,318.);
+  const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
   const vec3 GLOW=vec3(.45,.9,1.);
   float pulse=.5+.5*sin(t*2.4);
   float cy=clamp((c.b-c.r)*2.2,0.,1.);
+  vec3 base=c.rgb/max(c.a,.001);
+  float L=dot(base,vec3(.299,.587,.114));
+  vec3 duo=L<.5?mix(SHADE,TINT,L*2.):mix(TINT,HIGH,L*2.-1.);
+  vec2 px=3./S;
+  float near=texture2D(img,s+vec2(px.x,0.)).a+texture2D(img,s-vec2(px.x,0.)).a+texture2D(img,s+vec2(0.,px.y)).a+texture2D(img,s-vec2(0.,px.y)).a;
+  float rim=clamp((c.a-near*.25)*2.,0.,1.);
+  base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
+  c.rgb=base*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
   c.rgb+=smoothstep(170.,20.,length(P-ORB))*(.05+.09*pulse)*GLOW*c.a;
   vec2 eL=(P-vec2(447.,180.))/vec2(26.,30.);
@@ -115,15 +128,15 @@ type AokoOptions = {
   reducedMotion?: boolean;
 };
 
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
+// 手层在手掌一带（wg=1）的位移，须与 FRAG 里的 dh 同步：平移 d，再以掌心为中心放大 zoom。
+function handPose(t: number): HandPose {
+  const a = 5 * Math.sin(t * 0.8 + 0.4);
+  const b = 2 * Math.sin(t * 1.9);
+  return { dx: -0.5 * a + 0.4 * b, dy: -a - 0.3 * b, zoom: 1 / (1 - 0.014 * (0.5 + 0.5 * Math.sin(t * 2.4 - 0.8))) };
 }
+
+// 闲置时也带一层蓝紫重打光：人站在亮着的法阵里，对照 img0611（原色）与 img0612（被法阵照亮）。
+const glowOf = ({ power, flash }: FxState) => 0.32 + 0.55 * power + 0.25 * flash;
 
 function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTMLImageElement, blink: HTMLImageElement, arm: HTMLImageElement, fill: HTMLImageElement) {
   const gl = canvas.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
@@ -169,25 +182,39 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   gl.uniform1i(gl.getUniformLocation(program, "fill"), 4);
   const time = gl.getUniformLocation(program, "t");
   const lid = gl.getUniformLocation(program, "lid");
+  const glow = gl.getUniformLocation(program, "glow");
 
-  return (t: number, closed = 0) => {
+  return (t: number, closed: number, light: number) => {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(time, t);
     gl.uniform1f(lid, closed);
+    gl.uniform1f(glow, light);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
 }
 
 export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = false }: AokoOptions) {
-  const canvas = document.createElement("canvas");
-  canvas.setAttribute("aria-hidden", "true");
+  const root = document.createElement("div");
+  root.setAttribute("aria-hidden", "true");
   // 在星空层（opacity-70）之外挂载，立绘不跟着点阵一起变暗。
-  canvas.style.cssText = "position:fixed;z-index:-10;pointer-events:none;filter:drop-shadow(0 12px 24px var(--paper-shadow));";
-  parent.appendChild(canvas);
+  root.style.cssText = "position:fixed;inset:0;z-index:-10;pointer-events:none;";
+  const layer = (css: string) => {
+    const c = document.createElement("canvas");
+    c.style.cssText = `position:absolute;${css}`;
+    root.appendChild(c);
+    return c;
+  };
+  // 特效画布从卡片列右缘往左多铺 FX_OVERHANG 到视口右缘：地面法阵的左半边伸进卡片背后，在画布左缘渐隐，卡片间隙里不露硬边。
+  const fade = "top:0;mask-image:linear-gradient(to right,transparent,#000 120px);";
+  const back = layer(fade);
+  const canvas = layer("filter:drop-shadow(0 12px 24px var(--paper-shadow));");
+  const front = layer(fade);
+  parent.appendChild(root);
+  const fx = aokoFx(back, front);
 
-  let render: ((t: number, closed?: number) => void) | null = null;
+  let render: ((t: number, closed: number, light: number) => void) | null = null;
   let stopped = false;
   let raf = 0;
   let last = 0;
@@ -207,7 +234,12 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     // 眨眼只有约 0.3 秒，这段按刷新率逐帧画，30fps 限帧下眼皮只剩两三帧会显得跳。
     if (!closed && now - last < FRAME_MS) return;
     last = now;
-    render?.(t, closed);
+    draw(t, closed);
+  };
+  const draw = (t: number, closed = 0) => {
+    const state = reducedMotion ? STILL : fxState(t);
+    render?.(t, closed, glowOf(state));
+    fx.render(state, handPose(t));
   };
 
   const layout = () => {
@@ -221,32 +253,38 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     canvas.height = Math.round(cssH * dpr);
     canvas.style.width = `${cssW}px`;
     canvas.style.height = `${cssH}px`;
-    canvas.style.left = `${(left + right - width) / 2 - PAD * scale}px`;
-    canvas.style.bottom = `${Math.max(8, (innerHeight - SRC_H * scale) * 0.18) - PAD * scale}px`;
-    render?.((performance.now() - t0) / 1000);
+    const x = (left + right - width) / 2;
+    const bottom = Math.max(8, (innerHeight - SRC_H * scale) * 0.18);
+    canvas.style.left = `${x - PAD * scale}px`;
+    canvas.style.bottom = `${bottom - PAD * scale}px`;
+    const fxLeft = Math.max(0, left - FX_OVERHANG);
+    fx.layout({ left: fxLeft, ox: x, oy: innerHeight - bottom - SRC_H * scale, scale, dpr }, right - fxLeft, innerHeight);
+    draw(reducedMotion ? 0 : (performance.now() - t0) / 1000);
   };
   layout();
 
-  void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(BLINK), loadImage(ARM), loadImage(FILL)]).then(([art, rig, blink, arm, fill]) => {
+  void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(BLINK), loadImage(ARM), loadImage(FILL), fx.ready]).then(([art, rig, blink, arm, fill]) => {
     if (stopped) return;
+    fx.setHand({ img: arm, box: ARM_BOX, palm: PALM });
     render = rigRenderer(canvas, art, rig, blink, arm, fill);
     if (!render) {
       const ctx = canvas.getContext("2d");
       const k = canvas.width / (SRC_W + 2 * PAD);
       ctx?.drawImage(art, PAD * k, PAD * k, SRC_W * k, SRC_H * k);
+      fx.render(STILL, handPose(0));
       return;
     }
-    render(0);
+    draw(0);
     if (!reducedMotion) raf = requestAnimationFrame(frame);
   });
 
   return {
-    el: canvas,
+    el: root,
     layout,
     stop() {
       stopped = true;
       cancelAnimationFrame(raf);
-      canvas.remove();
+      root.remove();
     },
   };
 }
