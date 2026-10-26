@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { Client } from "@pinesandbox/computer";
 
@@ -11,7 +12,7 @@ const HELP = `用法：node scripts/region-check.ts [--url https://lyjw.me] [--r
 结果写 <out>/<地区>/（result.json 与 screenshot.png），有 GITHUB_STEP_SUMMARY 时写汇总表。
 退出码 0 全部通过，1 有地区报问题或没跑完。需要 PINECOMPUTER_API_KEY。`;
 
-// 单地区 agent 时长上限：实测一轮完整巡检约 2 分钟，再长就是卡住了，钱照样在花。
+// 单地区 agent 时长上限：留出一轮完整巡检的余量，超过就是卡住了，钱照样在花。
 const AGENT_WALL_MS = 240_000;
 // Pine 自己按 maxWallMs 收尾；这段余量之后还没到终态就不再等，finally 里 kill 掉止损。
 const WAIT_GRACE_MS = 120_000;
@@ -26,6 +27,27 @@ const GOAL = (url: string) => `You are checking the personal site ${url} the way
 
 type Issue = { where: string; what: string };
 type RegionResult = { region: string; state: string; ok: boolean; issues: Issue[]; unreachable?: string[]; seconds: number; costUsd?: number; summary?: string };
+
+export function judgeRegion(state: string, resultJson: string | undefined, screenshotBytes: number): Pick<RegionResult, "ok" | "issues" | "unreachable"> {
+  const issues: Issue[] = [];
+  let unreachable: string[] = [];
+  let reported = false;
+  let parsed: { ok?: unknown; issues?: unknown; unreachable?: unknown } | undefined;
+  try {
+    parsed = resultJson === undefined ? undefined : JSON.parse(resultJson);
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed && typeof parsed.ok === "boolean" && Array.isArray(parsed.issues)) {
+    reported = parsed.ok && parsed.issues.length === 0;
+    issues.push(...(parsed.issues as Issue[]));
+    if (Array.isArray(parsed.unreachable)) unreachable = parsed.unreachable as string[];
+  } else {
+    issues.push({ where: "run", what: "agent did not deliver a valid result.json" });
+  }
+  if (screenshotBytes === 0) issues.push({ where: "run", what: "agent did not deliver screenshot.png" });
+  return { ok: state === "completed" && reported && screenshotBytes > 0, issues, unreachable };
+}
 
 async function checkRegion(client: Client, url: string, region: string, outDir: string): Promise<RegionResult> {
   const started = Date.now();
@@ -48,27 +70,17 @@ async function checkRegion(client: Client, url: string, region: string, outDir: 
       costUsd: turn.result?.usage?.cost?.total ?? undefined,
       summary: turn.result?.summary,
     };
-    let reported = false;
-    let screenshot = false;
+    let resultJson: string | undefined;
+    let screenshotBytes = 0;
     for (const file of turn.result?.artifacts ?? []) {
       const name = file.relativePath.split("/").pop()!;
       if (name !== "result.json" && name !== "screenshot.png") continue;
       const bytes = Buffer.from(await session.readFile(file.relativePath));
       writeFileSync(join(dir, name), bytes);
-      if (name === "screenshot.png") screenshot = bytes.length > 0;
-      if (name === "result.json") {
-        const parsed = JSON.parse(bytes.toString("utf8")) as { ok?: unknown; issues?: unknown; unreachable?: unknown };
-        if (typeof parsed.ok === "boolean" && Array.isArray(parsed.issues)) {
-          reported = parsed.ok && parsed.issues.length === 0;
-          result.issues = parsed.issues as Issue[];
-        } else {
-          result.issues.push({ where: "run", what: "result.json does not have ok and issues" });
-        }
-        result.unreachable = Array.isArray(parsed.unreachable) ? (parsed.unreachable as string[]) : [];
-      }
+      if (name === "screenshot.png") screenshotBytes = bytes.length;
+      else resultJson = bytes.toString("utf8");
     }
-    if (!screenshot) result.issues.push({ where: "run", what: "agent did not deliver screenshot.png" });
-    result.ok = turn.state === "completed" && reported && screenshot;
+    Object.assign(result, judgeRegion(turn.state, resultJson, screenshotBytes));
     return result;
   } finally {
     await computer.kill().catch(() => undefined);
@@ -126,4 +138,4 @@ async function main() {
   if (!results.every((r) => r.ok)) process.exitCode = 1;
 }
 
-await main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();
