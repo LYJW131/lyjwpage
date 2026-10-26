@@ -136,11 +136,15 @@ if (provider === "deepseek") model.compat = { ...model.compat, supportsReasoning
 
 let report: unknown = null;
 let effortSent: string | undefined;
+// 产物目录 bash 也能写：PR 代码能把 work/ 或其中的文件预先做成指出去的链接，而这里在沙箱外写
 const workLog = (name: string, text: string) => {
   if (!outDir) return null;
-  const file = path.join(outDir, "work", name);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
+  const dir = path.join(outDir, "work");
+  fs.mkdirSync(dir, { recursive: true });
+  if (!realInside(outDir, dir)) throw new Error(`${dir} 指出了产物目录`);
+  const file = path.join(dir, name);
+  fs.rmSync(file, { force: true });
+  fs.writeFileSync(file, text, { flag: "wx" });
   return file;
 };
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: undefined });
@@ -271,7 +275,8 @@ const { session } = await createAgentSession({
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
 });
 
-const transcript = values.transcript ? fs.createWriteStream(values.transcript) : null;
+if (values.transcript) fs.rmSync(values.transcript, { force: true });
+const transcript = values.transcript ? fs.createWriteStream(values.transcript, { flags: "wx" }) : null;
 // 流式事件每次都带着整条消息，一轮能写出好几 GB；完整内容在 message_end 与工具事件里都有
 const STREAM_EVENTS = new Set(["message_update", "provider_stream_event", "tool_execution_update"]);
 const toolCounts = new Map<string, number>();

@@ -149,7 +149,9 @@ jobs:
       - if: always()
         continue-on-error: true
         run: |
-          mkdir -p "$RUNNER_TEMP/verify-out/ab"
+          rm -rf "$RUNNER_TEMP/verify-out/ab"
+          mkdir "$RUNNER_TEMP/verify-out/ab"
+          set -o noclobber
           printf '%s' "$RESULT" > "$RUNNER_TEMP/verify-out/ab/result.json"
           printf '%s' "$OUTCOME" > "$RUNNER_TEMP/verify-out/ab/outcome"
           [ -f "$EXECUTION" ] && cp "$EXECUTION" "$RUNNER_TEMP/verify-out/ab/execution.json" || true
@@ -157,6 +159,9 @@ jobs:
           RESULT: ${{ steps.claude.outputs.structured_output }}
           OUTCOME: ${{ steps.claude.outcome }}
           EXECUTION: ${{ steps.claude.outputs.execution_file }}
+      # 验证员能在产物目录里建符号链接，upload-artifact 会把链接指向的文件内容一起传上去
+      - if: always()
+        run: find "$RUNNER_TEMP/verify-out" -type l -delete
       - id: ci
         if: always()
         timeout-minutes: 6
@@ -259,7 +264,7 @@ jobs:
         id: pi
         if: steps.prompt.outcome == 'success'
         continue-on-error: true
-        # runner 首轮 40 分钟、没交结果再追问 5 分钟，外加装 pi
+        # 盖住 runner 的首轮上限（action 的 timeout-min）加追问（verify-agent.ts#FOLLOW_UP_MS），外加装 pi
         timeout-minutes: 50
         with:
           role: verifier
@@ -273,7 +278,9 @@ jobs:
       - if: always()
         continue-on-error: true
         run: |
-          mkdir -p "$RUNNER_TEMP/verify-out/ab"
+          rm -rf "$RUNNER_TEMP/verify-out/ab"
+          mkdir "$RUNNER_TEMP/verify-out/ab"
+          set -o noclobber
           printf '%s' "$RESULT" > "$RUNNER_TEMP/verify-out/ab/result.json"
           printf '%s' "$USAGE" > "$RUNNER_TEMP/verify-out/ab/usage.json"
           printf '%s' "${OUTCOME:-skipped}" > "$RUNNER_TEMP/verify-out/ab/outcome"
@@ -281,6 +288,9 @@ jobs:
           RESULT: ${{ steps.pi.outputs.structured_output }}
           USAGE: ${{ steps.pi.outputs.usage }}
           OUTCOME: ${{ steps.pi.outcome }}
+      - if: always()
+        continue-on-error: true
+        run: find "$RUNNER_TEMP/verify-out" -type l -delete
       - uses: actions/upload-artifact@v4
         if: always()
         continue-on-error: true

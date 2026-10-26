@@ -44,7 +44,9 @@ runs:
     - shell: bash
       run: |
         runner="$RUNNER_TEMP/verify-runner"
-        mkdir -p "$runner"
+        # 前面的安装与撤回证明跑过 PR 的代码，可能在这里预先放了文件或指出去的符号链接
+        rm -rf "$runner"
+        mkdir "$runner"
         if git cat-file -e "origin/$DEFAULT_BRANCH:scripts/verify-agent.ts" 2>/dev/null; then
           git archive "origin/$DEFAULT_BRANCH" scripts shared | tar -x -C "$runner"
         else
@@ -69,6 +71,8 @@ runs:
     - shell: bash
       run: |
         umask 077
+        # 已有同名文件或链接就报错，不顺着链接把钥匙写到别处
+        set -o noclobber
         printf '%s' "$ANTHROPIC_API_KEY" > "$RUNNER_TEMP/verify-runner/anthropic-key"
         printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/verify-runner/github-token"
       env:
