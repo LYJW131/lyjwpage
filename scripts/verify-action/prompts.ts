@@ -54,7 +54,7 @@ ${items}${again}
 // 修一个小问题后整份清单重验要多花几分钟：有上一份回执可当底时，只复验没过的、改动碰得到的项，其余带上次的证据沿用
 function againSection({ sha, level, text, changed }: Previous, ui: boolean) {
   const short = sha.slice(0, 7);
-  return `上一轮：这个 PR 在 ${short} 上已有一份回执（${level}），清单没变。之后 PR 自己改了这些文件（\`git diff ${sha} HEAD -- <文件>\` 看改了什么）：
+  return `上一轮：这个 PR 在 ${short} 上已有一份回执（${level}），清单与目标分支没变。之后这些文件变了（含合进来的目标分支改动；\`git diff ${sha} HEAD -- <文件>\` 看改了什么）：
 ${fileList(changed)}
 
 这轮只复验受影响的项，其余沿用：

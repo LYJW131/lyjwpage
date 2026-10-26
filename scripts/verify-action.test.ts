@@ -253,24 +253,27 @@ test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的�
   assert.ok(receipt.split("\n").includes("| V1 | a\\\\\\|b | PASS | `C:\\dir` 与 `\\d+` |"));
 });
 
-test("previousReceipt：同一份清单、按的提交是 head 的祖先、之间 PR 自己改过文件时，拿最新那份回执当底；别的情况整轮重验", () => {
+test("previousReceipt：清单、目标分支都没变、按的提交是 head 的祖先、之间有改动且没碰规则与验证员文件时，拿最新那份 bot 回执当底；任一不满足就整轮重验", () => {
   const digest = "b".repeat(64);
   const old = "c".repeat(40);
-  const receipt = (sha: string, body = digest) =>
-    [`验证回执 ${sha}：verifier-failed`, stampLine({ sha, level: "verifier-failed", body }), "", "没过：", "- V2 FAIL：x", '<img src="https://example.test/a.png" alt="a" width="360">'].join("\n");
+  const receipt = (sha: string, { body = digest, base = "main" as string | null } = {}) =>
+    [`验证回执 ${sha}：verifier-failed`, stampLine({ sha, level: "verifier-failed", body, ...(base ? { base } : {}) }), "", "没过：", "- V2 FAIL：x", '<img src="https://example.test/a.png" alt="a" width="360">'].join("\n");
   const history = (changed: string[], ancestor = true): History => ({ isAncestor: () => ancestor, changed: () => changed });
   const bot = (body: string) => ({ user: { id: 338272049 }, body });
+  const args = { head: HEAD, body: digest, base: "main" };
   const comments = [bot(receipt("d".repeat(40))), { user: { id: 153256373 }, body: receipt(HEAD) }, bot(receipt(old))];
-  const args = { head: HEAD, body: digest, prFiles: ["src/a.ts", "src/b.ts"] };
-  const got = previousReceipt(comments, { ...args, history: history(["src/a.ts", "workers/core/x.ts"]) });
-  assert.deepEqual(got && { sha: got.sha, level: got.level, changed: got.changed }, { sha: old, level: "verifier-failed", changed: ["src/a.ts"] });
+  const got = previousReceipt(comments, { ...args, history: history(["src/a.ts", "shared/x.ts"]) });
+  assert.deepEqual(got && { sha: got.sha, level: got.level, changed: got.changed }, { sha: old, level: "verifier-failed", changed: ["src/a.ts", "shared/x.ts"] });
   assert.ok(got?.text.includes("V2 FAIL") && !got.text.includes("<img"));
-  assert.equal(previousReceipt([bot(receipt(old, "e".repeat(64)))], { ...args, history: history(["src/a.ts"]) }), null);
-  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["src/a.ts"], false) }), null);
-  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["workers/core/x.ts"]) }), null);
-  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["src/a.ts", "AGENTS.md"]) }), null);
-  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["src/a.ts", "scripts/verify-action.ts"]) }), null);
-  assert.equal(previousReceipt([bot(receipt(HEAD))], { ...args, history: history(["src/a.ts"]) }), null);
+  const none = (comment: string, changed = ["src/a.ts"], ancestor = true) => assert.equal(previousReceipt([bot(comment)], { ...args, history: history(changed, ancestor) }), null);
+  none(receipt(old, { body: "e".repeat(64) }));
+  none(receipt(old, { base: "release" }));
+  none(receipt(old, { base: null }));
+  none(receipt(old), ["src/a.ts"], false);
+  none(receipt(old), []);
+  none(receipt(old), ["src/a.ts", "AGENTS.md"]);
+  none(receipt(old), ["src/a.ts", "scripts/verify-action.ts"]);
+  none(receipt(HEAD));
 });
 
 test("verifierPrompt：有上一份回执时写明沿用规则、改过的文件与回执原文，没有时不出现这一节", () => {

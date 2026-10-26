@@ -489,7 +489,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
   ```
   验证回执 <被验提交的完整 SHA>：<等级>
-  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>"} -->
+  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>","base":"<PR 的目标分支>"} -->
 
   全过：V1 V2 …（有没过的就写「没过：」，逐项一行，检查与证据各截短）
   没验到：<至多三条，每条截短；多的与原文折进明细；没有就不写>

@@ -8,21 +8,19 @@ export type History = { isAncestor: (from: string, to: string) => boolean; chang
 // 回执原文过长多半是验证员把输出贴进了证据，整段塞进提示词得不偿失，这时照常整轮重验
 const MAX_TEXT = 12_000;
 
-// 上一份回执能给这轮当底的条件：清单与原话没变（body 摘要相同）、按的提交是 head 的祖先、之间 PR 自己改过文件，且没改规则文档或验证员自己的文件。
-// 只算 PR 自己的文件：合进来的 main 带的改动不在 PR 文件里；之间只合了 main 的，交给 verify-receipt 的 carried 判断，这里不接
-export function previousReceipt(comments: Comment[], { head, body, prFiles, history }: { head: string; body: string; prFiles: string[]; history: History }): Previous | null {
-  let last: { sha: string; level: string; body?: string | null; text: string } | null = null;
+// 上一份回执能给这轮当底的条件，沿用依赖的输入列全：清单与原话没变（body 摘要）、目标分支没变（回执戳里的 base，早先没记的不用）、
+// 按的提交是 head 的祖先、之间没改规则文档或验证员自己的文件。changed 是两个提交之间所有变了的路径，含合进来的 main 带的、改回目标分支版本的
+export function previousReceipt(comments: Comment[], { head, body, base, history }: { head: string; body: string; base: string; history: History }): Previous | null {
+  let last: { sha: string; level: string; body?: string | null; base?: string; text: string } | null = null;
   for (const comment of comments) {
     const { receipt } = parseComments([comment]);
     if (receipt) last = { ...receipt, text: comment.body ?? "" };
   }
-  if (!last || last.sha === head || last.body !== body || !history.isAncestor(last.sha, head)) return null;
-  const between = history.changed(last.sha, head);
-  if (between.some(isRuleOrVerifierFile)) return null;
-  const own = new Set(prFiles);
-  const changed = between.filter((file) => own.has(file));
+  if (!last || last.sha === head || last.body !== body || last.base !== base || !history.isAncestor(last.sha, head)) return null;
+  const changed = history.changed(last.sha, head);
+  if (changed.length === 0 || changed.some(isRuleOrVerifierFile)) return null;
   const text = last.text.split("\n").filter((line) => !line.startsWith("<img ")).join("\n").trim();
-  if (changed.length === 0 || text.length > MAX_TEXT) return null;
+  if (text.length > MAX_TEXT) return null;
   return { sha: last.sha, level: last.level, text, changed };
 }
 

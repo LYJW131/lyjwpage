@@ -165,7 +165,7 @@ async function prompt(gh: Client, pr: number, role: string, preview: string, out
     const proof = parsed<{ summary?: ProofSummary }>(readIfExists(path.join(outDir, "work", "revert-proof.json")))?.summary ?? { verdict: "error", tests: [] };
     let previous: Previous | null = null;
     try {
-      previous = previousReceipt(await gh.all<Comment>(`issues/${pr}/comments`), { head: common.head, body: digest, prFiles: files, history: gitHistory });
+      previous = previousReceipt(await gh.all<Comment>(`issues/${pr}/comments`), { head: common.head, body: digest, base: common.base, history: gitHistory });
     } catch (error) {
       console.log(`查上一份回执失败，整轮重验：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -245,9 +245,10 @@ async function publish(
   }
   const { checklist } = parseBody(pull.body);
   const digest = await bodyDigest(pull.body);
-  const stamp = (parts: { level?: string; verdict?: string }) => ({ ...signStamp({ ref: opts.head, ...parts }), body: digest });
+  const base = pull.base?.ref ?? "main";
+  const stamp = (parts: { level?: string; verdict?: string }) => ({ ...signStamp({ ref: opts.head, ...parts }), body: digest, ...(parts.level ? { base } : {}) });
   const comments: string[] = [];
-  const current = readMark(pull.base?.ref ?? "main", digest);
+  const current = readMark(base, digest);
   const readOld = (read: string | undefined, result: string, role: string) => {
     if (!staleRead(read, result, current)) return false;
     console.log(`${role}读的${read ? "是改之前的 PR 描述或目标分支" : "版本没交回来"}，这次不发`);
