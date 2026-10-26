@@ -10,7 +10,7 @@ description: lyjwpage 的「Anthropic 官方动态」定时任务按它跑：按
 ## 状态与偏好
 
 - 共享目录 `/mnt/project-files/anthropic-updates/`：
-  - 状态文件 `/mnt/project-files/anthropic-updates/state.json`：`cursors`（版本型来源最后读到的版本号；`x` 是「账号 → 最后读到的推文 id」），`ledger`（「可吸收」待定项，见第 6 步）。
+  - 状态文件 `/mnt/project-files/anthropic-updates/state.json`：`cursors`（版本型来源最后读到的版本号；`x` 是「账号 → 最后读到的推文 id」，新账号还没读到过帖子时是 `t:<扫描时刻>`；`x-likes` / `x-bookmarks` 是最近见过的推文 id 列表），`ledger`（「可吸收」待定项，见第 6 步）。
   - `seen/<来源>.txt`：集合型来源已见过的键（链接或条目哈希），一行一个。
   - 待提交书签 `/mnt/project-files/anthropic-updates/pending.json`：`fetch.py scan` 算出的下一版书签，只有第 6 步 `commit` 才落进上面两处。
   - `<上海日期>.md`：当天摘要，晨报读它。文件已存在就在末尾追加一节，不覆盖。
@@ -43,7 +43,7 @@ Agent(description: "Sonnet 拉取 Anthropic 动态", subagent_type: "general-pur
 
 - 集合型（`SET_SOURCES`）：记已见过的链接或条目哈希，新出现的就是新内容。`docs` 只报新页面，已有页面的改动有意不报，实质变化看 `release-notes` 与版本型来源；`cloudflare` 只收 `CLOUDFLARE_PRODUCTS` 里的产品；`hn` 只收标题或链接提到 Claude / Anthropic、过了分数线的帖子。
 - 版本型（`VERSION_SOURCES`）：记最后读到的版本号，读 CHANGELOG 里比它新的版本。
-- `x`：每个账号一个推文 id 书签，不含回复与转推。两次运行之间新帖超过 `X_TIMELINE_MAX_PAGES` 页时只读最新的那些，书签照样推进到最新，账号进 `truncatedAccounts`，摘要里写明「@某某 新帖超上限，更早的未报」。账号分三组：`official`（官方账号）、`anthropic`（Anthropic 里做 Claude / Claude Code 的人）、`builders`（lyjw 关注的前沿作者）。
+- `x`：每个账号一个推文 id 书签，不含回复与转推；新账号首扫没有帖子时书签记成 `t:<扫描时刻>`，下一轮从这个时刻读起。两次运行之间新帖超过 `X_TIMELINE_MAX_PAGES` 页时只读最新的那些，书签照样推进到最新，账号进 `truncatedAccounts`，摘要里写明「@某某 新帖超上限，更早的未报」。账号分三组：`official`（官方账号）、`anthropic`（Anthropic 里做 Claude / Claude Code 的人）、`builders`（lyjw 关注的前沿作者）。
 - `x-likes`、`x-bookmarks`：lyjw 自己的点赞和收藏。按操作时间倒序、没有 since_id，书签是最近见过的 `X_SELF_KNOWN` 条推文 id，翻到其中任一条就停。翻满 `X_SELF_MAX_PAGES` 页还没碰到（大批取消点赞或积压太多）标 `cursorLost`，只报翻到的部分，摘要里写明。
 
 X 三类来源都经 claude.ai 连接器 `LYJW MCP Portal`（X 官方 MCP，以 lyjw 账号身份）拉，脚本只出调用代码和记账，见第 2 步。会话里没有这个连接器时三类都算失败、书签不动，不退回 `api.x.com` 代理（代理是 App-only 凭证，读不到点赞和收藏）。
