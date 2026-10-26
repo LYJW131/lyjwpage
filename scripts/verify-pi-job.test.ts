@@ -8,13 +8,17 @@ import test from "node:test";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const ACTION = ".github/actions/verify-agent/action.yml";
 
+function literalRegExp(value: string) {
+  return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+}
+
 function agentScript() {
   const workflow = fs.readFileSync(path.join(ROOT, ".github/workflows/verify.yml"), "utf8");
   const job = /\n {2}verify-pi:\n([\s\S]*?)(?=\n {2}[a-z-]+:\n|$)/.exec(workflow)?.[1] ?? "";
   const step = /\n {6}- id: agent\n([\s\S]*?)(?=\n {6}- )/.exec(job)?.[1] ?? "";
   const run = /\n {8}run: \|\n((?: {10}.*\n?)+)/.exec(step)?.[1] ?? "";
   assert.ok(run, "verify-pi 里找不到 agent 步骤的 run 块");
-  assert.match(step, new RegExp(`ACTION: ${ACTION.replace(/\./g, "\\.")}`));
+  assert.match(step, literalRegExp(`ACTION: ${ACTION}`));
   return run.replace(/^ {10}/gm, "");
 }
 
@@ -64,4 +68,14 @@ test("verify-pi 的 agent 步骤：PR 自己删掉了分叉点上有的 action �
 
 test("verify-pi 的 agent 步骤：读不到目标分支、算不出分叉点时 present 留空", () => {
   assert.deepEqual(present(repo([{ action: false }])), { value: "", notice: false });
+});
+
+test("literalRegExp 把反斜杠和点都当成字面量", () => {
+  const dotted = "a.b";
+  assert.match(dotted, literalRegExp(dotted));
+  assert.doesNotMatch("axb", literalRegExp(dotted));
+
+  const slashed = String.raw`a\.b`;
+  assert.match(slashed, literalRegExp(slashed));
+  assert.doesNotMatch(String.raw`a\xb`, literalRegExp(slashed));
 });
