@@ -64,7 +64,7 @@ export function githubFixture(extra: (path: string, body: Record<string, unknown
   return { ...fixture, calls };
 }
 
-export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, changed: BuildUpload, validatedBaseTree?: string) {
+export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, changed: BuildUpload & { dropped?: readonly string[] }, validatedBaseTree?: string) {
   const baseTree = validatedBaseTree ?? await validateBuildBase(api, run, changed);
   const prepared = await prepareBuildPullRequest(api, run);
   run.planCommitSha = prepared.planCommitSha;

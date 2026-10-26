@@ -34,6 +34,11 @@ test("GitHub publishing preserves the plan tree and appends the implementation t
   assert.match(patched, /## Review closely/);
   assert.match(patched, /outside the plan, shared contract/);
   assert.match(patched, /documentation outside docs\//);
+  const rules = githubFixture();
+  await createBuildPullRequest(new GithubBuildApi("fixture", rules.fetcher), await stored(), { ...upload, files: [...upload.files, { path: "workers/ai/README.md", mode: "100644" as const, content: btoa("# ai") }], dropped: ["workers/ai/AGENTS.md"] });
+  const ruled = String(rules.calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH")?.body?.body);
+  assert.match(ruled, /`workers\/ai\/README\.md`\]\([^)]+\) — outside the plan, documentation outside docs\/, rules or model-context document/);
+  assert.match(ruled, /## Left out of this commit \(outside the allowed paths\)\n- `workers\/ai\/AGENTS\.md`/);
   assert.match(patched, /\[`src\/lib\/extra\.ts`\]\(https:\/\/github\.com\/LYJW131\/lyjwpage\/pull\/12\/files#diff-[0-9a-f]{64}\)/);
 });
 

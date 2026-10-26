@@ -4,7 +4,7 @@ import { BUILD_REPO, buildIssueBody, buildIssueMarker, PLAN_LABELS, planLanguage
 import type { GithubIssueResult } from "@shared/github-issue";
 import { sha256Hex } from "@shared/sha256";
 import type { StoredRun } from "./coordinator";
-import { markdownDoc, outsidePlanPaths } from "./validation";
+import { markdownDoc, outsidePlanPaths, ruleDoc } from "./validation";
 import { GithubRequestError, validSha, type GithubBuildApi } from "./github-api";
 import { assertBuildIdentity, assertOpenDraft, branchHead, BUILD_COMMIT_IDENTITY, BuildBlockedError, BuildPublicationPendingError, BuildPullRequestRejectedError, buildMarker, confirmedPullRequest, existingPullRequest, planPath, preparedCommit, type GithubPullRequest, type GithubCommit } from "./pull-request";
 
@@ -75,6 +75,7 @@ const REVIEW_RULES: { reason: Exclude<ReviewReason, "outside">; test: (path: str
   { reason: "auth", test: (path) => /^workers\/[^/]+\/src\/build\//.test(path) || path.startsWith("workers/ingress/") },
   { reason: "prompt", test: (path) => path.startsWith("workers/ai/src/chat/") },
   { reason: "docs", test: (path) => markdownDoc(path) && !path.startsWith("docs/") },
+  { reason: "rules", test: ruleDoc },
 ];
 
 function uploadPaths(upload: Pick<BuildUpload, "files" | "deletions">): string[] {
@@ -96,6 +97,10 @@ function reviewSection(review: { path: string; reasons: ReviewReason[] }[], labe
     return `- ${name} — ${reasons.map((reason) => labels.reasons[reason]).join(", ")}`;
   };
   return `\n\n## ${labels.review}\n${review.map(line).join("\n")}`;
+}
+
+function droppedSection(dropped: readonly string[], labels: (typeof PLAN_LABELS)[keyof typeof PLAN_LABELS]): string {
+  return dropped.length ? `\n\n## ${labels.dropped}\n${dropped.map((path) => `- \`${path}\``).join("\n")}` : "";
 }
 
 
@@ -147,6 +152,12 @@ export async function closeFailedDraft(api: GithubBuildApi, run: StoredRun): Pro
   assertOpenDraft(pr);
   const closed = await api.repo<GithubPullRequest>(`/pulls/${pr.number}`, "PATCH", { state: "closed" });
   if (closed.state !== "closed") throw new Error("GitHub did not confirm closing the draft pull request.");
+  // 先关后评：关闭失败重试时已关的草稿直接返回，评论不会重复。原因可能来自 Claude 写的停下说明，放进代码块免得渲染成链接或图片。
+  const reason = (run.state.reason ?? "unknown").replaceAll("`", "'").replaceAll("@", "@\u200b");
+  try { await api.repo(`/issues/${pr.number}/comments`, "POST", { body: `${PLAN_LABELS[planLanguage(run.plan)].draftClosed}\n\n\`\`\`text\n${reason}\n\`\`\`` }); }
+  catch (error) {
+    console.error("[build] draft close comment failed", error);
+  }
 }
 
 
@@ -193,7 +204,7 @@ async function pullRequestAfterPush(api: GithubBuildApi, run: StoredRun): Promis
   }
 }
 
-export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload, validatedBaseTree: string | undefined, recordImplementationHead: (sha: string, body: string) => Promise<void>): Promise<NonNullable<BuildRun["pr"]>> {
+export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload & { dropped?: readonly string[] }, validatedBaseTree: string | undefined, recordImplementationHead: (sha: string, body: string) => Promise<void>): Promise<NonNullable<BuildRun["pr"]>> {
   if (run.implementationHeadSha) return recoverBuildPublication(api, run);
   if (!validatedBaseTree) await validateBuildBase(api, run, upload);
   if (upload.baseSha !== run.baseSha || uploadPaths(upload).some((path) => path === planPath(run) || path.startsWith("builds/"))) throw new BuildBlockedError("The upload cannot replace the recorded build plan.");
@@ -220,7 +231,7 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
   const labels = PLAN_LABELS[planLanguage(run.plan)];
   const review = reviewPaths(upload, run.plan.paths);
   const links = new Map(await Promise.all(review.map(async ({ path }) => [path, `${pr.url}/files#diff-${await sha256Hex(path)}`] as const)));
-  const body = `${buildIssueBody(run.plan)}${reviewSection(review, labels, links)}\n\n---\n${labels.requestedBy(run.account)}\n\n${trailers}\n\n${labels.buildRun(run.state.runId)}\n\n${buildMarker(run.state)}`.replaceAll("@", "@\u200b");
+  const body = `${buildIssueBody(run.plan)}${reviewSection(review, labels, links)}${droppedSection(upload.dropped ?? [], labels)}\n\n---\n${labels.requestedBy(run.account)}\n\n${trailers}\n\n${labels.buildRun(run.state.runId)}\n\n${buildMarker(run.state)}`.replaceAll("@", "@\u200b");
   await recordImplementationHead(commit.sha, body);
   return recoverBuildPublication(api, { ...run, implementationHeadSha: commit.sha, publicationBody: body });
 }

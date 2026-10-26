@@ -43,7 +43,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
   let publicationState = run.state;
   let upload;
   try {
-    upload = parseBuildUpload(await readJsonBody(request, BUILD_UPLOAD_LIMITS.requestBytes), run.plan.paths);
+    upload = parseBuildUpload(await readJsonBody(request, BUILD_UPLOAD_LIMITS.requestBytes));
     if (upload.baseSha !== run.baseSha) throw new Error("The upload does not match the assigned base commit.");
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Invalid upload.";
