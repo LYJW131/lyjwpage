@@ -22,7 +22,7 @@ const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prom
   --out-dir DIR             验证员可写的产物目录（shots/、work/），judge 不写
   --base REF                pr_diff 工具比对的目标分支，默认 origin/main
   --pr N                    pr_view 工具读的 PR；读 GitHub 用 GITHUB_TOKEN（只留在本进程，不进 bash）
-  --timeout-min N           整轮上限，默认 40
+  --timeout-min N           整轮上限，默认 20
   --transcript FILE         把整轮事件写成 JSONL，复盘用
   --api-key-file FILE       从文件读 Anthropic 钥匙并删掉文件（CI 里必须这样传）；本地可用 ANTHROPIC_API_KEY
   --github-token-file FILE  同上，给 pr_view 的 GitHub 令牌；本地可用 GITHUB_TOKEN
@@ -36,7 +36,7 @@ const OPTIONS = {
   "out-dir": { type: "string" },
   base: { type: "string", default: "origin/main" },
   pr: { type: "string" },
-  "timeout-min": { type: "string", default: "40" },
+  "timeout-min": { type: "string", default: "20" },
   transcript: { type: "string" },
   "pi-sdk": { type: "string" },
   "api-key-file": { type: "string" },

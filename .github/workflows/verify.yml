@@ -193,7 +193,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.need != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 100
     permissions:
       contents: read
       pull-requests: read
@@ -265,7 +265,7 @@ jobs:
         if: steps.prompt.outcome == 'success'
         continue-on-error: true
         # 盖住 runner 的首轮上限（action 的 timeout-min）加追问（verify-agent.ts#FOLLOW_UP_MS），外加装 pi
-        timeout-minutes: 50
+        timeout-minutes: 30
         with:
           role: verifier
           pr: ${{ env.PR }}

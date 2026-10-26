@@ -23,7 +23,7 @@ inputs:
   thinking:
     default: high
   timeout-min:
-    default: "40"
+    default: "20"
   pi-version:
     default: 1.4.0
 
