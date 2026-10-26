@@ -1,15 +1,15 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { quote } from "./guard.ts";
 
 type Run = (command: string, timeoutMs: number, dir?: string) => Promise<{ code: string | number; output: string }>;
 export type Claim = { id: string; claim: string; check: string };
-export type ToolContext = { cwd: string; base: string; tmpDir: string; run: Run; workLog: (name: string, text: string) => string | null };
+// git 也要经沙箱跑：bash 能写 .git/config，diff.external、textconv、hooks 这类配置会让 git 替它执行命令
+export type Git = (args: string[], dir?: string) => string;
+export type ToolContext = { cwd: string; base: string; tmpDir: string; run: Run; git: Git; workLog: (name: string, text: string) => string | null };
 
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: undefined });
 const tail = (body: string, lines: number) => body.split("\n").slice(-lines).join("\n");
-const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
 // AGENTS.md「文档与注释」点名的同步范围：改了符号、常量、规则，这些地方的旧说法要同一提交改掉
 const DOC_SCOPES = [":(glob)**/*.md", ":(glob)**/README*", "public/llms.txt", ":(glob).claude/**"];
@@ -35,7 +35,7 @@ export function prDiffTool(ctx: ToolContext) {
     description: `这次改动：git diff ${ctx.base}...HEAD。stat=true 只给每个文件的增删行数；paths 限定文件。超过 60KB 截断，全文写进产物目录 work/。`,
     parameters: { type: "object", properties: { stat: { type: "boolean" }, paths: { type: "array", items: { type: "string" } } } },
     execute: async (_id: string, params: { stat?: boolean; paths?: string[] }) => {
-      const out = git(ctx.cwd, ["diff", ...(params.stat ? ["--stat=200"] : []), `${ctx.base}...HEAD`, ...(params.paths?.length ? ["--", ...params.paths] : [])]);
+      const out = ctx.git(["diff", ...(params.stat ? ["--stat=200"] : []), `${ctx.base}...HEAD`, ...(params.paths?.length ? ["--", ...params.paths] : [])]);
       if (out.length <= 60_000) return text(out || "（没有差异）");
       const file = ctx.workLog(`diff-${++logSeq}.patch`, out);
       return text(`${out.slice(0, 60_000)}\n…（截断，全文 ${file ?? "未保存"}）`);
@@ -76,8 +76,8 @@ export function docsSyncTool(ctx: ToolContext) {
       properties: { keywords: { type: "array", items: { type: "string" } }, auto: { type: "boolean", description: "自动加入 diff 里删掉的标识符，默认 true" } },
     },
     execute: async (_id: string, params: { keywords?: string[]; auto?: boolean }) => {
-      const changed = new Set(git(ctx.cwd, ["diff", "--name-only", `${ctx.base}...HEAD`]).split("\n").filter(Boolean));
-      const auto = params.auto === false ? [] : removedIdentifiers(git(ctx.cwd, ["diff", "-U0", `${ctx.base}...HEAD`]));
+      const changed = new Set(ctx.git(["diff", "--name-only", `${ctx.base}...HEAD`]).split("\n").filter(Boolean));
+      const auto = params.auto === false ? [] : removedIdentifiers(ctx.git(["diff", "-U0", `${ctx.base}...HEAD`]));
       const keywords = [...new Set([...(params.keywords ?? []), ...auto].map((word) => word.trim()).filter((word) => word.length >= 3))].slice(0, 40);
       if (!keywords.length) return text("没有可搜的关键词：给 keywords。");
       const lines: string[] = [];
@@ -85,7 +85,7 @@ export function docsSyncTool(ctx: ToolContext) {
         // 搜 HEAD 的树、不搜工作区：verify-agent action 已把工作区的 .claude/ 换成默认分支的版本
         const out = (() => {
           try {
-            return git(ctx.cwd, ["grep", "-n", "-I", "-F", "--no-color", "-e", keyword, "HEAD", "--", ...DOC_SCOPES]);
+            return ctx.git(["grep", "-n", "-I", "-F", "--no-color", "-e", keyword, "HEAD", "--", ...DOC_SCOPES]);
           } catch {
             return "";
           }
@@ -117,9 +117,9 @@ export function compareBaseTool(ctx: ToolContext) {
   const baseDir = path.join(ctx.tmpDir, "base");
   const ensureBase = () => {
     if (fs.existsSync(baseDir)) return;
-    const sha = git(ctx.cwd, ["rev-parse", ctx.base]).trim();
-    execFileSync("git", ["clone", "-q", "--shared", "--no-checkout", ctx.cwd, baseDir]);
-    execFileSync("git", ["-C", baseDir, "checkout", "-q", "--detach", sha]);
+    const sha = ctx.git(["rev-parse", ctx.base]).trim();
+    ctx.git(["clone", "-q", "--shared", "--no-checkout", ctx.cwd, baseDir]);
+    ctx.git(["-C", baseDir, "checkout", "-q", "--detach", sha]);
     for (const top of [".", "workers", "reporters", "packages"]) {
       const dirs = top === "." ? ["."] : fs.existsSync(path.join(ctx.cwd, top)) ? fs.readdirSync(path.join(ctx.cwd, top)).map((name) => path.join(top, name)) : [];
       for (const dir of dirs) {

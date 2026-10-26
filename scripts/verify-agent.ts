@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
-import { childEnv, filterGrepOutput, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, filterGrepOutput, quote, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
@@ -155,6 +155,9 @@ const run = (command: string, timeoutMs: number, dir = cwd) =>
     child.on("close", (code, signal) => resolve({ code: code ?? `signal ${signal}`, output }));
   });
 
+const git = (args: string[], dir = cwd) =>
+  execFileSync("bash", ["-c", wrap(["git", ...args].map(quote).join(" "))], { cwd: dir, env: childEnvNow() as NodeJS.ProcessEnv, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+
 const bash = createBashToolDefinition(cwd, {
   exposeSessionEnvironment: false,
   spawnHook: ({ command, cwd: dir, env }: { command: string; cwd: string; env: Record<string, string | undefined> }) => ({ command: wrap(command), cwd: dir, env: { ...childEnvNow(), PATH: env.PATH ?? process.env.PATH } }),
@@ -172,7 +175,7 @@ const guardedWrite = {
 };
 
 const claims = new Map<string, Claim>();
-const toolContext = { cwd, base: values.base, tmpDir, run, workLog };
+const toolContext = { cwd, base: values.base, tmpDir, run, git, workLog };
 
 const customTools = [
   bash,

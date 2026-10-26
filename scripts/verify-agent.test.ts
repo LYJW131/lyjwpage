@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { childEnv, filterGrepOutput, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
-import { docsSyncTool, removedIdentifiers } from "./verify-agent/tools.ts";
+import { compareBaseTool, docsSyncTool, prDiffTool, removedIdentifiers } from "./verify-agent/tools.ts";
 
 test("childEnv：凭据与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
   const env = childEnv(
@@ -105,8 +105,29 @@ test("docs_sync：搜 HEAD 里的文字，工作区的 .claude/ 被换回目标�
   fs.writeFileSync(path.join(repo, ".claude/skill.md"), "用 NEW_LIMIT 判断\n");
   git("commit", "-qam", "head");
   fs.writeFileSync(path.join(repo, ".claude/skill.md"), "用 OLD_LIMIT 判断\n");
-  const tool = docsSyncTool({ cwd: repo, base: "HEAD~1", tmpDir: repo, run: async () => ({ code: 0, output: "" }), workLog: () => null });
+  const tool = docsSyncTool({ cwd: repo, base: "HEAD~1", tmpDir: repo, run: async () => ({ code: 0, output: "" }), git: (args, dir = repo) => execFileSync("git", args, { cwd: dir, encoding: "utf8" }), workLog: () => null });
   const out = (await tool.execute("1", { keywords: ["OLD_LIMIT", "NEW_LIMIT"], auto: false })).content[0].text;
   assert.match(out, /「OLD_LIMIT」：文档里 0 处/);
   assert.match(out, /「NEW_LIMIT」：1 处\n {2}\.claude\/skill\.md（这次改了）：1:用 NEW_LIMIT 判断/);
+});
+
+test("工具里的 git 一律经 ctx.git（runner 把它放进和 bash 同一个沙箱），不自己起 git：cwd 不是仓库也不报错", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "no-repo-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const calls: string[][] = [];
+  const ctx = {
+    cwd: dir,
+    base: "origin/main",
+    tmpDir: dir,
+    run: async () => ({ code: 0, output: "" }),
+    git: (args: string[]) => (calls.push(args), args[0] === "grep" ? "HEAD:README.md:1:OLD_LIMIT\n" : ""),
+    workLog: () => null,
+  };
+  await prDiffTool(ctx).execute("1", { stat: true });
+  await docsSyncTool(ctx).execute("2", { keywords: ["OLD_LIMIT"], auto: false });
+  await compareBaseTool(ctx).execute("3", { command: "true" });
+  assert.deepEqual(
+    calls.map((args) => args[0] === "-C" ? args[2] : args[0]),
+    ["diff", "diff", "grep", "rev-parse", "clone", "checkout"],
+  );
 });
