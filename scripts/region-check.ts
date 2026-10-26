@@ -48,18 +48,27 @@ async function checkRegion(client: Client, url: string, region: string, outDir: 
       costUsd: turn.result?.usage?.cost?.total ?? undefined,
       summary: turn.result?.summary,
     };
+    let reported = false;
+    let screenshot = false;
     for (const file of turn.result?.artifacts ?? []) {
       const name = file.relativePath.split("/").pop()!;
       if (name !== "result.json" && name !== "screenshot.png") continue;
       const bytes = Buffer.from(await session.readFile(file.relativePath));
       writeFileSync(join(dir, name), bytes);
+      if (name === "screenshot.png") screenshot = bytes.length > 0;
       if (name === "result.json") {
-        const parsed = JSON.parse(bytes.toString("utf8")) as { ok?: boolean; issues?: Issue[]; unreachable?: string[] };
-        result.issues = parsed.issues ?? [];
-        result.unreachable = parsed.unreachable ?? [];
-        result.ok = turn.state === "completed" && parsed.ok === true && result.issues.length === 0;
+        const parsed = JSON.parse(bytes.toString("utf8")) as { ok?: unknown; issues?: unknown; unreachable?: unknown };
+        if (typeof parsed.ok === "boolean" && Array.isArray(parsed.issues)) {
+          reported = parsed.ok && parsed.issues.length === 0;
+          result.issues = parsed.issues as Issue[];
+        } else {
+          result.issues.push({ where: "run", what: "result.json does not have ok and issues" });
+        }
+        result.unreachable = Array.isArray(parsed.unreachable) ? (parsed.unreachable as string[]) : [];
       }
     }
+    if (!screenshot) result.issues.push({ where: "run", what: "agent did not deliver screenshot.png" });
+    result.ok = turn.state === "completed" && reported && screenshot;
     return result;
   } finally {
     await computer.kill().catch(() => undefined);
