@@ -191,9 +191,3 @@ test("认领调用失败时退回只跑正好到期的任务，记一条 warn", 
   assert.equal(JSON.parse(String(warnings.mock.calls[0].arguments[0])).event, "collector-slot-claim");
 });
 
-test("认领迟迟不回时按超时退回只跑正好到期的任务", async (t) => {
-  t.mock.method(console, "warn", () => {});
-  const hanging: SlotClaimer = { claim: () => new Promise(() => {}) };
-  const digest = fakeJob(async () => ({ status: "ok" }), { name: "digest", everyMinutes: 15, offset: 5 });
-  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:05:00Z"), [digest], hanging, 5), [digest]);
-});

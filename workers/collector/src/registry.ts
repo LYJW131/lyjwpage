@@ -76,29 +76,17 @@ export function roundTime(scheduledTime: number, now: number): number {
 
 export type SlotClaimer = { claim(slots: Record<string, number>): Promise<string[]> };
 
-export const CLAIM_TIMEOUT_MS = 5_000;
-
 // 每个任务按自己的周期分格，格内第一轮就跑：Cloudflare 晚投或漏投排定的那一分钟时，格内后面任一轮补上。
-// 认领不到（没绑定、调用失败或超时）时退回只跑正好到期的任务，这一轮补不了格，但不会让到期的任务也停跑。
-export async function claimDueJobs(
-  time: number,
-  jobs: readonly Job[] = JOBS,
-  slots?: SlotClaimer,
-  timeoutMs = CLAIM_TIMEOUT_MS,
-): Promise<Job[]> {
+// 认领不设超时：超时后认领仍可能写进去，这时退回跑的任务和已认领的对不上，被认领的那几格就整格漏掉。
+// 调用失败时退回只跑正好到期的任务，这一轮补不了格，但到期的任务照跑。
+export async function claimDueJobs(time: number, jobs: readonly Job[] = JOBS, slots?: SlotClaimer): Promise<Job[]> {
   if (!slots) return dueJobs(time, jobs);
-  const timer = new AbortController();
   try {
-    const claimed = new Set(await Promise.race([
-      slots.claim(Object.fromEntries(jobs.map((job) => [job.name, slotStart(job, time)]))),
-      sleep(timeoutMs, undefined, { signal: timer.signal }).then(() => { throw new Error(`slot claim timed out after ${timeoutMs} ms`); }),
-    ]));
+    const claimed = new Set(await slots.claim(Object.fromEntries(jobs.map((job) => [job.name, slotStart(job, time)]))));
     return jobs.filter((job) => claimed.has(job.name));
   } catch (error) {
     console.warn(JSON.stringify({ event: "collector-slot-claim", detail: explain(error) }));
     return dueJobs(time, jobs);
-  } finally {
-    timer.abort();
   }
 }
 
