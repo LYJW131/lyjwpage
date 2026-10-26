@@ -209,17 +209,21 @@ jobs:
           ref: ${{ needs.plan.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
-      # checkout 失败时不查，present 留空，照旧走到末步报红。分支从 pi 验证员进 main 之前切出、还没合 main 时，PR head 里没有这个 action：B 组这次没有样本，记 notice 不记失败
+      # 分支从 pi 验证员进 main 之前切出、还没合 main 时，PR head 里没有这个 action：B 组这次没有样本，记 notice 不记失败。
+      # 只认分叉点上也没有它的情形；PR 自己删掉它、checkout 失败或读不到分叉点时 present 留空，照旧走到末步报红
       - id: agent
         if: steps.checkout.outcome == 'success'
         continue-on-error: true
         run: |
-          if [ -f .github/actions/verify-agent/action.yml ]; then
+          if [ -f "$ACTION" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::PR head 里没有 .github/actions/verify-agent（分支早于 pi 验证员），B 组跳过；把 main 合进分支即可"
+          elif fork=$(git merge-base "origin/$BASE" HEAD) && ! git cat-file -e "$fork:$ACTION" 2>/dev/null; then
+            echo "::notice::PR head 里没有 $ACTION（分支早于 pi 验证员），B 组跳过；把 main 合进分支即可"
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          ACTION: .github/actions/verify-agent/action.yml
+          BASE: ${{ needs.plan.outputs.base }}
       - uses: pnpm/action-setup@v6
         continue-on-error: true
       - uses: actions/setup-node@v5
