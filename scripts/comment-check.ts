@@ -25,8 +25,10 @@ TYPESAFE_API_KEY 调 Jev（云端出口代理会自动带上）。退出码 0 �
 
 export const JEV_MODEL = "jev-1.14.0";
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-// 官方建议 noul 起步阈值：≥0.7 当是，≤0.3 当否，中间算拿不准
-export const YES = 0.7;
+// 官方起步阈值是 0.7 / 0.3；在含线上漏报的标注集上 0.6 召回明显更高、精确率几乎不掉，所以 YES 取 0.6。
+// [MAYBE, YES) 一档也列出来供参考，但不让结论变 neutral。改这几个值先用 scripts/comment-check-calibrate.ts 在标注集上比一遍
+export const YES = 0.6;
+export const MAYBE = 0.5;
 export const NO = 0.3;
 // 一次问的条数多了，相邻注释互相串味、误报明显变多；改它先用 scripts/comment-check-calibrate.ts 在标注集上比一遍
 const QUESTIONS_PER_CALL = 10;
@@ -184,18 +186,22 @@ export type Scored = Found & { p: number | null };
 
 export function report(scored: Scored[], { error, truncated }: { error?: string; truncated?: number } = {}) {
   const flagged = scored.filter((item) => (item.p ?? 0) >= YES).sort((a, b) => (b.p ?? 0) - (a.p ?? 0));
-  const unsure = scored.filter((item) => item.p !== null && item.p > NO && item.p < YES);
+  const maybe = scored.filter((item) => item.p !== null && item.p >= MAYBE && item.p < YES).sort((a, b) => (b.p ?? 0) - (a.p ?? 0));
+  const unsure = scored.filter((item) => item.p !== null && item.p > NO && item.p < MAYBE);
   const unanswered = scored.filter((item) => item.p === null).length;
   const gaps = [unanswered && `${unanswered} 条 Jev 没答`, truncated && `${truncated} 条超出上限没问`].filter(Boolean).join("，");
   const title = flagged.length ? `${flagged.length} 条新注释可能该删${gaps ? `（另有 ${gaps}）` : ""}` : error && !scored.some((item) => item.p !== null) ? "Jev 调用失败，没有建议" : gaps ? `没问全：${gaps}` : scored.length ? "新注释没有该删的" : "没有新增注释";
   const lines = [
     `给写代码的线程的建议，不挡合并：逐条对照根 AGENTS.md「文档与注释」自己判断删还是留。`,
     "",
-    `新增注释 ${scored.length} 条${truncated ? `（另有 ${truncated} 条超出上限没问）` : ""}；Jev（${JEV_MODEL}）概率 ≥${YES} 列在下面，${NO}–${YES} 之间拿不准的 ${unsure.length} 条不列。`,
+    `新增注释 ${scored.length} 条${truncated ? `（另有 ${truncated} 条超出上限没问）` : ""}；Jev（${JEV_MODEL}）概率 ≥${YES} 的列为可能该删，${MAYBE}–${YES} 的列为拿不准，${NO}–${MAYBE} 之间的 ${unsure.length} 条不列。`,
   ];
   if (error) lines.push("", `调用失败：${error}`);
-  for (const item of flagged) {
-    lines.push("", `- \`${item.file}:${item.line}\` ${item.p?.toFixed(2)}`, "", "  ```", ...item.comment.split("\n").map((text) => `  ${text}`), "  ```");
+  const entry = (item: Scored) => ["", `- \`${item.file}:${item.line}\` ${item.p?.toFixed(2)}`, "", "  ```", ...item.comment.split("\n").map((text) => `  ${text}`), "  ```"];
+  for (const item of flagged) lines.push(...entry(item));
+  if (maybe.length) {
+    lines.push("", `拿不准（${maybe.length} 条，看一眼即可）：`);
+    for (const item of maybe) lines.push(...entry(item));
   }
   return { title, summary: lines.join("\n"), flagged, complete: !error && !truncated };
 }

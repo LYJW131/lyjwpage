@@ -43,12 +43,14 @@ test("buildRequests 每次请求的问题键是全局序号，注释下标按这
   assert.match(second?.questions.c11?.instructions ?? "", /comments\[1\]/);
 });
 
-test("report 只列 ≥0.7 的，调用失败时写明没有建议", () => {
+test("report 把 ≥0.6 的列为该删、0.5–0.6 的列为拿不准，调用失败时写明没有建议", () => {
   const item = { file: "x.ts", line: 3, endLine: 3, comment: "// 跑测试", code: "" };
-  const result = report([{ ...item, p: 0.9 }, { ...item, line: 9, p: 0.5 }, { ...item, line: 12, p: 0.1 }]);
+  const result = report([{ ...item, p: 0.9 }, { ...item, line: 6, p: 0.55 }, { ...item, line: 9, p: 0.4 }, { ...item, line: 12, p: 0.1 }]);
   assert.equal(result.flagged.length, 1);
   assert.match(result.summary, /x\.ts:3/);
+  assert.match(result.summary, /拿不准（1 条[^]*x\.ts:6/);
   assert.doesNotMatch(result.summary, /x\.ts:9/);
+  assert.equal(report([{ ...item, p: 0.55 }]).title, "新注释没有该删的");
   assert.equal(result.complete, true);
   const failed = report([{ ...item, p: null }], { error: "HTTP 500" });
   assert.match(failed.title, /调用失败/);
