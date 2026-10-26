@@ -9,6 +9,7 @@ type Sparkle = { x: number; y: number; age: number };
 type Snore = { x: number; y: number; age: number };
 
 const MAX_DUST = 60;
+// 静止时也慢慢掉渣，动起来按速度加量；尾迹速度取陨石速度反向的一部分，看着是被甩在身后。
 const DUST_IDLE_RATE = 2.5;
 const DUST_PER_SPEED = 0.25;
 const DUST_MAX_RATE = 30;

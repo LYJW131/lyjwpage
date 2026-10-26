@@ -45,6 +45,7 @@ type ActKind = "idle" | "walk" | "hop" | "look" | "pace" | "doze";
 const pose = (index: number, o: Partial<Pose> = {}): Pose => ({ index, lift: 0, dip: 0, dx: 0, ...o });
 const hold = (p: Pose, ticks: number) => Array.from({ length: ticks }, () => p);
 
+// 每个动作是一串按拍（walk.fps）排好的姿势，播完回到正面站姿。
 const ACTS: Record<Exclude<ActKind, "idle">, Pose[]> = {
   walk: Array.from({ length: WALK_FRAMES - 1 }, (_, i) => pose(i + 1)),
   hop: [
@@ -161,6 +162,7 @@ export function walkerCast(): ClawdCast {
     w,
     h,
     fx,
+    // 点一下就地起跳；正在半空里的那次跳不打断。
     poke: () => {
       if (act.kind !== "hop") poked = true;
     },
