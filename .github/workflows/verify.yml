@@ -165,12 +165,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           HEAD: ${{ needs.plan.outputs.head }}
-      # 保留到 A/B 读数的时候
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ${{ env.OUT }}
           path: ${{ runner.temp }}/verify-out
+          if-no-files-found: ignore
+          retention-days: 14
+      # 读数只下这一份小的，保留到读数的时候
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: verify-ab-cc
+          path: ${{ runner.temp }}/verify-out/ab
           if-no-files-found: ignore
           retention-days: 90
 
@@ -277,6 +285,14 @@ jobs:
         with:
           name: verify-out-pi
           path: ${{ runner.temp }}/verify-out
+          if-no-files-found: ignore
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: verify-ab-pi
+          path: ${{ runner.temp }}/verify-out/ab
           if-no-files-found: ignore
           retention-days: 90
 
