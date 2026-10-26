@@ -209,7 +209,7 @@ jobs:
           ref: ${{ needs.plan.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
-      # 分支从 pi 验证员进 main 之前切出、还没合 main 时，PR head 里没有这个 action：B 组这次没有样本，记 notice 不记失败。
+      # 分支的分叉点早于 pi 验证员进 main、也没合过 main 时，PR head 里没有这个 action：B 组这次没有样本，记 notice 不记失败。
       # 只认分叉点上也没有它的情形；PR 自己删掉它、checkout 失败或读不到分叉点时 present 留空，照旧走到末步报红
       - id: agent
         if: steps.checkout.outcome == 'success'
@@ -327,7 +327,7 @@ jobs:
           path: ${{ runner.temp }}/verify-out/ab
           if-no-files-found: ignore
           retention-days: 90
-      # 前面各步都 continue-on-error，job 结论只看这一步：pi 没交结果就让 job 红，pr-gate 在 notes 里提醒（ADVISORY_CHECKS 不挡合并）
+      # 前面各步都 continue-on-error，job 结论只看这一步：pi 没交结果就让 job 红（PR head 与分叉点都没有 pi 验证员时除外），pr-gate 在 notes 里提醒（ADVISORY_CHECKS 不挡合并）
       - if: always() && steps.pi.outcome != 'success' && steps.agent.outputs.present != 'false'
         run: |
           echo "::error::pi 验证员没交结果（${OUTCOME:-skipped}）"
