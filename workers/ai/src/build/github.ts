@@ -150,14 +150,14 @@ export async function closeFailedDraft(api: GithubBuildApi, run: StoredRun): Pro
   confirmedPullRequest(pr, run.state, [run.planCommitSha]);
   if (pr.state === "closed") return;
   assertOpenDraft(pr);
-  // 原因可能来自 Claude 写的停下说明，放进代码块免得在公开 PR 上渲染成链接或图片。
-  const reason = (run.state.reason ?? "unknown").replaceAll("`", "'");
+  const closed = await api.repo<GithubPullRequest>(`/pulls/${pr.number}`, "PATCH", { state: "closed" });
+  if (closed.state !== "closed") throw new Error("GitHub did not confirm closing the draft pull request.");
+  // 先关后评：关闭失败重试时已关的草稿直接返回，评论不会重复。原因可能来自 Claude 写的停下说明，放进代码块免得渲染成链接或图片。
+  const reason = (run.state.reason ?? "unknown").replaceAll("`", "'").replaceAll("@", "@\u200b");
   try { await api.repo(`/issues/${pr.number}/comments`, "POST", { body: `${PLAN_LABELS[planLanguage(run.plan)].draftClosed}\n\n\`\`\`text\n${reason}\n\`\`\`` }); }
   catch (error) {
     console.error("[build] draft close comment failed", error);
   }
-  const closed = await api.repo<GithubPullRequest>(`/pulls/${pr.number}`, "PATCH", { state: "closed" });
-  if (closed.state !== "closed") throw new Error("GitHub did not confirm closing the draft pull request.");
 }
 
 

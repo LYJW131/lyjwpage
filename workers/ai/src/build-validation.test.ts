@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BUILD_PLAN_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
+import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
 import { PROJECT_DOCS } from "./tools/project-docs.ts";
 import { allowedBuildPath, checkBuildPlan, markdownDoc, outsidePlanPaths, parseBuildPlan, parseBuildUpload, ruleDoc } from "./build/validation.ts";
 
@@ -47,6 +47,8 @@ test("upload drops protected paths, keeps the rest and reports what it left out"
   assert.deepEqual(parsed.dropped, ["workers/ai/AGENTS.md", ".github/workflows/ci.yml"]);
   assert.deepEqual(parseBuildUpload(upload).dropped, []);
   assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path: "../escape.ts" }] }), /malformed/);
+  const oversized = Buffer.alloc(BUILD_UPLOAD_LIMITS.fileBytes + 1).toString("base64");
+  assert.deepEqual(parseBuildUpload({ ...upload, files: [upload.files[0], { path: "pnpm-lock.yaml", mode: "120000", content: oversized }] }).dropped, ["pnpm-lock.yaml"]);
 });
 
 test("upload permits approved files, deletions, and test files in the same directory", () => {

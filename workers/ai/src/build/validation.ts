@@ -107,10 +107,11 @@ export function parseBuildUpload(value: unknown): ParsedBuildUpload {
     paths.add(path);
     return path;
   };
-  const cleanFiles: BuildUpload["files"] = files.map((entry) => {
+  const cleanFiles = files.map((entry): BuildUpload["files"][number] | null => {
     if (!entry || typeof entry !== "object") throw new Error("Invalid file entry.");
     const { path, mode, content } = entry as Record<string, unknown>;
     const cleanPath = checkPath(path);
+    if (!allowedBuildPath(cleanPath)) return null;
     if (mode !== "100644" && mode !== "100755") throw new Error("Only regular files are allowed; symlinks and submodules are blocked.");
     if (typeof content !== "string" || content.length > Math.ceil(BUILD_UPLOAD_LIMITS.fileBytes / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(content)) throw new Error("Invalid or oversized file content.");
     const size = content.length / 4 * 3 - (content.endsWith("==") ? 2 : content.endsWith("=") ? 1 : 0);
@@ -122,5 +123,5 @@ export function parseBuildUpload(value: unknown): ParsedBuildUpload {
   const cleanDeletions = deletions.map(checkPath);
   const dropped = [...paths].filter((path) => !allowedBuildPath(path));
   if (dropped.length === paths.size) throw new Error(`Every changed path is outside the allowed scope: ${dropped.join(", ")}`);
-  return { baseSha, message: message.trim(), files: cleanFiles.filter((file) => allowedBuildPath(file.path)), deletions: cleanDeletions.filter(allowedBuildPath), dropped };
+  return { baseSha, message: message.trim(), files: cleanFiles.filter((file) => file !== null), deletions: cleanDeletions.filter(allowedBuildPath), dropped };
 }
