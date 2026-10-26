@@ -312,7 +312,8 @@ try {
 if (timedOut) console.error(`超过上限，已中止（submit_report ${report ? "已交" : "没交"}）`);
 const stats = session.getSessionStats();
 session.dispose();
-transcript?.end();
+// 末尾的 process.exit 不等写流落盘：不等 end 的回调，收尾那几条事件会丢
+if (transcript) await new Promise<void>((resolve) => transcript.end(resolve));
 fs.rmSync(tmpDir, { recursive: true, force: true });
 
 const usage = {
