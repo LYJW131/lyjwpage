@@ -28,7 +28,7 @@ description: lyjwpage 里开 PR 前（或开了之后）让 Devin 的 swe-2-max 
 审查员是 Devin 外部进程，照 [lyjwpage-devin-dispatch](../lyjwpage-devin-dispatch/SKILL.md) 的 `dv.py` 驱动，环境、沙箱、返回码都以那份为准。和派活不同的地方：
 
 - **只读工作区**：`git worktree add --detach <scratchpad>/wt/swe-<task> <head>`，在里面 `pnpm install --frozen-lockfile --prefer-offline` 和 `pnpm typecheck`（沙箱里没网、要生成类型）。未提交的改动先提交成 WIP 再建，审查员看不到主检出。
-- **不自动批写入**：`dv start swe-<task> --cwd <worktree> --brief r1.md --model swe-2-max --no-auto-approve --nice 10`。`wait` 返回 4 且是写入菜单时 `dv deny swe-<task> 'Review only. Put it in your reply.'`。
+- **权限直接放开**：`dv start swe-<task> --cwd <worktree> --brief r1.md --model swe-2-max --mode dangerous --nice 10`，不逐条批命令（lyjw 定的：审查员只在这个 detached worktree 里读，逐条确认只会拖慢）。只读靠任务书约束：它的编辑工具不进沙箱、能写工作区以外的地方，下面的核对只看得到审查 worktree。
 - `dv wait swe-<task> --timeout 1800` 放进 Bash `run_in_background`。审查进行时不改送审的文件，不轮询，不起第二个审查员。超时、报错、没回话都不算通过：`dv stop`，确认退出，带着账本重起一次；还是不成（Devin 起不来、限流重置超过 `--timeout`），汇报里记一句「swe-loop 没跑成」，照常开 PR，不挡合并。
 - 用 swe-2-max，不换 Fusion：要的是另一种模型的视角。免费档限流时 `wait` 自己等到重置（见 dv-dispatch「免费档限流」）。
 
@@ -65,12 +65,12 @@ S1 [blocker|should|nit] <file>:<line> <claim>. Scenario: <steps>. Fix: <suggesti
 
 ## 4. 下一轮
 
-只有预算还在，且还有 blocker / should 没结、或行为代码变了、或上次的 APPROVE 盖不住当前 diff 时才开。修复提交后，在审查员的工作区 `git -C <worktree> checkout --detach <新 head>`（审查员空闲时），再 `dv send swe-<task> -f rN.md`，同一个会话保留上下文。任务书写：新 head、账本（`fixed:` / `disagree:` / `declined:` 加证据）、同一条 base diff 命令、`git diff <上轮 head> <新 head>`；让它只看未结编号和改过的代码，每个旧编号标 `resolved` 或 `still open: <原因>`。
+只有预算还在，且还有 blocker / should 没结、或行为代码变了、或上次的 APPROVE 盖不住当前 diff 时才开。修复提交后，先照「收尾」核对审查员的工作区 HEAD 仍是上一轮送审的 head、没有改动（不是就作废上一轮结论），再 `git -C <worktree> checkout --detach <新 head>`（审查员空闲时），再 `dv send swe-<task> -f rN.md`，同一个会话保留上下文。任务书写：新 head、账本（`fixed:` / `disagree:` / `declined:` 加证据）、同一条 base diff 命令、`git diff <上轮 head> <新 head>`；让它只看未结编号和改过的代码，每个旧编号标 `resolved` 或 `still open: <原因>`。
 
 ## 5. 收尾
 
 - 达成一致：当前行为 diff 上 APPROVE，没有未结的 blocker / should，自己也没有疑虑。
 - 卡住：同一条来回两次还有分歧，或预算用完。两边各写两三行，交给 lyjw 定。预算用完不算通过。
 - 循环里不推送。PR 已开且 lyjw 让推进时，推送后在 PR 描述末尾的署名前加一行：`Reviewed with swe-loop: <N> rounds with swe-2-max. Verdict: approved`。
-- `dv stop swe-<task>`，确认 `dv list` 里已退出，`git worktree remove <worktree>`（审查员没写东西，不加 `--force`），`devin rm --force <会话 id>`。
+- `dv stop swe-<task>`，确认 `dv list` 里已退出，`git -C <worktree> rev-parse HEAD` 仍是送审的 head、`status --short` 为空，就 `git worktree remove <worktree>`；HEAD 变了或有改动说明它没守只读，这一轮的结论不算、写的东西不进账本，看一眼再加 `--force` 删，`devin rm --force <会话 id>`。
 - 汇报：轮数、审查员改变了什么、diff 前后大小、修了和驳回的发现各带理由、推了没有。
