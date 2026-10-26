@@ -179,12 +179,20 @@
   - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 - **[claude.dev](https://claude.dev/) 页脚的点阵宇宙**（Anthropic）
   - 是什么：claude.dev 页脚 `.site-footer .scene` 的两层画布：`spaceField` 按 9px 网格画漂移的点阵星云、左上月牙和右下带环行星，点击放沿网格走的流星；`clawdActor` 的 astronaut 模式画戴头盔的像素 Clawd（40×33 精灵、12fps），弹簧跟着鼠标飘，周围的点阵按距离抖动着让开。
-  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧，鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。
+  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧（按出秘技召唤青子立绘后左侧让给立绘：左侧那只飞到右侧，两只一起待在右侧、上下错开，只让宇航员追指针），鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。月牙从视口高的 0.3 提到 0.16，但上沿不高过顶栏底边，给左侧留白的青子立绘让位。
   - 状态：采用。落在 `src/components/space-backdrop.tsx`、`src/components/space-backdrop/`，颜色 token 在 `src/app/styles/theme.css` 的 `.dark`。
 - **Claude App 会话加载时的踱步 Clawd**（Anthropic）
   - 是什么：Claude iOS App 打开会话时「正在加载消息」上方的像素 Clawd，12fps 一轮 32 拍，正面、侧身、跳起、眨眼几种姿势轮换。
   - 取了什么：从 lyjw 的录屏逐帧按 24×16 的像素格取色、去重，帧序和每帧时长照录屏，存成 `src/components/space-backdrop/clawd-walk.json`；颜色换成宇航员精灵里的 Clawd 橙。自己加的：站在一块像素陨石上随 `clawdActor` 一起漂，歇着时停在正面，歇完随机挑踱步、张望、来回走、跳一下、打盹，点它就跳；陨石周围有碎屑尾迹、环绕小石子和闪光。
   - 状态：采用。只在深色模式挂载，落在 `src/components/space-backdrop/walker.ts`、`src/components/space-backdrop/rock-fx.ts`。
+- **[Live2D Cubism 的自动眨眼](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Effect/CubismEyeBlink.cpp)**（`CubismEyeBlink`）
+  - 是什么：Cubism SDK 的自动眨眼，默认闭眼 0.1s、闭住 0.05s、睁眼 0.15s，下一次眨眼的时刻随机。
+  - 取了什么：三段时序与随机间隔；按人眼实测「闭比睁快约四成」改成闭 0.09s ease-in、停 0.04s、睁 0.17s ease-out，间隔取 2.5–6.5s，另加两成概率连眨。眼皮不是插值参数，而是上下眼线朝当前表情那一格闭眼图的闭眼线会合，哪些表情不眨见 `src/components/space-backdrop/aoko-face.ts#FACES`。
+  - 状态：采用。落在 `src/components/space-backdrop/aoko.ts#lidAt`。
+- **《魔法使之夜》里苍崎青子施法的那段演出**（TYPE-MOON，游戏内拆出的图层，不在仓库里）
+  - 是什么：一组整帧镜头与透明图层：俯视的地面大法阵（img0607/0609）、伸掌时身后的竖直光环与电弧（img0627–0630）、平视远景里脚下的扁椭圆法阵（img0633）、环绕手臂的法阵（img0664/0667）、发射瞬间的星芒（img0660），以及拆开的法阵与电弧贴图；召唤秘技另用了游戏别处演出的图层：从画面边缘劈进来的六张闪电整帧（img2349–2354）、横扫电弧（img0662）、电柱与悬浮法环（img0663），每个键各一张的光点、星芒、法印、线状漩涡、刃环、符文尖刺、碎裂爆、能量触须（img1525、1045、1622、0632、1502、1623、1504、0962、1797、0927），空间裂缝（img1822），以及收尾的能量爆、冲击星芒与八芒星闪（img1094、0456、1046）。
+  - 取了什么：身后光环与电弧直接用拆出的贴图，位置和大小在 img0628 上量，按两眼中点和瞳距换算到立绘上；人物被法阵照亮的配色取 img0611 与 img0612 的对照。地面法阵就是 img0609 里那面，用解包里找到的两张高清图层拼成：外圈 img0640（符文带、星形弦线、印章环，HD 只有 976px，用和立绘同一个 Real-ESRGAN anime 6B 超分 4 倍）套内盘 img1627（旋刃、中心四枚印章、粗亮边），法阵用单独一张与 2 倍屏投影尺寸相当的纹理，底下垫被照成紫色的砖地，按 img0633 那样近大远小投到脚下（一行设备像素一条，条带不重叠）；大小按 lyjw 的要求调过。立绘伸出的是左手、前臂横过胸前，所以手臂环像 img0667 那样用拆出的三张法阵贴图排成沿袖子、大小不一的竖向窄椭圆，靠手腕的半圈被袖子和手挡住；每圈几处断口随时间开合换位，断口后的碎片错开、沿环有电弧毛刺，环附近与断口处的立绘轻微扭曲（不做同心水波），四周闪小星。立绘默认不挂，按出科乐美秘技才召唤：每按对一键背景朝立绘位置推近一点、亮起这个键自己的图层、整页劈过闪电，越往后越强，B、A 两键撕开空间裂缝、A 键加横扫电弧，最后一键六道闪电与电柱齐下并白闪一次；随后地面法阵先亮，人物从脚下往上逐像素显形（显出来的地方不透明，所以身后的法阵始终被挡住），身后光环等人物显完才亮，最后是手臂环与电弧。
+  - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko-rings.ts`、`src/components/space-backdrop/aoko-summon.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
   - 取了什么：彩铅的做法，一个主斜向的短排线、浅深两色叠层、形体边缘颜色加厚、暗部换方向交叉排线、断续出头的深色轮廓、灯旁的暖黄光晕；配色按原片关键帧取色。没装 skill，也没拷代码：排线改成按种子生成的图块，每帧拿它填形状。手写字用 [霞鹜漫黑](https://github.com/lxgw/LxgwMarkerGothic)（OFL），只取第 08 章用到的字。还取了原片把项目里的梗画成屋里摆设的做法，第 08 章每个机位的彩蛋照这个放。

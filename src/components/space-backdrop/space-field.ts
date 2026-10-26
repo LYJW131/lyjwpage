@@ -44,6 +44,8 @@ const RING_SIN = 0.31456656061611776;
 
 export type SpaceFieldOptions = {
   avoidRef?: () => AvoidRect[];
+  // 视口顶上被顶栏盖住的高度（px），月牙的上沿不高过它。
+  topInset?: () => number;
   clickHost?: EventTarget;
   shouldShoot?: (event: MouseEvent) => boolean;
   spacing?: number;
@@ -54,7 +56,7 @@ export type SpaceFieldOptions = {
 };
 
 export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
-  const { avoidRef, clickHost = host, shouldShoot, spacing: h = 12, maxDensity = 0.34, grain = 0.7, mix = 0.5, reducedMotion = false } = options;
+  const { avoidRef, topInset, clickHost = host, shouldShoot, spacing: h = 12, maxDensity = 0.34, grain = 0.7, mix = 0.5, reducedMotion = false } = options;
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
   canvas.style.cssText = "display:block;width:100%;height:100%;";
@@ -162,7 +164,8 @@ export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
 
     const moonR = Math.min(Math.max(52, 0.115 * minSide), 0.3 * minSide);
     const moonX = Math.max(0.14 * W, 1.1 * moonR);
-    const moonY = Math.max(0.3 * H, 1.1 * moonR);
+    // 月牙比 claude.dev 原版高，上沿贴着顶栏底边：左侧留白挂青子立绘时，原来的高度正好被她身后的光环挡住。
+    const moonY = Math.max(0.16 * H, (topInset?.() ?? 0) + moonR, 1.1 * moonR);
     const biteR = 0.92 * moonR;
     const biteX = moonX + 0.45 * moonR;
     const moonRim = Math.max(0.12 * moonR, 0.9 * h);

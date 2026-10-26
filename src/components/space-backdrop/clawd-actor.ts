@@ -4,6 +4,9 @@ import type { AvoidRect } from "./space-field";
 
 export type FloatTarget = { x: number; y: number };
 
+// fly() 途中往上拱的高度（占视口高的比例）。
+const FLIGHT_ARC = 0.08;
+
 // world 在视口坐标里画（拖在身后的东西），back / front 在精灵坐标里画（原点是精灵中心、单位 CSS 像素，随倾斜和浮动一起动），分别垫在精灵下面和盖在上面。
 export type ClawdFx = {
   world: (ctx: CanvasRenderingContext2D, dt: number, x: number, y: number, vx: number, vy: number) => void;
@@ -49,6 +52,7 @@ export function clawdActor(host: HTMLElement, { w, h, frame, fx, home, targetRef
   let prev = t0;
   const width = w * px;
   const height = h * px;
+  let flight: { from: FloatTarget; to: FloatTarget; start: number; ms: number; done: () => void } | null = null;
 
   const draw = () => {
     const now = performance.now();
@@ -58,22 +62,40 @@ export function clawdActor(host: HTMLElement, { w, h, frame, fx, home, targetRef
     prev = now;
     const W = canvas.clientWidth;
     const H = canvas.clientHeight;
-    const goal = { ...(targetRef() ?? home()) };
-    goal.x += 0.028 * Math.sin(0.45 * t) + 0.018 * Math.sin(0.19 * t + 1.7);
-    goal.y += 0.045 * Math.sin(0.62 * t + 0.8) + 0.03 * Math.sin(0.27 * t + 2.4);
-    if (boundsX) {
-      const [lo, hi] = boundsX();
-      goal.x = Math.max(lo, Math.min(hi, goal.x));
-    }
-    vx += ((goal.x - x) * 0.12 - 0.8 * vx) * dt;
-    vy += ((goal.y - y) * 0.12 - 0.8 * vy) * dt;
-    x += vx * dt;
-    y += vy * dt;
-    if (boundsX) {
-      const [lo, hi] = boundsX();
-      if (x < lo || x > hi) {
-        x = Math.max(lo, Math.min(hi, x));
-        vx = 0;
+    if (flight) {
+      // 跟随用的弹簧过阻尼、横穿视口要好几秒，飞行改按时间插值；速度照样算出来，倾斜和尾迹跟着走。
+      const p = Math.min(1, (now - flight.start) / flight.ms);
+      const e = p * p * (3 - 2 * p);
+      const nx = flight.from.x + (flight.to.x - flight.from.x) * e;
+      const ny = flight.from.y + (flight.to.y - flight.from.y) * e - FLIGHT_ARC * Math.sin(Math.PI * p);
+      vx = (nx - x) / dt;
+      vy = (ny - y) / dt;
+      x = nx;
+      y = ny;
+      if (p === 1) {
+        const { done } = flight;
+        flight = null;
+        vx = vy = 0;
+        done();
+      }
+    } else {
+      const goal = { ...(targetRef() ?? home()) };
+      goal.x += 0.028 * Math.sin(0.45 * t) + 0.018 * Math.sin(0.19 * t + 1.7);
+      goal.y += 0.045 * Math.sin(0.62 * t + 0.8) + 0.03 * Math.sin(0.27 * t + 2.4);
+      if (boundsX) {
+        const [lo, hi] = boundsX();
+        goal.x = Math.max(lo, Math.min(hi, goal.x));
+      }
+      vx += ((goal.x - x) * 0.12 - 0.8 * vx) * dt;
+      vy += ((goal.y - y) * 0.12 - 0.8 * vy) * dt;
+      x += vx * dt;
+      y += vy * dt;
+      if (boundsX) {
+        const [lo, hi] = boundsX();
+        if (x < lo || x > hi) {
+          x = Math.max(lo, Math.min(hi, x));
+          vx = 0;
+        }
       }
     }
     tilt += (Math.max(-8, Math.min(8, 55 * vx)) - tilt) * (1 - Math.exp(-(4 * dt)));
@@ -113,6 +135,22 @@ export function clawdActor(host: HTMLElement, { w, h, frame, fx, home, targetRef
       cancelAnimationFrame(raf);
       ro.disconnect();
       canvas.remove();
+      flight?.done();
+      flight = null;
+    },
+    // 飞行途中不受 boundsX 约束；减少动效时没有逐帧循环，直接落到终点。
+    fly(to: FloatTarget, ms: number) {
+      flight?.done();
+      if (reducedMotion) {
+        x = to.x;
+        y = to.y;
+        flight = null;
+        draw();
+        return Promise.resolve();
+      }
+      return new Promise<void>((done) => {
+        flight = { from: { x, y }, to, start: performance.now(), ms, done };
+      });
     },
     place(nx: number) {
       x = nx;
