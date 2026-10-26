@@ -44,18 +44,21 @@ function setup(t: test.TestContext, override?: (call: GithubFixtureCall) => Resp
   coordinator.releasePreparation(runId, lease);
   assert.equal(coordinator.claimDispatch(runId), true);
   const closes = () => github.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/pulls/12"));
-  return { coordinator, alarm, closes };
+  const comments = () => github.calls.filter((call) => call.method === "POST" && call.path.endsWith("/issues/12/comments"));
+  return { coordinator, alarm, closes, comments };
 }
 
 test("a blocked build closes its plan-only draft and keeps the failure on the card", async (t) => {
-  const { coordinator, alarm, closes } = setup(t);
-  assert.equal(coordinator.blockRun(runId, "token-hash", "Plan paths are not enough."), true);
+  const { coordinator, alarm, closes, comments } = setup(t);
+  assert.equal(coordinator.blockRun(runId, "token-hash", "Plan paths are not `enough`."), true);
   await coordinator.alarm();
   assert.deepEqual(closes().map((call) => call.body), [{ state: "closed" }]);
+  assert.equal(comments().length, 1);
+  assert.match(String(comments()[0].body?.body), /so the draft is closed\. Reason:\n\n```text\nPlan paths are not 'enough'\.\n```$/);
   const run = coordinator.readRun(runId)!;
   assert.equal(run.draftClose, "closed");
   assert.equal(run.state.phase, "blocked");
-  assert.match(run.state.reason!, /Plan paths are not enough\. The draft pull request was closed\.$/);
+  assert.match(run.state.reason!, /Plan paths are not `enough`\. The draft pull request was closed\.$/);
   assert.equal(alarm.at, null);
   coordinator.updateRun(runId, { phase: "closed", githubUpdatedAt: Date.now() });
   assert.equal(coordinator.readRun(runId)?.state.phase, "blocked");

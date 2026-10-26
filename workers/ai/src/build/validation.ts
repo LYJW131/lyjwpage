@@ -8,9 +8,10 @@ const PROTECTED_PATH_SEGMENTS = new Set([
   "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb",
 ]);
 
-// 规则与政策文档会被后续 agent 当指令读；PROJECT_DOCS 里的文档逐字进访客对话和 /mcp 的模型上下文。
-const PROTECTED_DOC_NAMES = new Set(["human.md", "review.md", "design.md", "glossary.md"]);
-const PROTECTED_DOC_PATHS = new Set([
+// 规则文档与 PROJECT_DOCS 都从 main 读，合并前不生效，所以放行，只在 PR 的重点审查里标出；
+// 拒绝名单只留分支上会被执行或被 agent 当指令加载的东西（PR 工作流、Workers Builds 预览、检出分支的 Claude 会话）。
+const RULE_DOC_NAMES = new Set(["human.md", "review.md", "design.md", "glossary.md"]);
+const RULE_DOC_PATHS = new Set([
   "docs/ops-facts.md",
   "docs/api-contracts.md",
   ...Object.values(PROJECT_DOCS).flatMap((doc) => "repo" in doc ? [] : [doc.path.toLowerCase()]),
@@ -22,25 +23,32 @@ const PUBLIC_HEADER_FILES = new Set(["_headers", "_redirects"]);
 
 function protectedPathSegment(segment: string): boolean {
   const lower = segment.toLowerCase();
-  return PROTECTED_PATH_SEGMENTS.has(lower) || PROTECTED_DOC_NAMES.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.(?:toml|jsonc?)$/.test(lower) || /^(?:next|vite|react-router)\.config\./.test(lower);
+  return PROTECTED_PATH_SEGMENTS.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.(?:toml|jsonc?)$/.test(lower) || /^(?:next|vite|react-router)\.config\./.test(lower);
 }
 
 function protectedBuildPath(path: string): boolean {
-  return path.split("/").some(protectedPathSegment) || PROTECTED_DOC_PATHS.has(path.toLowerCase());
+  return path.split("/").some(protectedPathSegment);
+}
+
+export function ruleDoc(path: string): boolean {
+  return RULE_DOC_PATHS.has(path.toLowerCase()) || RULE_DOC_NAMES.has(path.slice(path.lastIndexOf("/") + 1).toLowerCase());
+}
+
+function wellFormedPath(path: string): boolean {
+  if (!path || path.length > 240 || !/^[A-Za-z0-9_@().[\] /-]+$/.test(path) || path.trim() !== path) return false;
+  return !path.split("/").some((part) => !part || part === "." || part === "..");
 }
 
 export function allowedBuildPath(path: string): boolean {
-  if (!path || path.length > 240 || !/^[A-Za-z0-9_@().[\] /-]+$/.test(path) || path.trim() !== path) return false;
+  if (!wellFormedPath(path) || protectedBuildPath(path)) return false;
   const segments = path.split("/");
-  if (segments.some((part) => !part || part === "." || part === "..")) return false;
-  if (protectedBuildPath(path)) return false;
   if (path.startsWith("docs/") && SCRIPT_SUFFIX.test(path)) return false;
   const name = segments[segments.length - 1].toLowerCase();
   if (path.startsWith("public/") && (PUBLIC_EXECUTABLE.test(path) || PUBLIC_HEADER_FILES.has(name))) return false;
   return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path) || markdownDoc(path);
 }
 
-// 普通文档改了只是文字，PR 里单列给人审；指令与上下文文档由受保护名挡掉，上报器单独部署不放开。
+// 文档改了只是文字，PR 里单列给人审；agent 指令文件由受保护名挡掉，上报器单独部署不放开。
 export function markdownDoc(path: string): boolean {
   return /\.md$/i.test(path) && !protectedBuildPath(path) && !path.split("/").some((segment) => segment.toLowerCase() === "reporters");
 }
@@ -60,14 +68,6 @@ export function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: s
   if (!paths.length || paths.length > limits.paths) return { error: `List 1 to ${limits.paths} paths; there are ${paths.length}.` };
   const badPath = paths.find((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")));
   if (badPath !== undefined) return { error: `Path ${JSON.stringify(badPath)} is not allowed. Use repository paths under src/, public/, docs/, shared/ or workers/*/src/ that avoid protected names.` };
-  const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
-  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.(?:toml|jsonc?)|(?:next|vite|react-router)\.config\.[\w]+|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
-  // 句末标点会被一起匹配进最后一段（「…/AGENTS.md.」），比对前去掉，否则加个句号就能绕过。
-  const protectedMention = mentionedPaths.find((path) => {
-    const segments = path.split("/").map((segment) => segment.replace(/[.,;:]+$/, ""));
-    return PROTECTED_DOC_PATHS.has(segments.join("/").toLowerCase()) || segments.some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters");
-  });
-  if (protectedMention) return { error: `The title, spec or acceptance names ${JSON.stringify(protectedMention)}, a protected file or directory. Describe the behavior without naming agent instructions, dependency manifests, CI, scripts, deploy config or reporters.` };
   return { plan: { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] } };
 }
 
@@ -89,7 +89,10 @@ export function outsidePlanPaths(upload: Pick<BuildUpload, "files" | "deletions"
   return [...upload.files.map((file) => file.path), ...upload.deletions].filter((path) => !withinBuildPlan(path, planPaths));
 }
 
-export function parseBuildUpload(value: unknown, planPaths: readonly string[]): BuildUpload {
+export type ParsedBuildUpload = BuildUpload & { dropped: string[] };
+
+// 越界路径只从这次提交里剔掉、写进 PR 正文，不整份拒收：合并前 lyjw 还会审查，一个越界文件不该让整个构建作废。
+export function parseBuildUpload(value: unknown): ParsedBuildUpload {
   if (!value || typeof value !== "object") throw new Error("Invalid upload payload.");
   const { baseSha, message, files, deletions } = value as Record<string, unknown>;
   if (typeof baseSha !== "string" || !/^[a-f0-9]{40}$/.test(baseSha)) throw new Error("Invalid base commit.");
@@ -98,7 +101,7 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
   const paths = new Set<string>();
   let total = 0;
   const checkPath = (path: unknown): string => {
-    if (typeof path !== "string" || !allowedBuildPath(path)) throw new Error("A changed path is outside the allowed scope.");
+    if (typeof path !== "string" || !wellFormedPath(path)) throw new Error("A changed path is malformed.");
     if (paths.has(path)) throw new Error("Duplicate changed path.");
     paths.add(path);
     return path;
@@ -115,9 +118,8 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
     return { path: cleanPath, mode, content };
   });
   if (total > BUILD_UPLOAD_LIMITS.totalBytes) throw new Error("Upload exceeds the total size limit.");
-  const result = { baseSha, message: message.trim(), files: cleanFiles, deletions: deletions.map(checkPath) };
-  const outside = outsidePlanPaths(result, planPaths);
-  const counted = outside.filter((path) => !markdownDoc(path));
-  if (counted.length > BUILD_UPLOAD_LIMITS.outsidePlanFiles) throw new Error(`${counted.length} changed paths are outside the approved plan paths (at most ${BUILD_UPLOAD_LIMITS.outsidePlanFiles}, documentation excluded): ${counted.join(", ")}`);
-  return result;
+  const cleanDeletions = deletions.map(checkPath);
+  const dropped = [...paths].filter((path) => !allowedBuildPath(path));
+  if (dropped.length === paths.size) throw new Error(`Every changed path is outside the allowed scope: ${dropped.join(", ")}`);
+  return { baseSha, message: message.trim(), files: cleanFiles.filter((file) => allowedBuildPath(file.path)), deletions: cleanDeletions.filter(allowedBuildPath), dropped };
 }

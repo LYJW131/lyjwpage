@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BUILD_REPO, BUILD_UPLOAD_LIMITS, type BuildFireResult, type BuildRun } from "@shared/build-routine";
+import { BUILD_REPO, type BuildFireResult, type BuildRun } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import { BuildPullRequestRejectedError, GithubBuildApi, reconcileBuild } from "./build/github.ts";
 import { FIXTURE_PLAN_SHA } from "./build/testing/github-fixture.ts";
@@ -163,16 +163,16 @@ test("a run without a callback origin cannot be claimed by a workflow token", as
   assert.equal(fixture.calls.length, 0);
 });
 
-test("uploads with too many paths outside the plan are blocked with the paths and no GitHub request", async (t) => {
+test("uploads whose every path is outside the allowed scope are blocked with the paths and no GitHub request", async (t) => {
   const { instance, env, db } = coordinator();
   t.after(() => db.close());
   instance.reserveRun(await dispatched(), "scope-plan", Date.now() + 60_000);
-  const denied = oidc.serve(async () => assert.fail("Unapproved paths must be rejected before GitHub access"));
-  const unplanned = Array.from({ length: BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1 }, (_, index) => ({ ...upload.files[0], path: `src/lib/unplanned-${index}.ts` }));
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, denied);
+  const denied = oidc.serve(async () => assert.fail("Disallowed paths must be rejected before GitHub access"));
+  const files = [".github/workflows/x.yml", "workers/ai/AGENTS.md"].map((path) => ({ ...upload.files[0], path }));
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files }, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, denied);
   assert.equal(response.status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
-  assert.match(instance.readRun(runId)?.state.reason ?? "", /outside the approved plan paths.*src\/lib\/unplanned-0\.ts/);
+  assert.match(instance.readRun(runId)?.state.reason ?? "", /outside the allowed scope.*\.github\/workflows\/x\.yml/);
 });
 
 for (const phase of ["merged", "closed"] as const) {

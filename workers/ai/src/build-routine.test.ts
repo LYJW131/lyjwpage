@@ -11,8 +11,8 @@ import { callbackOrigin, coordinator, dispatched, githubFixture, handleBuildProg
 for (const path of [".github/workflows/ci.yml", ".claude/settings.json", "AGENTS.md", "src/AGENTS.md", "CLAUDE.md", "docs/CLAUDE.md", "package.json", "src/package.json", "workers/ai/package.json", "pnpm-lock.yaml", "src/pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "src/.npmrc", "scripts/foo.test.ts", "workers/ai/scripts/foo.test.ts", "workers/ai/wrangler.toml", "workers/ai/src/wrangler.test.toml", "src/wrangler.jsonc", "src/wrangler.preview.json", "next.config.ts", "src/next.config.mjs", "src/vite.config.ts", "src/react-router.config.ts", "reporters/foo.test.ts", ".gitmodules", "src/.gitmodules", "src/../package.json", "/src/a.ts", "src//a.ts", "src\\a.ts", "src/%2e%2e/package.json", "src/.git/config"]) {
   test(`upload path denies ${path}`, () => {
     assert.equal(allowedBuildPath(path), false);
-    assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, [path]));
-    assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: [path] }, [path]));
+    assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }));
+    assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: [path] }));
   });
 }
 
@@ -20,20 +20,20 @@ test("allowed paths cover source, docs, assets, worker source and tests", () => 
   for (const path of ["src/app/[slug]/page.tsx", "public/photo.png", "docs/layout.md", "shared/types.ts", "workers/ai/src/tools/a.ts", "src/tests/route.test.ts"]) assert.equal(allowedBuildPath(path), true);
 });
 
-test("plans validate all fields and protected paths in prose", () => {
+test("plans validate all fields and protected paths in the paths list", () => {
   assert.deepEqual(parseBuildPlan(plan), plan);
-  for (const bad of [{ ...plan, paths: [".github/workflows/test.yml"] }, { ...plan, spec: "Please change package.json" }, { ...plan, acceptance: ["Update wrangler.toml"] }, { ...plan, paths: [] }, { ...plan, title: "a".repeat(101) }]) assert.equal(parseBuildPlan(bad), null);
+  for (const bad of [{ ...plan, paths: [".github/workflows/test.yml"] }, { ...plan, paths: ["wrangler.toml"] }, { ...plan, paths: [] }, { ...plan, title: "a".repeat(101) }]) assert.equal(parseBuildPlan(bad), null);
 });
 
 test("upload blocks special modes, duplicate paths, malformed encoding and byte limits", () => {
-  for (const mode of ["120000", "160000", "040000"]) assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], mode }] }, plan.paths));
-  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content: "%%%" }] }, plan.paths));
-  assert.throws(() => parseBuildUpload({ ...upload, deletions: [upload.files[0].path] }, plan.paths));
-  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 81 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts` })) }, ["src/"]));
+  for (const mode of ["120000", "160000", "040000"]) assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], mode }] }));
+  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content: "%%%" }] }));
+  assert.throws(() => parseBuildUpload({ ...upload, deletions: [upload.files[0].path] }));
+  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 81 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts` })) }));
   const content = Buffer.alloc(BUILD_UPLOAD_LIMITS.fileBytes + 1).toString("base64");
-  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content }] }, plan.paths));
+  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content }] }));
   const large = Buffer.alloc(BUILD_UPLOAD_LIMITS.fileBytes).toString("base64");
-  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 5 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts`, content: large })) }, ["src/"]));
+  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 5 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts`, content: large })) }));
 });
 
 test("signed capabilities enforce integrity, purpose and expiry", async () => {

@@ -17,8 +17,7 @@ export const BUILD_ISSUE_LOOKUP_GRACE_MS = 24 * 60 * 60_000;
 export const BUILD_ISSUE_POLL_MS = 15_000;
 export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceItems: 8, acceptanceChars: 300, paths: 30 } as const;
 export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;
-// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。
-export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
+export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000 } as const;
 // 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。
 export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;
 export const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;
@@ -86,7 +85,9 @@ export const PLAN_LABELS = {
     acceptance: "Acceptance criteria",
     paths: "Planned paths",
     review: "Review closely",
-    reasons: { outside: "outside the plan", contract: "shared contract", auth: "build or auth code", prompt: "chat prompts", docs: "documentation outside docs/" },
+    reasons: { outside: "outside the plan", contract: "shared contract", auth: "build or auth code", prompt: "chat prompts", docs: "documentation outside docs/", rules: "rules or model-context document" },
+    dropped: "Left out of this commit (outside the allowed paths)",
+    draftClosed: "This build stopped before an implementation was published, so the draft is closed. Reason:",
     requestedBy: (account: string) => `Requested by @${account}.`,
     buildRun: (runId: string) => `Build run: \`${runId}\`. Claude review is advisory; it does not authorize merging.`,
     issueFooter: "_Filed from the [homepage chat](https://lyjw.me)._",
@@ -101,7 +102,9 @@ export const PLAN_LABELS = {
     acceptance: "验收标准",
     paths: "涉及路径",
     review: "重点审查",
-    reasons: { outside: "计划外", contract: "共享契约", auth: "构建或授权代码", prompt: "对话提示词", docs: "docs/ 之外的文档" },
+    reasons: { outside: "计划外", contract: "共享契约", auth: "构建或授权代码", prompt: "对话提示词", docs: "docs/ 之外的文档", rules: "规则或模型上下文文档" },
+    dropped: "未提交的文件（超出允许路径）",
+    draftClosed: "这次构建在发布实现前停下了，草稿随之关闭。原因：",
     requestedBy: (account: string) => `由 @${account} 发起。`,
     buildRun: (runId: string) => `构建编号：\`${runId}\`。Claude 的审查仅供参考，不代表可以合并。`,
     issueFooter: "_提交自[首页对话](https://lyjw.me)。_",
@@ -116,7 +119,9 @@ export const PLAN_LABELS = {
     acceptance: "受け入れ基準",
     paths: "変更予定のパス",
     review: "重点レビュー",
-    reasons: { outside: "計画外", contract: "共有コントラクト", auth: "ビルド・認証コード", prompt: "チャットのプロンプト", docs: "docs/ 以外のドキュメント" },
+    reasons: { outside: "計画外", contract: "共有コントラクト", auth: "ビルド・認証コード", prompt: "チャットのプロンプト", docs: "docs/ 以外のドキュメント", rules: "ルール・モデル文脈の文書" },
+    dropped: "コミットから外したファイル（許可範囲外）",
+    draftClosed: "実装を公開する前にビルドが止まったため、ドラフトを閉じます。理由：",
     requestedBy: (account: string) => `@${account} さんのリクエストです。`,
     buildRun: (runId: string) => `ビルド ID：\`${runId}\`。Claude のレビューは参考情報で、マージを承認するものではありません。`,
     issueFooter: "_[ホームページのチャット](https://lyjw.me)から作成されました。_",
