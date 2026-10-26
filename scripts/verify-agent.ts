@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA, type VerifierReport } from "./verify-action/report.ts";
-import { childEnv, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, filterGrepOutput, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { checklistIds, hasDescription, isLogicTier, reviewReport, type Claim } from "./verify-agent/review.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool } from "./verify-agent/tools.ts";
@@ -253,11 +253,18 @@ const resourceLoader = new DefaultResourceLoader({
   extensionFactories: [
     {
       name: "verify-guard",
-      factory: (pi: { on: (event: string, handler: (event: { toolName: string; input: Record<string, unknown> }) => unknown) => void }) => {
+      factory: (pi: { on: (event: string, handler: (event: { toolName: string; input: Record<string, unknown>; content?: { type: string; text?: string }[] }) => unknown) => void }) => {
         pi.on("before_provider_request", (event) => {
           const payload = (event as unknown as { payload?: Record<string, unknown> }).payload ?? {};
           effortSent ??= JSON.stringify({ reasoning_effort: payload.reasoning_effort, thinking: payload.thinking, output_config: payload.output_config });
           return undefined;
+        });
+        pi.on("tool_result", (event) => {
+          if (event.toolName !== "grep") return undefined;
+          const raw = typeof event.input.path === "string" && event.input.path ? event.input.path : ".";
+          const dir = piPaths.resolveToCwd(raw, cwd);
+          const content = (event.content ?? []).map((part) => (part.type === "text" ? { ...part, text: filterGrepOutput(part.text ?? "", dir).text } : part));
+          return { content, structuredContent: undefined };
         });
         pi.on("tool_call", async (event) => {
           if (!["read", "grep", "find", "ls"].includes(event.toolName)) return undefined;

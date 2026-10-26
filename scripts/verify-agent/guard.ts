@@ -44,3 +44,15 @@ export function sandboxed(command: string, writable: string[], bwrap: boolean) {
   const binds = writable.map((dir) => `--bind ${quote(dir)} ${quote(dir)}`).join(" ");
   return `exec bwrap --ro-bind / / ${binds} --dev /dev --proc /proc --unshare-pid --die-with-parent bash -c ${quote(command)}`;
 }
+
+// 黑名单只判 path 参数时，grep 从允许的根往下递归仍会搜进 .env* 这类文件：结果里来自它们的行一律去掉
+export function filterGrepOutput(text: string, searchDir: string): { text: string; dropped: number } {
+  let dropped = 0;
+  const kept = text.split("\n").filter((line) => {
+    const match = /^(.+?)[:-]\d+[:-]/.exec(line);
+    if (!match || !forbiddenRead(path.resolve(searchDir, match[1]))) return true;
+    dropped++;
+    return false;
+  });
+  return { text: kept.join("\n"), dropped };
+}

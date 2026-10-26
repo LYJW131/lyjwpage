@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { childEnv, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, filterGrepOutput, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 import { checklistIds, lenientRows, reviewReport } from "./verify-agent/review.ts";
 import { removedIdentifiers } from "./verify-agent/tools.ts";
 
@@ -123,4 +123,11 @@ test("reviewReport：写明改动前就有的「另：」、跑通了单测、�
 test("removedIdentifiers：只收 diff 里删掉、新代码里又没出现的标识符", () => {
   const patch = ["--- a/x.ts", "+++ b/x.ts", "-const OLD_LIMIT = 5;", "-useOldThing(verify-ab.yml)", "+const NEW_LIMIT = 5;", "+useOldThing()"].join("\n");
   assert.deepEqual(removedIdentifiers(patch).sort(), ["OLD_LIMIT", "verify-ab.yml"]);
+});
+
+test("filterGrepOutput：递归搜到 .env*、.dev.vars 里的行去掉，普通文件的命中与上下文行保留", () => {
+  const out = ["src/a.ts:3: MARK", "envprobe/.env.local:1: MARK=1", "workers/core/.dev.vars-2- MARK", "README.md-4- context", "无法解析的一行"].join("\n");
+  const { text, dropped } = filterGrepOutput(out, "/repo");
+  assert.equal(dropped, 2);
+  assert.equal(text, ["src/a.ts:3: MARK", "README.md-4- context", "无法解析的一行"].join("\n"));
 });
