@@ -49,6 +49,7 @@ test("凭据检测：真凭据报出来，记忆里常见的名字、引用、sh
   for (const benign of [
     "env var `LYJWPAGE_ANTHROPIC_API_KEY`; use `ANTHROPIC_API_KEY=\"$LYJWPAGE_ANTHROPIC_API_KEY\"`",
     "secret APPLE_MUSIC_PRIVATE_KEY, ROUTINE_FIRE_TOKEN",
+    "runs bill the API (`apiKeySource: ANTHROPIC_API_KEY`), token: GITHUB_TOKEN",
     "commit 5e077b49f0c5260d92dc70a1b2c3d4e5f6a7b8c9 merged",
     "Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY`, issue #185",
     "`workers/ai/src/build/github.ts#BUILD_READY_CHECKS`",
