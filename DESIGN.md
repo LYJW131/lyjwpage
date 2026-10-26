@@ -144,6 +144,9 @@
 - 只动 `transform` 与 `opacity`；时长 120–300ms，进入用减速曲线、离开更短；主题切换的 view transition 例外，见 `src/app/styles/theme.css`。
 - 首屏到稳定只允许一次变化：水合对时、换锚点、换数据这类大跨度变化直接落位，不做补间；正常走时、换句才用动画。
 - 已知没有的内容（如无歌词）首帧就画对应布局，不先画占位再收起。
+- `transition` 列出具体属性，不写 `transition: all`（Tailwind 的 `transition-all` 同理）：`all` 会顺带补间后来改到的布局属性。
+- 阴影要动时叠一层带阴影的伪元素改它的 `opacity`，不补间 `box-shadow`；补间的 `blur()` 不超过 20px（Safari 上会掉帧）。
+- `will-change` 只在看到动画起止时抖 1px 才加，不预先撒。掉帧先在 4 倍 CPU 降速下录性能面板找原因，不凭快电脑判断「够顺」。
 - `prefers-reduced-motion` 由 `src/app/styles/reduced-motion.css` 全局处理；新加的 view transition 伪元素要单独写进 reduced-motion 规则。
 - 一屏里同时在动的东西不超过一两处；每个动画都对应一个真实变化。
 - 循环动画只给正在发生的事：`live` 状态点的脉冲、播放中的均衡器、加载中的占位与转圈；不加装饰性的循环动画。
