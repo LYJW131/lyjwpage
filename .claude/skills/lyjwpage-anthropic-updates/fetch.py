@@ -28,12 +28,12 @@ X_ACCOUNTS = {
     "anthropic": {
         "bcherny": "159337660",
         "_catwu": "974757274206978049",
-        "trq212": "352806502",
         "alexalbert__": "1380719534970040322",
         "felixrieseberg": "28576494",
     },
     "builders": {
         "poteto": "2832427459",
+        "trq212": "352806502",
         "mattpocockuk": "346640777",
         "karpathy": "33836629",
         "HamelHusain": "825766640",
@@ -203,75 +203,138 @@ VERSION_SOURCES = {
 }
 
 
-def x_timeline(user_id, since_id=None, start_time=None):
-    tweets, token = [], None
-    while True:
-        q = {
-            "exclude": "replies,retweets",
-            "max_results": "100",
-            "tweet.fields": "created_at,note_tweet,entities,article,referenced_tweets,public_metrics",
-        }
-        if since_id:
-            q["since_id"] = since_id
-        if start_time:
-            q["start_time"] = start_time
-        if token:
-            q["pagination_token"] = token
-        data = json.loads(get(f"https://api.x.com/2/users/{user_id}/tweets?" + urllib.parse.urlencode(q)))
-        if "data" not in data and data.get("meta", {}).get("result_count") != 0:
-            raise RuntimeError(json.dumps(data)[:300])
-        tweets.extend(data.get("data", []))
-        token = data.get("meta", {}).get("next_token")
-        if not token:
-            break
-    tweets.sort(key=lambda t: int(t["id"]))
-    return tweets
+X_ME = "1757165334170398720"
+X_SELF = {"x-likes": "x_get_users_liked_posts", "x-bookmarks": "x_get_users_bookmarks"}
+# 连接器单次返回超过约 2 万字符会被截断，每页条数与正文截断长度按这个上限取。
+X_TIMELINE_PAGE, X_TIMELINE_TEXT = 10, 1500
+X_SELF_PAGE, X_SELF_TEXT = 30, 280
+X_TIMELINE_MAX_PAGES, X_SELF_MAX_PAGES = 30, 5
+X_SELF_FIRST = 20
+# 点赞、收藏按操作时间倒序、没有 since_id，用最近见过的这么多条 id 当书签；取消点赞删掉几条也还能对上。
+X_SELF_KNOWN = 50
+
+X_PAGE_JS = """async () => {
+  const TOKEN = __TOKEN__;
+  const KNOWN = new Set(%(known)s);
+  const r = await codemode.%(fn)s({...%(args)s, ...(TOKEN ? {pagination_token: TOKEN} : {})});
+  const raw = Array.isArray(r) ? r[0].text : JSON.stringify(r);
+  const d = JSON.parse(raw);
+  if (!d.data && !(d.meta && d.meta.result_count === 0)) throw new Error(raw.slice(0, 300));
+  const users = Object.fromEntries(((d.includes || {}).users || []).map(u => [u.id, u.username]));
+  const items = [];
+  let stop = false;
+  for (const t of d.data || []) {
+    if (KNOWN.has(t.id)) { stop = true; break; }
+    const n = t.note_tweet || {};
+    items.push({
+      id: t.id, createdAt: t.created_at, author: users[t.author_id] || null,
+      text: (n.text || t.text || "").slice(0, %(text)d), article: (t.article || {}).title || null,
+      likes: (t.public_metrics || {}).like_count,
+      links: ((n.entities || t.entities || {}).urls || []).map(u => u.expanded_url).filter(u => u && !/^https?:\\/\\/(x|twitter)\\.com\\//.test(u)),
+    });
+  }
+  return {items, next: stop ? null : (d.meta || {}).next_token || null, stop: stop || %(once)s};
+}"""
+
+X_FIELDS = {
+    "post.fields": "created_at,note_tweet,entities,article,public_metrics,author_id",
+    "expansions": "author_id",
+    "user.fields": "username",
+}
 
 
-def x_newest(user_id):
-    data = json.loads(get(f"https://api.x.com/2/users/{user_id}/tweets?max_results=5&exclude=replies,retweets"))
-    return data.get("meta", {}).get("newest_id")
+def x_js(fn, args, text, known=(), once=False):
+    return X_PAGE_JS % {"fn": fn, "args": json.dumps(args), "text": text, "known": json.dumps(list(known)), "once": json.dumps(once)}
 
 
-def x_scan(cursors, init):
-    if isinstance(cursors, str):
-        cursors = {"AnthropicAI": cursors}
-    cursors = dict(cursors or {})
-    new, errors, started = [], {}, []
+def x_plan():
+    cursors = load_state()["cursors"]
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - FIRST_LOOKBACK_S))
-    for group, accounts in X_ACCOUNTS.items():
+    calls, x = [], cursors.get("x") or {}
+    for accounts in X_ACCOUNTS.values():
         for name, uid in accounts.items():
+            cursor = x.get(name)
+            if cursor is None:
+                bound = {"start_time": since}
+            elif cursor.startswith("t:"):
+                bound = {"start_time": cursor[2:]}
+            else:
+                bound = {"since_id": cursor}
+            args = {"id": uid, "exclude": "replies,retweets", "max_results": X_TIMELINE_PAGE, **bound, **X_FIELDS}
+            calls.append({"file": name, "maxPages": X_TIMELINE_MAX_PAGES, "code": x_js("x_get_users_posts", args, X_TIMELINE_TEXT)})
+    for key, fn in X_SELF.items():
+        known = cursors.get(key)
+        first = known is None
+        args = {"id": X_ME, "max_results": X_SELF_FIRST if first else X_SELF_PAGE, **X_FIELDS}
+        calls.append({"file": key, "maxPages": 1 if first else X_SELF_MAX_PAGES, "code": x_js(fn, args, X_SELF_TEXT, known or (), first)})
+    path = os.path.join(STATE_DIR, "pending.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            pending = json.load(f)
+        pending["xPlannedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with open(path, "w") as f:
+            json.dump(pending, f)
+    return calls
+
+
+def x_pages(folder, name, max_pages):
+    if os.path.exists(os.path.join(folder, f"{name}.error.txt")):
+        raise RuntimeError(open(os.path.join(folder, f"{name}.error.txt")).read()[:300])
+    pages = sorted((f for f in os.listdir(folder) if re.fullmatch(re.escape(name) + r"\.\d+\.json", f)), key=lambda f: int(f.split(".")[-2]))
+    if not pages:
+        raise RuntimeError("读者没留下这个调用的结果")
+    out = [json.load(open(os.path.join(folder, f))) for f in pages]
+    if out[-1].get("next") and not out[-1].get("stop") and len(out) < max_pages:
+        raise RuntimeError(f"只读了 {len(out)} 页，末页还有下一页，分页没读完")
+    return out
+
+
+def x_ingest(folder):
+    state = load_state()
+    with open(os.path.join(STATE_DIR, "pending.json")) as f:
+        pending = json.load(f)
+    cursors, report = dict(state["cursors"].get("x") or {}), {}
+    new, errors, started, truncated = [], {}, [], []
+    for group, accounts in X_ACCOUNTS.items():
+        for name in accounts:
             try:
-                if init:
-                    newest = x_newest(uid)
-                    if newest:
-                        cursors[name] = newest
-                    continue
-                first = name not in cursors
-                tweets = x_timeline(uid, start_time=since) if first else x_timeline(uid, since_id=cursors[name])
-                if first:
-                    started.append(name)
-                    newest = tweets[-1]["id"] if tweets else x_newest(uid)
-                    if newest:
-                        cursors[name] = newest
-                elif tweets:
-                    cursors[name] = tweets[-1]["id"]
-                for t in tweets:
-                    urls = [u.get("expanded_url") for u in (t.get("note_tweet", {}).get("entities", {}) or t.get("entities", {})).get("urls", [])]
-                    new.append({
-                        "id": t["id"],
-                        "group": group,
-                        "account": name,
-                        "createdAt": t["created_at"],
-                        "url": f"https://x.com/{name}/status/{t['id']}",
-                        "text": t.get("note_tweet", {}).get("text") or t.get("text"),
-                        "article": (t.get("article") or {}).get("title"),
-                        "likes": (t.get("public_metrics") or {}).get("like_count"),
-                        "links": [u for u in urls if u],
-                    })
+                pages = x_pages(folder, name, X_TIMELINE_MAX_PAGES)
+                tweets = {t["id"]: t for p in pages for t in p["items"]}
             except Exception as e:
                 errors[name] = str(e)[:200]
-    return cursors, new, errors, started
+                continue
+            if name not in cursors:
+                started.append(name)
+            if pages[-1].get("next") and len(pages) >= X_TIMELINE_MAX_PAGES:
+                truncated.append(name)
+            if tweets:
+                cursors[name] = max(tweets, key=int)
+            elif pending.get("xPlannedAt") and (name not in cursors or cursors[name].startswith("t:")):
+                # 新账号这段时间没发帖时记下扫到的时刻，下一轮从这里接着读，而不是又只看最近一天半。
+                cursors[name] = "t:" + pending["xPlannedAt"]
+            for t in sorted(tweets.values(), key=lambda t: int(t["id"])):
+                new.append({"group": group, "account": name, "url": f"https://x.com/{name}/status/{t['id']}", **t})
+    pending["cursors"]["x"] = cursors
+    report["x"] = {"ok": not errors, "new": new, "failedAccounts": errors, "firstRunAccounts": started, "truncatedAccounts": truncated}
+    for key in X_SELF:
+        known = state["cursors"].get(key)
+        try:
+            pages = x_pages(folder, key, 1 if known is None else X_SELF_MAX_PAGES)
+        except Exception as e:
+            report[key] = {"ok": False, "error": str(e)}
+            continue
+        items = [t for p in pages for t in p["items"]]
+        lost = known is not None and not any(p.get("stop") for p in pages) and len(pages) >= X_SELF_MAX_PAGES
+        pending["cursors"][key] = ([t["id"] for t in items] + (known or []))[:X_SELF_KNOWN]
+        report[key] = {
+            "ok": True,
+            "new": [{"url": f"https://x.com/{t['author'] or 'i'}/status/{t['id']}", **t} for t in items],
+            **({"firstRun": True} if known is None else {}),
+            **({"cursorLost": True} if lost else {}),
+        }
+    with open(os.path.join(STATE_DIR, "pending.json"), "w") as f:
+        json.dump(pending, f)
+    return report
 
 
 def seen_path(name):
@@ -340,9 +403,6 @@ def scan(init=False):
             report[name] = {"ok": True, "latest": names[0], "new": new, **({"firstRun": True} if last is None and not init else {})}
         except Exception as e:
             report[name] = {"ok": False, "error": str(e)[:300]}
-    cursors, new, errors, started = x_scan(state["cursors"].get("x"), init)
-    pending["cursors"]["x"] = cursors
-    report["x"] = {"ok": not errors, "new": new, "failedAccounts": errors, "firstRunAccounts": started}
     with open(os.path.join(STATE_DIR, "pending.json"), "w") as f:
         json.dump(pending, f)
     return report
@@ -378,7 +438,11 @@ if __name__ == "__main__":
     if cmd in ("scan", "init"):
         os.makedirs(STATE_DIR, exist_ok=True)
         print(json.dumps(scan(init=cmd == "init"), ensure_ascii=False, indent=1))
+    elif cmd == "x-plan":
+        print(json.dumps(x_plan(), ensure_ascii=False, indent=1))
+    elif cmd == "x-ingest" and len(sys.argv) == 3:
+        print(json.dumps(x_ingest(sys.argv[2]), ensure_ascii=False, indent=1))
     elif cmd == "commit":
         print("advanced:", ", ".join(commit(set(sys.argv[2:]))))
     else:
-        sys.exit("usage: fetch.py scan|init|commit [source ...]")
+        sys.exit("usage: fetch.py scan|init|x-plan|x-ingest <dir>|commit [source ...]")
