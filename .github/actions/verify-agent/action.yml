@@ -37,7 +37,10 @@ runs:
   using: composite
   steps:
     - shell: bash
-      run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pi" "@earendil-works/pi-coding-agent@$PI_VERSION"
+      # 和下面的 verify-runner 一样：前面跑过 PR 的代码，可能预先放了假的 SDK 或 .npmrc，而 runner 在拿钥匙的进程里 import 它
+      run: |
+        rm -rf "$RUNNER_TEMP/pi"
+        npm install --userconfig /dev/null --registry https://registry.npmjs.org/ --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pi" "@earendil-works/pi-coding-agent@$PI_VERSION"
       env:
         PI_VERSION: ${{ inputs.pi-version }}
     # 拿 API 钥匙的 runner 只用默认分支上的版本，PR 改不到它；默认分支还没有这个文件时（引入它的那个 PR）才用 PR 自己的

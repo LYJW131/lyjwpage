@@ -39,6 +39,8 @@ export const readAllowed = (roots: string[], target: string) => roots.some((root
 
 // runner 在沙箱外往 PR 代码也能写的目录里写：先核对目录的真实路径还在 root 里，再删掉同名文件或链接，调用方以 wx 独占创建
 export function prepareInside(root: string, file: string) {
+  // root 自己被换成链接时 realInside 会把两边一起解析到外面，照样放行
+  if (fs.lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${root} 是符号链接`);
   const dir = path.dirname(path.resolve(file));
   if (!realInside(root, dir)) throw new Error(`${dir} 指出了 ${root}`);
   fs.mkdirSync(dir, { recursive: true });

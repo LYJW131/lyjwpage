@@ -108,6 +108,7 @@ const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "verif
 const outDir = values["out-dir"] ? path.resolve(values["out-dir"]) : null;
 // bwrap 的 --bind 要求源目录已存在
 if (outDir) fs.mkdirSync(outDir, { recursive: true });
+if (outDir && fs.lstatSync(outDir).isSymbolicLink()) throw new Error(`${outDir} 是符号链接，写守卫会跟着它解析到外面`);
 const tmpDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-agent-"));
 // pi 自己的状态（模型表、凭据表、agentDir）不放进沙箱可写的 tmpDir：PR 代码改了模型表的 baseUrl，钥匙就跟着请求发到别处
 const piStateDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-pi-state-"));

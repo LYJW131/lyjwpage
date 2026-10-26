@@ -132,7 +132,7 @@ test("工具里的 git 一律经 ctx.git（runner 把它放进和 bash 同一个
   );
 });
 
-test("writeInside / prepareInside：目录被换成指出去的链接（含悬空的）就拒，预先放好的同名链接删掉重建，不写穿到链接目标", (t) => {
+test("writeInside / prepareInside：根目录或其下目录被换成指出去的链接（含悬空的）就拒，预先放好的同名链接删掉重建，不写穿到链接目标", (t) => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "write-inside-"));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const out = path.join(base, "out");
@@ -153,6 +153,10 @@ test("writeInside / prepareInside：目录被换成指出去的链接（含悬�
   fs.rmSync(path.join(out, "work"));
   fs.symlinkSync(path.join(outside, "made-later"), path.join(out, "work"));
   assert.throws(() => writeInside(out, path.join(out, "work", "d.log"), "d"), /指出了/);
+  assert.deepEqual(fs.readdirSync(outside), ["victim"]);
+  const linkedRoot = path.join(base, "linked-out");
+  fs.symlinkSync(outside, linkedRoot);
+  assert.throws(() => writeInside(linkedRoot, path.join(linkedRoot, "work", "e.log"), "e"), /是符号链接/);
   assert.deepEqual(fs.readdirSync(outside), ["victim"]);
 });
 
