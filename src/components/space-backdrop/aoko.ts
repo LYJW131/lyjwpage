@@ -253,7 +253,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     return c;
   };
   const back = layer("top:0;");
-  const canvas = layer("filter:drop-shadow(0 12px 24px var(--paper-shadow));");
+  let canvas = layer("filter:drop-shadow(0 12px 24px var(--paper-shadow));");
   const front = layer("top:0;");
   parent.appendChild(root);
   const fx = aokoFx(back, front);
@@ -327,6 +327,13 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     render = rigRenderer(canvas, art, rig, faces, arm, fill);
     if (!render) {
       // 回退也做成 render：layout 重设画布尺寸会清空位图，要能重画，不然调整窗口后人物就没了。
+      // 着色器编译或链接失败时画布已经绑了 WebGL 上下文，再要 2D 上下文只会拿到 null，所以换一张新画布。
+      const flat = document.createElement("canvas");
+      flat.style.cssText = canvas.style.cssText;
+      flat.width = canvas.width;
+      flat.height = canvas.height;
+      canvas.replaceWith(flat);
+      canvas = flat;
       front.style.opacity = "";
       still = true;
       const ctx = canvas.getContext("2d");
