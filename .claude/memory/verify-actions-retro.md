@@ -14,3 +14,5 @@ Windows: before 10-20 08:00 → 10-23 20:11 SGT (110 merged PRs), after → 10-2
 - Upkeep: 20/45 merges were verify (14), billing WIF (3), peripheral CI (3); +1290/−93 lines; ~11 test PRs closed. Per day 5 → 9 → 3.
 
 Recommendation given (awaiting lyjw, nothing changed): keep; freeze verifier machinery a week (only misjudgment/env fixes, ≤1 verify PR/day); re-measure around 11-01 incl. fix PRs within 24 h of a merge (escaped defects); optional skill line to batch pushes. Related: [[verify-in-actions-plan]], [[verify-fail-causes]], [[verify-effort-ab-result]].
+
+Follow-up 2026-10-26 18:03 SGT (lyjw: Actions re-runs everything per fix, local subagent only re-checks the delta). Step timings: setup 27 s logic / 51 s UI (pnpm install 4 s, browser apt deps 25 s), wait-preview+proof+prompt ≤5 s, Claude step 4m40s logic / 8m UI (85–90%), publish ~15 s. So the gap is the cold full-checklist re-verify, not deps. Proposed (awaiting lyjw): on re-runs feed previous receipt + interdiff, carry untouched PASS rows, re-check only FAIL and touched items.
