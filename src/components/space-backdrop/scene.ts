@@ -10,7 +10,7 @@ const FADE_MS = 2000;
 // 换侧不让 Clawd 从卡片后面横穿过去：淡出、挪到另一侧留白的对应位置、再淡入。
 const SWAP_OUT_MS = 240;
 const SWAP_IN_MS = 480;
-// 右侧留白窄于此就不放青子立绘：再窄人物只剩手掌大，看不清。
+// 左侧留白窄于此就不放青子立绘：再窄人物只剩手掌大，看不清。
 const AOKO_MIN_GUTTER = 180;
 
 type Side = "left" | "right";
@@ -19,7 +19,10 @@ type Slot = {
   make: () => ClawdCast;
   cast: ClawdCast;
   used: boolean;
+  start: Side;
   side: Side;
+  // 青子立绘占着左侧留白、两只都挤在右侧时，各自歇在右侧的这个高度（占视口高的比例），上下错开。
+  sharedY: number;
   width: number;
   phase: number;
   actor: ReturnType<typeof clawdActor> | null;
@@ -28,16 +31,17 @@ type Slot = {
 };
 
 // 每只 Clawd 独占一侧留白：指针进了哪侧，只有那侧的 Clawd 去追；对侧空着才换过去，所以两只不会同在一侧，也都不会被卡片挡住。
+// 例外是青子立绘挂在左侧留白时：两只一起待在右侧，上下错开歇着，只让宇航员去追指针。
 export function mountSpaceScene(host: HTMLElement) {
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const fadeIn = (el: HTMLElement) => {
     if (!reducedMotion) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: "ease-in-out", fill: "backwards" });
   };
-  const slot = (make: () => ClawdCast, side: Side, phase: number): Slot => {
+  const slot = (make: () => ClawdCast, side: Side, phase: number, sharedY: number): Slot => {
     const cast = make();
-    return { make, cast, used: false, side, phase, width: cast.w * CLAWD_PX, actor: null, swapping: false };
+    return { make, cast, used: false, start: side, side, sharedY, phase, width: cast.w * CLAWD_PX, actor: null, swapping: false };
   };
-  const slots = [slot(astronautCast, "left", 0), slot(walkerCast, "right", 37)];
+  const slots = [slot(astronautCast, "left", 0, 0.34), slot(walkerCast, "right", 37, 0.74)];
   let pointerCursor = false;
   const setCursor = (over: boolean) => {
     if (over === pointerCursor) return;
@@ -84,7 +88,7 @@ export function mountSpaceScene(host: HTMLElement) {
     const inRight = pointer.x > column.right + EDGE;
     if (!inLeft && !inRight) return null;
     const next: Side = inLeft ? "left" : "right";
-    if (next === "right" && aoko) return null;
+    if (aoko && (next === "left" || s !== slots[0])) return null;
     if (next !== s.side) {
       if (!slots.some((o) => o !== s && o.actor && o.side === next)) swapTo(s, next);
       return null;
@@ -94,37 +98,46 @@ export function mountSpaceScene(host: HTMLElement) {
 
   const syncActors = () => {
     column = columnRect();
-    const aokoWide = innerWidth - column.right >= AOKO_MIN_GUTTER;
-    if (aokoWide && !aoko) {
-      aoko = aokoStanding(host.parentElement ?? document.body, { gutter: () => ({ left: column.right, right: innerWidth }), reducedMotion });
-      fadeIn(aoko.el);
-    } else if (!aokoWide && aoko) {
-      aoko.stop();
-      aoko = null;
+    const aokoWide = column.left >= AOKO_MIN_GUTTER;
+    if (aokoWide !== !!aoko) {
+      // 立绘挂上或卸下时 Clawd 的站位规则跟着变，先都收起来，下面按新规则从默认侧重挂。
+      for (const s of slots) {
+        clearTimeout(s.swapTimer);
+        s.swapping = false;
+        s.actor?.stop();
+        s.actor = null;
+        s.side = s.start;
+      }
+      setCursor(false);
+      if (aoko) {
+        aoko.stop();
+        aoko = null;
+      } else {
+        aoko = aokoStanding(host.parentElement ?? document.body, { gutter: () => ({ left: 0, right: column.left }), reducedMotion });
+        fadeIn(aoko.el);
+      }
     }
     aoko?.layout();
     for (const s of slots) {
       // 两侧留白窄于此就不放这只 Clawd：他会被卡片挡住大半，还把卡片边上的点阵掏空。
       const wide = column.left >= s.width + 72;
       if (wide && !s.actor) {
-        // 先挂上的那只可能已经换到这只的默认侧，挂载时让到对侧，保持一侧一只。
-        const side: Side = slots.some((o) => o !== s && o.actor && o.side === s.side) ? (s.side === "left" ? "right" : "left") : s.side;
-        // 青子立绘占着右侧留白时，只留左侧那只 Clawd。
-        if (aoko && side === "right") continue;
-        s.side = side;
+        // 先挂上的那只可能已经换到这只的默认侧，挂载时让到对侧，保持一侧一只；立绘在左侧时两只都去右侧。
+        if (aoko) s.side = "right";
+        else if (slots.some((o) => o !== s && o.actor && o.side === s.side)) s.side = s.side === "left" ? "right" : "left";
         // cast 里的动作与粒子按 actor 自己的计时走，重建 actor 时一并换新的。
         if (s.used) s.cast = s.make();
         s.used = true;
         s.actor = clawdActor(host, {
           ...s.cast,
           phase: s.phase,
-          home: () => ({ x: gutterCenter(s.side) / innerWidth, y: 0.62 }),
+          home: () => ({ x: gutterCenter(s.side) / innerWidth, y: aoko ? s.sharedY : 0.62 }),
           targetRef: () => target(s),
           boundsX: () => boundsX(s),
           reducedMotion,
         });
         fadeIn(s.actor.canvas);
-      } else if ((!wide || (aoko && s.side === "right")) && s.actor) {
+      } else if (!wide && s.actor) {
         s.actor.stop();
         s.actor = null;
         setCursor(false);

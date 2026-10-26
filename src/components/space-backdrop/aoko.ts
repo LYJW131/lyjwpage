@@ -1,4 +1,4 @@
-import { aokoFx, fxState, loadImage, ORB, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { ARM_RING_SHAPES, aokoFx, fxState, loadImage, ORB, STILL, type FxState, type HandPose } from "./aoko-fx";
 
 const SRC = "/mascots/aoko.webp";
 // 绑定图 RGB 分别是头发、裙摆、头部的权重（0 不动，1 摆幅最大），与立绘同框；离线生成，换立绘要一起重出。
@@ -36,11 +36,21 @@ function lidAt(dt: number) {
   return (1 - (dt - BLINK_CLOSE - BLINK_HOLD) / BLINK_OPEN) ** 2;
 }
 
+// 手臂环附近的空气折射：在每圈环的椭圆带上沿径向来回推几像素，环里外的立绘跟着波动（img0667 环后面的手臂是扭的）。
+const f = (n: number) => n.toFixed(3);
+const REFRACT = ARM_RING_SHAPES.rings
+  .map(({ x, y, r }, k) => {
+    const [c, s] = [Math.cos(ARM_RING_SHAPES.axis), Math.sin(ARM_RING_SHAPES.axis)];
+    return `  {vec2 o=P-vec2(${f(x)},${f(y)});vec2 l=vec2(dot(o,vec2(${f(c)},${f(s)})),dot(o,vec2(${f(-s)},${f(c)})));float e=length(vec2(l.x/${f(r * ARM_RING_SHAPES.squash)},l.y/${f(r)}));d+=o/max(length(o),1.)*sin(e*24.-t*4.+${k}.)*3.*smoothstep(.3,0.,abs(e-1.));}`;
+  })
+  .join("\n");
+
 const VERT = `attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `precision mediump float;
-uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow;varying vec2 v;
+uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow,flash;varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
+const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
 const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
 void main(){
@@ -64,6 +74,9 @@ void main(){
   d+=h*mix(hang,sway,lft);
   float k=w.g;
   d+=k*vec2(6.*sin(t*1.5+P.x*.008),3.*sin(t*2.+P.x*.012));
+${REFRACT}
+  vec2 po=P-ORB;float pl=max(length(po),1.);
+  d+=po/pl*smoothstep(46.,0.,abs(pl-(1.-flash)*700.))*flash*9.;
   vec2 s=(P-d)/S;
   vec4 c=texture2D(img,s)*inside(s);
   if(lid>0.){
@@ -99,7 +112,6 @@ void main(){
   vec2 au=(Q0-dh-AB)/AS;
   vec4 ar=texture2D(arm,clamp(au,0.,1.))*inside(au);
   c=ar+c*(1.-ar.a);
-  const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
   const vec3 GLOW=vec3(.45,.9,1.);
   float pulse=.5+.5*sin(t*2.4);
   float cy=clamp((c.b-c.r)*2.2,0.,1.);
@@ -183,14 +195,16 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   const time = gl.getUniformLocation(program, "t");
   const lid = gl.getUniformLocation(program, "lid");
   const glow = gl.getUniformLocation(program, "glow");
+  const burst = gl.getUniformLocation(program, "flash");
 
-  return (t: number, closed: number, light: number) => {
+  return (t: number, closed: number, light: number, flash: number) => {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(time, t);
     gl.uniform1f(lid, closed);
     gl.uniform1f(glow, light);
+    gl.uniform1f(burst, flash);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
 }
@@ -206,15 +220,13 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     root.appendChild(c);
     return c;
   };
-  // 特效画布从卡片列右缘往左多铺 FX_OVERHANG 到视口右缘：地面法阵的左半边伸进卡片背后，在画布左缘渐隐，卡片间隙里不露硬边。
-  const fade = "top:0;mask-image:linear-gradient(to right,transparent,#000 120px);";
-  const back = layer(fade);
+  const back = layer("top:0;");
   const canvas = layer("filter:drop-shadow(0 12px 24px var(--paper-shadow));");
-  const front = layer(fade);
+  const front = layer("top:0;");
   parent.appendChild(root);
   const fx = aokoFx(back, front);
 
-  let render: ((t: number, closed: number, light: number) => void) | null = null;
+  let render: ((t: number, closed: number, light: number, flash: number) => void) | null = null;
   let stopped = false;
   let raf = 0;
   let last = 0;
@@ -238,7 +250,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   };
   const draw = (t: number, closed = 0) => {
     const state = reducedMotion ? STILL : fxState(t);
-    render?.(t, closed, glowOf(state));
+    render?.(t, closed, glowOf(state), state.flash);
     fx.render(state, handPose(t));
   };
 
@@ -257,8 +269,12 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     const bottom = Math.max(8, (innerHeight - SRC_H * scale) * 0.18);
     canvas.style.left = `${x - PAD * scale}px`;
     canvas.style.bottom = `${bottom - PAD * scale}px`;
-    const fxLeft = Math.max(0, left - FX_OVERHANG);
-    fx.layout({ left: fxLeft, ox: x, oy: innerHeight - bottom - SRC_H * scale, scale, dpr }, right - fxLeft, innerHeight);
+    // 特效画布朝卡片列那侧多铺 FX_OVERHANG：地面法阵伸进卡片背后的那半边在画布这一侧的边缘渐隐，卡片间隙里不露硬边。
+    const fxLeft = left > 0 ? Math.max(0, left - FX_OVERHANG) : 0;
+    const fxRight = left > 0 ? right : Math.min(innerWidth, right + FX_OVERHANG);
+    const fade = `linear-gradient(to ${left > 0 ? "right" : "left"},transparent,#000 120px)`;
+    back.style.maskImage = front.style.maskImage = fade;
+    fx.layout({ left: fxLeft, ox: x, oy: innerHeight - bottom - SRC_H * scale, scale, dpr }, fxRight - fxLeft, innerHeight);
     draw(reducedMotion ? 0 : (performance.now() - t0) / 1000);
   };
   layout();

@@ -174,7 +174,7 @@
   - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 - **[claude.dev](https://claude.dev/) 页脚的点阵宇宙**（Anthropic）
   - 是什么：claude.dev 页脚 `.site-footer .scene` 的两层画布：`spaceField` 按 9px 网格画漂移的点阵星云、左上月牙和右下带环行星，点击放沿网格走的流星；`clawdActor` 的 astronaut 模式画戴头盔的像素 Clawd（40×33 精灵、12fps），弹簧跟着鼠标飘，周围的点阵按距离抖动着让开。
-  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧（青子立绘挂上时右侧让给立绘，只留左侧那只），鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。
+  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧（青子立绘挂上时左侧让给立绘，两只一起待在右侧、上下错开，只让宇航员追指针），鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。
   - 状态：采用。落在 `src/components/space-backdrop.tsx`、`src/components/space-backdrop/`，颜色 token 在 `src/app/styles/theme.css` 的 `.dark`。
 - **Claude App 会话加载时的踱步 Clawd**（Anthropic）
   - 是什么：Claude iOS App 打开会话时「正在加载消息」上方的像素 Clawd，12fps 一轮 32 拍，正面、侧身、跳起、眨眼几种姿势轮换。
@@ -186,7 +186,7 @@
   - 状态：采用。落在 `src/components/space-backdrop/aoko.ts#lidAt`。
 - **《魔法使之夜》里苍崎青子施法的那段演出**（TYPE-MOON，游戏内拆出的图层，不在仓库里）
   - 是什么：一组整帧镜头与透明图层：俯视的地面大法阵（img0607/0609）、伸掌时身后的竖直光环与电弧（img0627–0630）、平视远景里脚下的扁椭圆法阵（img0633）、环绕手臂的法阵（img0664/0667）、发射瞬间的星芒（img0660），以及拆开的法阵与电弧贴图。
-  - 取了什么：身后光环、手臂环与电弧直接用拆出的贴图；身后光环与电弧的位置和大小在 img0628 上量，按两眼中点和瞳距换算到立绘上；人物被法阵照亮的配色取 img0611 与 img0612 的对照。地面法阵照 img0609 的结构用代码画（八片宽刃、中心印章、偏心的粗亮月牙带、被照成紫色的砖地），按 img0633 那样近大远小投到脚下；大小按 lyjw 的要求比镜头里小。立绘伸出的是左手、前臂横过胸前，所以手臂环像 img0667 那样画成沿袖子排开的竖向窄椭圆，靠手腕的半圈被袖子和手挡住。
+  - 取了什么：身后光环、手臂环与电弧直接用拆出的贴图；身后光环与电弧的位置和大小在 img0628 上量，按两眼中点和瞳距换算到立绘上；人物被法阵照亮的配色取 img0611 与 img0612 的对照。地面法阵照 img0609 的结构用代码画（八片宽刃、中心印章、偏心的粗亮月牙带、被照成紫色的砖地），按 img0633 那样近大远小投到脚下；大小按 lyjw 的要求比镜头里小。立绘伸出的是左手、前臂横过胸前，所以手臂环像 img0667 那样画成沿袖子排开、大小不一的竖向窄椭圆，靠手腕的半圈被袖子和手挡住；也照 img0667 做了碎环（缺口与错开的碎片）、沿环的电弧毛刺、四芒小星，以及环附近立绘的空气折射。
   - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
