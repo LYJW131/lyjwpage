@@ -203,11 +203,23 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v5
+        id: checkout
         continue-on-error: true
         with:
           ref: ${{ needs.plan.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
+      # checkout 失败时不查，present 留空，照旧走到末步报红。分支从 pi 验证员进 main 之前切出、还没合 main 时，PR head 里没有这个 action：B 组这次没有样本，记 notice 不记失败
+      - id: agent
+        if: steps.checkout.outcome == 'success'
+        continue-on-error: true
+        run: |
+          if [ -f .github/actions/verify-agent/action.yml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PR head 里没有 .github/actions/verify-agent（分支早于 pi 验证员），B 组跳过；把 main 合进分支即可"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: pnpm/action-setup@v6
         continue-on-error: true
       - uses: actions/setup-node@v5
@@ -264,7 +276,7 @@ jobs:
           PREVIEW: ${{ steps.preview.outputs.preview }}
       - uses: ./.github/actions/verify-agent
         id: pi
-        if: steps.prompt.outcome == 'success'
+        if: steps.prompt.outcome == 'success' && steps.agent.outputs.present == 'true'
         continue-on-error: true
         # 盖住 runner 的首轮上限（action 的 timeout-min）加追问（verify-agent.ts#FOLLOW_UP_MS），外加装 pi
         timeout-minutes: 30
@@ -312,7 +324,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
       # 前面各步都 continue-on-error，job 结论只看这一步：pi 没交结果就让 job 红，pr-gate 在 notes 里提醒（ADVISORY_CHECKS 不挡合并）
-      - if: always() && steps.pi.outcome != 'success'
+      - if: always() && steps.pi.outcome != 'success' && steps.agent.outputs.present != 'false'
         run: |
           echo "::error::pi 验证员没交结果（${OUTCOME:-skipped}）"
           exit 1
