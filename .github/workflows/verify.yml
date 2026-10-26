@@ -259,7 +259,8 @@ jobs:
         id: pi
         if: steps.prompt.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 45
+        # runner 首轮 40 分钟、没交结果再追问 5 分钟，外加装 pi
+        timeout-minutes: 50
         with:
           role: verifier
           pr: ${{ env.PR }}

@@ -314,6 +314,7 @@ test("实验任务的检查跑着或失败都不挡 ready，只列在 items 里"
   for (const run of [
     { name: "verify-pi", status: "in_progress", conclusion: null },
     { name: "verify-pi", status: "completed", conclusion: "cancelled" },
+    { name: "verify-pi", status: "completed", conclusion: "failure" },
   ]) {
     const routes = pullRoutes({ [`commits/${HEAD}/check-runs`]: { check_runs: [{ name: "check", status: "completed", conclusion: "success" }, run] } });
     const result = await gate({ pr: 7 }, { fetch: fakeFetch(routes), patchId: () => null });
