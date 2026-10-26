@@ -90,7 +90,7 @@ export default function AppImage({
       ? optimizerImagePath(src, numericWidth === undefined ? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1] : imageWidthBucket(numericWidth * 2), q)
       : null;
   const retrying = failures > 0 && proxyFallback !== null;
-  const hidden = failures > (proxyFallback === null ? 0 : 1);
+  const hidden = proxyFallback !== null && failures > 1;
 
   return (
     <img
