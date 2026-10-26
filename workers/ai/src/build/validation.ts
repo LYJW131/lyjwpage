@@ -9,7 +9,7 @@ const PROTECTED_PATH_SEGMENTS = new Set([
   "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb",
 ]);
 
-// 规则文档与 PROJECT_DOCS 都从 main 读，合并前不生效，所以放行，只在 PR 的重点审查里标出；
+// 规则文档与 PROJECT_DOCS 不在 agent 自动加载的指令链上（PROJECT_DOCS 运行时从 main 读），放行；评审读 PR head 时可能参照改后的版本，所以在重点审查里标出。
 // 拒绝名单只留分支上会被执行或被 agent 当指令加载的东西（PR 工作流、Workers Builds 预览、检出分支的 Claude 会话）。
 const RULE_DOC_NAMES = new Set(["human.md", "design.md", "glossary.md"]);
 const RULE_DOC_PATHS = new Set([
