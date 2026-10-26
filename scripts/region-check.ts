@@ -17,12 +17,13 @@ const AGENT_WALL_MS = 240_000;
 const GOAL = (url: string) => `You are checking the personal site ${url} the way a real visitor in this country sees it. Do not submit forms, send chat messages or follow links that leave the site.
 1. Open ${url}, wait 5 seconds, then scroll slowly to the bottom so lazy content loads, then back to the top.
 2. Run JavaScript in the page to collect: images with complete && naturalWidth === 0 (their src and the nearest card heading), whether document.documentElement.scrollWidth > clientWidth, and any visible text like "error", "failed", "unavailable".
-3. Look at the page yourself for anything that looks broken: blank cards, overlapping or clipped text, alt text showing instead of pictures.
-4. Save a screenshot of the first screen as screenshot.png.
-5. Write result.json with exactly this shape: {"ok": boolean, "issues": [{"where": "card or area", "what": "what is wrong"}]}. ok is false when issues is not empty. Only list problems you actually observed.`;
+3. For each host that has broken images, open one of its image URLs directly in a new tab. If that tab shows a browser network error (for example ERR_SOCKS_CONNECTION_FAILED, ERR_CONNECTION_*, ERR_NAME_NOT_RESOLVED), this checking machine cannot reach that host at all: put it in "unreachable" instead of "issues". Only list broken images under "issues" when the image URL itself loads or returns an HTTP error page.
+4. Look at the page yourself for anything that looks broken: blank cards, overlapping or clipped text, alt text showing instead of pictures.
+5. Save a screenshot of the first screen as screenshot.png.
+6. Write result.json with exactly this shape: {"ok": boolean, "issues": [{"where": "card or area", "what": "what is wrong"}], "unreachable": ["host"]}. ok is false when issues is not empty. Only list problems you actually observed.`;
 
 type Issue = { where: string; what: string };
-type RegionResult = { region: string; state: string; ok: boolean; issues: Issue[]; seconds: number; costUsd?: number; summary?: string };
+type RegionResult = { region: string; state: string; ok: boolean; issues: Issue[]; unreachable?: string[]; seconds: number; costUsd?: number; summary?: string };
 
 async function checkRegion(client: Client, url: string, region: string, outDir: string): Promise<RegionResult> {
   const started = Date.now();
@@ -50,8 +51,9 @@ async function checkRegion(client: Client, url: string, region: string, outDir: 
       const bytes = Buffer.from(await session.readFile(file.relativePath));
       writeFileSync(join(dir, name), bytes);
       if (name === "result.json") {
-        const parsed = JSON.parse(bytes.toString("utf8")) as { ok?: boolean; issues?: Issue[] };
+        const parsed = JSON.parse(bytes.toString("utf8")) as { ok?: boolean; issues?: Issue[]; unreachable?: string[] };
         result.issues = parsed.issues ?? [];
+        result.unreachable = parsed.unreachable ?? [];
         result.ok = turn.state === "completed" && parsed.ok === true && result.issues.length === 0;
       }
     }
@@ -87,7 +89,8 @@ async function main() {
 
   if (process.env.GITHUB_STEP_SUMMARY) {
     const rows = results.map((r) => {
-      const issues = r.issues.map((i) => `${i.where}: ${i.what}`).join("<br>") || "—";
+      const unreachable = (r.unreachable ?? []).map((h) => `unreachable from probe: ${h}`);
+      const issues = [...r.issues.map((i) => `${i.where}: ${i.what}`), ...unreachable].join("<br>") || "—";
       const cost = r.costUsd === undefined ? "—" : `$${r.costUsd.toFixed(3)}`;
       return `| ${r.region} | ${r.ok ? "✅" : "❌"} ${r.state} | ${r.seconds}s | ${cost} | ${issues.replace(/\|/g, "\\|")} |`;
     });
