@@ -77,7 +77,7 @@
 - First screen: Workers Caching + Cache-Tag purge replaced ISR ([[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]]): [[first-screen-perf]].
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Devin CLI token usage via Devin's own OTel into `mac-otlp` / `agents-otlp` (#453, #456): [[pulse-tokens-lane-coverage]].
-- Not adopting (don't re-propose; reasons in the file): Mercury 3 chat, tester-army, seiso, site-AI OTel, Max credit, CF AI Search, post-deploy PageSpeed, Jev or Gemini as checkers or PR verifier, main-CI split, skip-CI on docs PRs, larger runners. Formal verification only on demand (`lyjwpage-formal-model`): [[not-adopting]].
+- Not adopting (don't re-propose; reasons in the file): Mercury 3 chat, tester-army, seiso, site-AI OTel, Max credit, CF AI Search, post-deploy PageSpeed, Jev or Gemini as checkers or PR verifier, refactor-PR auto-merge by deterministic rules, main-CI split, skip-CI on docs PRs, larger runners. Formal verification only on demand (`lyjwpage-formal-model`): [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 维持现状): [[reporter-otel-decision]].
 - **Jev comment check (#610):** advisory check run `Comment check (Jev)` plus one lyjw131[bot] PR comment updated in place (needs pull-requests write, #620): [[jev-comment-check]].
 - Chat context prefetch (#384): Clef picks site status / project doc to prefetch in the routing call (thresholds status 0.45, doc 0.3): [[idea-jev-context-prefetch]].
