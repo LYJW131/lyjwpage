@@ -1,5 +1,5 @@
 import { IMAGE_OBJECT_KEY, IMAGE_PATH_PREFIX } from "@shared/asset-url";
-import { PSN_AVATAR_HOST } from "@shared/psn-image";
+import { PSN_AVATAR_HOST, PSN_SIZED_IMAGE_HOSTS } from "@shared/psn-image";
 import { BodyTooLargeError, readBoundedBytes } from "@shared/read-bounded-bytes";
 
 export const IMAGE_PROXY_PATH = "/image";
@@ -21,6 +21,7 @@ export type ImageFit = (typeof IMAGE_FIT_VALUES)[number];
 export const EXACT_IMAGE_HOSTS = new Set([
   "avatars.githubusercontent.com",
   PSN_AVATAR_HOST,
+  ...PSN_SIZED_IMAGE_HOSTS,
 ]);
 
 export const SUFFIX_IMAGE_HOSTS = ["blobstore.apple.com", "mzstatic.com"];
