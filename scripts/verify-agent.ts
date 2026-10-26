@@ -107,6 +107,8 @@ const cwd = process.cwd();
 const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-agent", "skills");
 const outDir = values["out-dir"] ? path.resolve(values["out-dir"]) : null;
 const tmpDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-agent-"));
+// pi 自己的状态（模型表、凭据表、agentDir）不放进沙箱可写的 tmpDir：PR 代码改了模型表的 baseUrl，钥匙就跟着请求发到别处
+const piStateDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-pi-state-"));
 const schema = role === "verifier" ? VERIFIER_SCHEMA : JUDGE_SCHEMA;
 
 const childEnvNow = () => childEnv(process.env, tmpDir);
@@ -127,7 +129,7 @@ const piPaths: { resolveToCwd: (file: string, cwd: string) => string; resolveRea
 );
 const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = sdk;
 
-const modelRuntime = await ModelRuntime.create({ authPath: path.join(tmpDir, "auth.json"), modelsPath: path.join(tmpDir, "models.json") });
+const modelRuntime = await ModelRuntime.create({ authPath: path.join(piStateDir, "auth.json"), modelsPath: path.join(piStateDir, "models.json") });
 await modelRuntime.setRuntimeApiKey(provider, apiKey);
 const model = modelRuntime.getModel(provider, modelId);
 if (!model) throw new Error(`pi 的模型表里没有 ${provider}/${modelId}`);
@@ -226,7 +228,7 @@ ${PLAYBOOK}`;
 
 const resourceLoader = new DefaultResourceLoader({
   cwd,
-  agentDir: tmpDir,
+  agentDir: piStateDir,
   noExtensions: true,
   additionalSkillPaths: [SKILL_DIR],
   skillsOverride: (base: { skills: { filePath: string }[]; diagnostics: unknown[] }) => ({ ...base, skills: base.skills.filter((skill) => skill.filePath.startsWith(SKILL_DIR)) }),
@@ -264,7 +266,7 @@ await resourceLoader.reload();
 
 const { session } = await createAgentSession({
   cwd,
-  agentDir: tmpDir,
+  agentDir: piStateDir,
   model,
   thinkingLevel: values.thinking,
   modelRuntime,
@@ -275,7 +277,10 @@ const { session } = await createAgentSession({
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
 });
 
-if (values.transcript) fs.rmSync(values.transcript, { force: true });
+if (values.transcript) {
+  fs.mkdirSync(path.dirname(values.transcript), { recursive: true });
+  fs.rmSync(values.transcript, { force: true });
+}
 const transcript = values.transcript ? fs.createWriteStream(values.transcript, { flags: "wx" }) : null;
 // 流式事件每次都带着整条消息，一轮能写出好几 GB；完整内容在 message_end 与工具事件里都有
 const STREAM_EVENTS = new Set(["message_update", "provider_stream_event", "tool_execution_update"]);
@@ -320,6 +325,7 @@ session.dispose();
 // 末尾的 process.exit 不等写流落盘：不等 end 的回调，收尾那几条事件会丢
 if (transcript) await new Promise<void>((resolve) => transcript.end(resolve));
 fs.rmSync(tmpDir, { recursive: true, force: true });
+fs.rmSync(piStateDir, { recursive: true, force: true });
 
 const usage = {
   model: `${provider}/${modelId}`,
