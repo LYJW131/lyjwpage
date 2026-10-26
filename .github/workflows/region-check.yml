@@ -36,7 +36,8 @@ jobs:
       - name: Visit the site from residential IPs in each region
         env:
           PINECOMPUTER_API_KEY: ${{ secrets.PINECOMPUTER_API_KEY }}
-        run: node scripts/region-check.ts --regions "${{ inputs.regions || 'SG,US,DE' }}" --out region-check
+          REGIONS: ${{ inputs.regions || 'SG,US,DE' }}
+        run: node scripts/region-check.ts --regions "$REGIONS" --out region-check
       - uses: actions/upload-artifact@v4
         if: always()
         with:

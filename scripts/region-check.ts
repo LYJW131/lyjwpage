@@ -13,6 +13,8 @@ const HELP = `用法：node scripts/region-check.ts [--url https://lyjw.me] [--r
 
 // 单地区 agent 时长上限：实测一轮完整巡检约 2 分钟，再长就是卡住了，钱照样在花。
 const AGENT_WALL_MS = 240_000;
+// Pine 自己按 maxWallMs 收尾；这段余量之后还没到终态就不再等，finally 里 kill 掉止损。
+const WAIT_GRACE_MS = 120_000;
 
 const GOAL = (url: string) => `You are checking the personal site ${url} the way a real visitor in this country sees it. Do not submit forms, send chat messages or follow links that leave the site.
 1. Open ${url}, wait 5 seconds, then scroll slowly to the bottom so lazy content loads, then back to the top.
@@ -33,7 +35,8 @@ async function checkRegion(client: Client, url: string, region: string, outDir: 
   try {
     const session = await computer.createSession({ browser: true });
     let turn = await session.agent.run(GOAL(url), { constraints: { maxWallMs: AGENT_WALL_MS } });
-    while (turn.state === "running" || turn.state === "canceling") {
+    const deadline = Date.now() + AGENT_WALL_MS + WAIT_GRACE_MS;
+    while ((turn.state === "running" || turn.state === "canceling") && Date.now() < deadline) {
       turn = await session.agent.wait(turn.turnId, { timeoutMs: 60_000 });
     }
     const result: RegionResult = {
@@ -63,20 +66,32 @@ async function checkRegion(client: Client, url: string, region: string, outDir: 
   }
 }
 
+function usageError(message: string): never {
+  console.error(`${message}\n\n${HELP}`);
+  process.exit(2);
+}
+
 async function main() {
-  const { values } = parseArgs({
-    options: {
-      url: { type: "string", default: "https://lyjw.me" },
-      regions: { type: "string", default: "SG,US,DE" },
-      out: { type: "string", default: "region-check" },
-      help: { type: "boolean" },
-    },
-  });
+  let values;
+  try {
+    ({ values } = parseArgs({
+      strict: true,
+      options: {
+        url: { type: "string", default: "https://lyjw.me" },
+        regions: { type: "string", default: "SG,US,DE" },
+        out: { type: "string", default: "region-check" },
+        help: { type: "boolean" },
+      },
+    }));
+  } catch (error) {
+    usageError((error as Error).message);
+  }
   if (values.help) return void console.log(HELP);
+  const regions = values.regions!.split(",").map((r) => r.trim().toUpperCase()).filter(Boolean);
+  if (regions.length === 0 || regions.some((r) => !/^[A-Z]{2}$/.test(r))) usageError(`--regions must be two-letter country codes: ${values.regions}`);
   const apiKey = process.env.PINECOMPUTER_API_KEY;
   if (!apiKey) throw new Error("PINECOMPUTER_API_KEY is not set");
   const client = new Client({ endpoint: "https://pinesandbox.io", apiKey });
-  const regions = values.regions!.split(",").map((r) => r.trim().toUpperCase()).filter(Boolean);
 
   const settled = await Promise.allSettled(regions.map((r) => checkRegion(client, values.url!, r, values.out!)));
   const results: RegionResult[] = settled.map((s, i) =>
