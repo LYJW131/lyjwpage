@@ -182,7 +182,7 @@
   - 状态：采用。只在深色模式挂载，落在 `src/components/space-backdrop/walker.ts`、`src/components/space-backdrop/rock-fx.ts`。
 - **[Live2D Cubism 的自动眨眼](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Effect/CubismEyeBlink.cpp)**（`CubismEyeBlink`）
   - 是什么：Cubism SDK 的自动眨眼，默认闭眼 0.1s、闭住 0.05s、睁眼 0.15s，下一次眨眼的时刻随机。
-  - 取了什么：三段时序与随机间隔；按人眼实测「闭比睁快约四成」改成闭 0.09s ease-in、停 0.04s、睁 0.17s ease-out，间隔取 2.5–6.5s，另加两成概率连眨。眼皮不是插值参数，而是上下眼线朝闭眼贴图的闭眼线会合。
+  - 取了什么：三段时序与随机间隔；按人眼实测「闭比睁快约四成」改成闭 0.09s ease-in、停 0.04s、睁 0.17s ease-out，间隔取 2.5–6.5s，另加两成概率连眨。眼皮不是插值参数，而是上下眼线朝当前表情那一格闭眼图的闭眼线会合，哪些表情不眨见 `src/components/space-backdrop/aoko-face.ts#FACES`。
   - 状态：采用。落在 `src/components/space-backdrop/aoko.ts#lidAt`。
 - **《魔法使之夜》里苍崎青子施法的那段演出**（TYPE-MOON，游戏内拆出的图层，不在仓库里）
   - 是什么：一组整帧镜头与透明图层：俯视的地面大法阵（img0607/0609）、伸掌时身后的竖直光环与电弧（img0627–0630）、平视远景里脚下的扁椭圆法阵（img0633）、环绕手臂的法阵（img0664/0667）、发射瞬间的星芒（img0660），以及拆开的法阵与电弧贴图；召唤秘技另用了游戏别处演出的图层：从画面边缘劈进来的六张闪电整帧（img2349–2354）、横扫电弧（img0662）、电柱与悬浮法环（img0663），每个键各一张的光点、星芒、法印、线状漩涡、刃环、符文尖刺、碎裂爆、能量触须（img1525、1045、1622、0632、1502、1623、1504、0962、1797、0927），空间裂缝（img1822），以及收尾的能量爆、冲击星芒与八芒星闪（img1094、0456、1046）。

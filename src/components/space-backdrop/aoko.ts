@@ -1,13 +1,11 @@
 import { aokoFx, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
 import { smooth } from "./aoko-paint";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
+import { FACE_ATLAS, FACE_BOX, FACE_COLS, FACE_ROWS, faceDirector, STILL_FACE, type Face } from "./aoko-face";
 
 const SRC = "/mascots/aoko.webp";
 // 绑定图 RGB 分别是头发、裙摆、头部的权重（0 不动，1 摆幅最大），与立绘同框；离线生成，换立绘要一起重出。
 const RIG = "/mascots/aoko-rig.png";
-// 闭眼贴图：只含两眼一带，alpha 是羽化遮罩，覆盖原图坐标 BLINK_BOX（x, y, 边长）这块正方形。
-const BLINK = "/mascots/aoko-blink.webp";
-const BLINK_BOX = [360, 52, 256];
 // 伸出的手、光球和握腕的右手单独一层（ARM），覆盖原图坐标 ARM_BOX（x, y, 宽, 高）；FILL 是同一块里 Codex 补出的手背后内容，只在手移开后露出的地方用。
 // 手层在右手手腕处竖直切开，摆幅在切口处降到 0，前臂和上臂留在原图里不动，否则胸口的肩带会和补全图错位。
 const ARM = "/mascots/aoko-arm.webp";
@@ -56,11 +54,13 @@ const REFRACT = ARM_RING_SHAPES.rings
 const VERT = `attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `precision mediump float;
-uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow,flash,appear;uniform vec3 rift[${RIFTS}];varying vec2 v;
+uniform sampler2D img,rig,faces,arm,fill;uniform float t,lid,glow,flash,appear,shutTile;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
 const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
+vec4 tile(float i,vec2 bu){if(i<0.)return vec4(0.);vec2 o=vec2(mod(i,${FACE_COLS}.),floor(i/${FACE_COLS}.));return texture2D(faces,(o+clamp(bu,0.,1.))/vec2(${FACE_COLS}.,${FACE_ROWS}.))*inside(bu);}
+vec3 over(vec3 c,vec4 p){return mix(c,p.rgb/max(p.a,.001),p.a);}
 float hsh(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hsh(i),hsh(i+vec2(1.,0.)),f.x),mix(hsh(i+vec2(0.,1.)),hsh(i+1.),f.x),f.y);}
 void main(){
@@ -93,10 +93,11 @@ ${REFRACT}
   d+=po/pl*smoothstep(46.,0.,abs(pl-(1.-flash)*700.))*flash*9.;
   vec2 s=(P-d)/S;
   vec4 c=texture2D(img,s)*inside(s);
-  if(lid>0.){
+  vec2 bu=(s*S-vec2(${FACE_BOX[0]}.,${FACE_BOX[1]}.))/${FACE_BOX[2]}.;
+  c.rgb=mix(over(c.rgb,tile(face.x,bu)),over(c.rgb,tile(face.y,bu)),face.z);
+  if(lid>0.&&shutTile>=0.){
     vec2 Q=s*S;
-    vec2 bu=(Q-vec2(${BLINK_BOX[0]}.,${BLINK_BOX[1]}.))/${BLINK_BOX[2]}.;
-    vec4 shut=texture2D(blink,clamp(bu,0.,1.))*inside(bu);
+    vec4 shut=tile(shutTile,bu);
     vec2 qL=(Q-vec2(447.,183.))/vec2(36.,26.);
     vec2 qR=(Q-vec2(530.,185.))/vec2(36.,26.);
     float eye=max(smoothstep(1.,.8,length(qL)),smoothstep(1.,.8,length(qR)));
@@ -160,7 +161,7 @@ type AokoOptions = {
   summon?: boolean;
 };
 
-export const preloadAoko = () => [...[SRC, RIG, BLINK, ARM, FILL].map(loadImage), ...preloadFx()];
+export const preloadAoko = () => [...[SRC, RIG, FACE_ATLAS, ARM, FILL].map(loadImage), ...preloadFx()];
 
 // 手层在手掌一带（wg=1）的位移，须与 FRAG 里的 dh 同步：平移 d，再以掌心为中心放大 zoom。
 function handPose(t: number): HandPose {
@@ -172,7 +173,7 @@ function handPose(t: number): HandPose {
 // 闲置时也带一层蓝紫重打光：人站在亮着的法阵里，对照 img0611（原色）与 img0612（被法阵照亮）。
 const glowOf = ({ power, flash }: FxState) => 0.32 + 0.55 * power + 0.25 * flash;
 
-function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTMLImageElement, blink: HTMLImageElement, arm: HTMLImageElement, fill: HTMLImageElement) {
+function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTMLImageElement, faces: HTMLImageElement, arm: HTMLImageElement, fill: HTMLImageElement) {
   const gl = canvas.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
   if (!gl) return null;
   const shader = (type: number, source: string) => {
@@ -206,28 +207,32 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   };
   texture(0, art, true);
   texture(1, rig, false);
-  texture(2, blink, true);
+  texture(2, faces, true);
   texture(3, arm, true);
   texture(4, fill, true);
   gl.uniform1i(gl.getUniformLocation(program, "img"), 0);
   gl.uniform1i(gl.getUniformLocation(program, "rig"), 1);
-  gl.uniform1i(gl.getUniformLocation(program, "blink"), 2);
+  gl.uniform1i(gl.getUniformLocation(program, "faces"), 2);
   gl.uniform1i(gl.getUniformLocation(program, "arm"), 3);
   gl.uniform1i(gl.getUniformLocation(program, "fill"), 4);
   const time = gl.getUniformLocation(program, "t");
   const lid = gl.getUniformLocation(program, "lid");
+  const faceAt = gl.getUniformLocation(program, "face");
+  const shutAt = gl.getUniformLocation(program, "shutTile");
   const glow = gl.getUniformLocation(program, "glow");
   const burst = gl.getUniformLocation(program, "flash");
   const appearAt = gl.getUniformLocation(program, "appear");
   const riftAt = gl.getUniformLocation(program, "rift");
   const riftData = new Float32Array(RIFTS * 3);
 
-  return (t: number, closed: number, light: number, flash: number, appear: number) => {
+  return (t: number, closed: number, face: Face, light: number, flash: number, appear: number) => {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(time, t);
     gl.uniform1f(lid, closed);
+    gl.uniform3f(faceAt, face.from, face.to, face.mix);
+    gl.uniform1f(shutAt, face.shut);
     gl.uniform1f(glow, light);
     gl.uniform1f(burst, flash);
     gl.uniform1f(appearAt, appear);
@@ -253,7 +258,8 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   parent.appendChild(root);
   const fx = aokoFx(back, front);
 
-  let render: ((t: number, closed: number, light: number, flash: number, appear: number) => void) | null = null;
+  let render: ((t: number, closed: number, face: Face, light: number, flash: number, appear: number) => void) | null = null;
+  const faces = faceDirector();
   let stopped = false;
   let raf = 0;
   let last = 0;
@@ -281,7 +287,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   const draw = (t: number, closed = 0) => {
     const state = reducedMotion ? STILL : fxState(t);
     const p = revealAt === null ? 1 : (t - revealAt) / REVEAL_S;
-    render?.(t, closed, glowOf(state), state.flash, smooth(0.12, 0.55, p));
+    render?.(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p));
     if (revealAt === null) return fx.render(state, handPose(t));
     front.style.opacity = String(smooth(0.7, 1, p));
     fx.render(state, handPose(t), { floor: smooth(0, 0.25, p), ring: smooth(0.55, 0.85, p) });
@@ -313,10 +319,10 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   };
   layout();
 
-  void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(BLINK), loadImage(ARM), loadImage(FILL), fx.ready]).then(([art, rig, blink, arm, fill]) => {
+  void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(FACE_ATLAS), loadImage(ARM), loadImage(FILL), fx.ready]).then(([art, rig, faces, arm, fill]) => {
     if (stopped) return;
     fx.setHand({ img: arm, box: ARM_BOX, palm: PALM });
-    render = rigRenderer(canvas, art, rig, blink, arm, fill);
+    render = rigRenderer(canvas, art, rig, faces, arm, fill);
     if (!render) {
       front.style.opacity = "";
       const ctx = canvas.getContext("2d");
@@ -333,6 +339,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   return {
     el: root,
     layout,
+    notice: () => faces.notice((performance.now() - t0) / 1000),
     stop() {
       stopped = true;
       cancelAnimationFrame(raf);
