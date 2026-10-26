@@ -6,7 +6,7 @@ import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrich
 import type { LocalNowPlaying } from "@shared/types";
 
 import { serveAppleLookup, serveAppleMusic } from "./apple-music-http";
-import { driveCoreRound } from "./core-round";
+import { coreRoundTime, driveCoreRound } from "./core-round";
 import { enrichTrack, followUpTrack } from "./enrichment";
 import type { Env } from "./env";
 import { isLateRound, runNamed, runScheduled } from "./registry";
@@ -43,13 +43,12 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    if (isLateRound(controller.scheduledTime)) {
-      console.warn(JSON.stringify({ event: "collector-late-round", scheduledTime: controller.scheduledTime, lateMs: Date.now() - controller.scheduledTime }));
-      return;
-    }
+    const now = Date.now();
+    const late = isLateRound(controller.scheduledTime, now);
+    if (late) console.warn(JSON.stringify({ event: "collector-late-round", scheduledTime: controller.scheduledTime, lateMs: now - controller.scheduledTime }));
     await Promise.all([
-      runScheduled(bindEnv(env), controller.scheduledTime),
-      driveCoreRound(env.CORE, controller.scheduledTime),
+      late ? null : runScheduled(bindEnv(env), controller.scheduledTime),
+      driveCoreRound(env.CORE, coreRoundTime(controller.scheduledTime, now)),
     ]);
   },
 

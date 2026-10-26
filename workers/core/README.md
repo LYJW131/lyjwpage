@@ -7,7 +7,7 @@
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口；`src/cron-round.ts`：定时一轮（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档，每几轮顺带做一次断流检测，见下文「断流告警」）。本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`，理由写在那里），采集 Worker 每分钟调 `StateCore.cronRound(scheduledTime)`，由 `src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是 core 的轮次；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
+- `src/index.ts`：默认 Worker 入口；`src/cron-round.ts`：定时一轮（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档，每几轮顺带做一次断流检测，见下文「断流告警」）。本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`，理由写在那里），采集 Worker 每分钟调 `StateCore.cronRound(scheduledTime)`，`src/cron-heartbeat.ts#cronSlot` 把它归进时刻表的一格，`StateHub.claimCronSlot` 让每格只跑第一次调用（排定的那一分钟被 Cloudflare 晚投或漏投时，格内后面的分钟或迟到的投递补上）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
   `ready()`（恒为 `true`，契约只加不改而保留）、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
   `playstationPower()`、`appleDeveloperToken()`（core 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`、`cronRound(scheduledTime)`（采集 Worker 每分钟驱动的定时一轮，见上一条）。
@@ -537,7 +537,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 
 ### 站点健康
 
-四块数据，由采集 Worker 的 `site-health` 任务汇总（口径见 [采集 Worker README](../collector/README.md)）：`uptime`（采集 Worker 每分钟对 `shared/health.ts#SITE_UPTIME_URL` 的探测）、`heartbeat`（本 Worker 定时一轮的心跳，见上文「cron 失败口径」；每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/health.ts`，站点卡片上的文案也读它）分钟一轮，判定的分钟是 `src/cron-heartbeat.ts#CRON_SCHEDULE`，与 `cronRoundDue` 一致（`src/cron-heartbeat.test.ts` 守着））、
+四块数据，由采集 Worker 的 `site-health` 任务汇总（口径见 [采集 Worker README](../collector/README.md)）：`uptime`（采集 Worker 每分钟对 `shared/health.ts#SITE_UPTIME_URL` 的探测）、`heartbeat`（本 Worker 定时一轮的心跳，见上文「cron 失败口径」；每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/health.ts`，站点卡片上的文案也读它）分钟一轮，每格的起点是 `src/cron-heartbeat.ts#CRON_SCHEDULE`，与 `cronSlot` 一致（`src/cron-heartbeat.test.ts` 守着），心跳记在格的起点）、
 `errors`（Workers Observability 的生产报错数：`site` 是 site Worker 含浏览器转来的错误，`worker` 是 core、ai、ingress、collector 合计；另带 Workers Issues 的 active 数）、
 `vitals`（Web Analytics 真实访客 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。
