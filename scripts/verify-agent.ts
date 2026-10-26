@@ -5,11 +5,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { JUDGE_SCHEMA, VERIFIER_SCHEMA, type VerifierReport } from "./verify-action/report.ts";
+import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
 import { childEnv, filterGrepOutput, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 import { PLAYBOOK } from "./verify-agent/playbook.ts";
-import { checklistIds, hasDescription, isLogicTier, reviewReport, type Claim } from "./verify-agent/review.ts";
-import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool } from "./verify-agent/tools.ts";
+import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
 用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员，代替 claude-code-action。模型走 Anthropic API，
@@ -27,7 +26,6 @@ const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prom
   --transcript FILE         把整轮事件写成 JSONL，复盘用
   --api-key-file FILE       从文件读 Anthropic 钥匙并删掉文件（CI 里必须这样传）；本地可用 ANTHROPIC_API_KEY
   --github-token-file FILE  同上，给 pr_view 的 GitHub 令牌；本地可用 GITHUB_TOKEN
-  --harness v1|v2           v2（默认）加声明台账、目标分支对照、文档同步三个工具、交结果前的规则复核与探针 skill；v1 只有基础工具
   --pi-sdk DIR              装了 pi SDK 的 node_modules 目录；默认依次试 PI_SDK_DIR（npm install --prefix 的目录）、npm 全局目录`;
 
 const OPTIONS = {
@@ -43,7 +41,6 @@ const OPTIONS = {
   "pi-sdk": { type: "string" },
   "api-key-file": { type: "string" },
   "github-token-file": { type: "string" },
-  harness: { type: "string", default: "v2" },
   help: { type: "boolean" },
 } as const;
 
@@ -61,10 +58,6 @@ if (values.help) {
 }
 const FOLLOW_UP_MS = 5 * 60_000;
 const THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-if (values.harness !== "v1" && values.harness !== "v2") {
-  console.error("--harness 只认 v1|v2");
-  process.exit(2);
-}
 if (!THINKING.includes(values.thinking)) {
   console.error(`--thinking 只认 ${THINKING.join("|")}`);
   process.exit(2);
@@ -111,7 +104,6 @@ if (process.env.CI && !values["api-key-file"]) {
 }
 
 const cwd = process.cwd();
-const v2 = values.harness === "v2";
 const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-agent", "skills");
 const outDir = values["out-dir"] ? path.resolve(values["out-dir"]) : null;
 const tmpDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-agent-"));
@@ -128,7 +120,7 @@ const writable = [cwd, tmpDir, ...(outDir ? [outDir] : [])];
 const wrap = (command: string) => sandboxed(command, writable, bwrap);
 
 const { sdk, sdkDir } = await loadPi(values["pi-sdk"]);
-const readRoots = [cwd, tmpDir, sdkDir, ...(v2 ? [SKILL_DIR] : []), ...(outDir ? [outDir] : [])];
+const readRoots = [cwd, tmpDir, sdkDir, SKILL_DIR, ...(outDir ? [outDir] : [])];
 // 守卫要和内置工具算出同一个路径（它们会去掉 @ 前缀、展开 ~）：直接用 pi 自己的解析函数，不另写一份
 const piPaths: { resolveToCwd: (file: string, cwd: string) => string; resolveReadPathAsync: (file: string, cwd: string) => Promise<string> } = await import(
   pathToFileURL(path.join(sdkDir, "dist/core/tools/path-utils.js")).href
@@ -179,10 +171,6 @@ const guardedWrite = {
   },
 };
 
-const MAX_REJECTIONS = 2;
-let rejections = 0;
-let testsPassed = false;
-let comparedBase = false;
 const claims = new Map<string, Claim>();
 const toolContext = { cwd, base: values.base, tmpDir, run, workLog };
 
@@ -190,7 +178,7 @@ const customTools = [
   bash,
   ...(outDir ? [guardedWrite] : []),
   prDiffTool(toolContext),
-  runTestsTool(toolContext, () => (testsPassed = true)),
+  runTestsTool(toolContext),
   ...(values.pr && githubToken
     ? [
         {
@@ -205,32 +193,15 @@ const customTools = [
         },
       ]
     : []),
-  ...(v2 ? [docsSyncTool(toolContext), compareBaseTool(toolContext), claimsTool(claims)] : []),
+  docsSyncTool(toolContext),
+  compareBaseTool(toolContext),
+  claimsTool(claims),
   {
     name: "submit_report",
     label: "Submit report",
-    description: v2
-      ? `交最终结果。参数照结果 schema；交上来会按判定规则复核，不过就退回、照提示改完再交；退回 ${MAX_REJECTIONS} 次后照收，还没过的那几条记进 notVerified。`
-      : "交最终结果，整轮到此结束。参数照结果 schema；只调一次，调之前把要跑的检查都跑完。",
+    description: "交最终结果，整轮到此结束。参数照结果 schema；只调一次，调之前把要跑的检查都跑完。",
     parameters: schema,
     execute: async (_id: string, params: unknown) => {
-      if (v2 && role === "verifier") {
-        const submitted = params as VerifierReport;
-        const issues = reviewReport(submitted, {
-          checklistIds: checklistIds(prompt),
-          claims: [...claims.values()],
-          hasDescription: hasDescription(prompt),
-          logic: isLogicTier(prompt),
-          testsPassed,
-          comparedBase,
-        });
-        if (issues.length && rejections < MAX_REJECTIONS) {
-          rejections++;
-          return { ...text(`没收，先改这几处再交（第 ${rejections} 次退回，最多 ${MAX_REJECTIONS} 次）：\n${issues.map((issue, index) => `${index + 1}. ${issue}`).join("\n")}`), isError: true };
-        }
-        // 退回到上限仍有没过的，照收但留在回执里，不悄悄吞掉
-        if (issues.length) params = { ...submitted, notVerified: [...submitted.notVerified, `交结果时的规则复核退回 ${MAX_REJECTIONS} 次后仍有 ${issues.length} 条没过：${issues.map((issue) => issue.slice(0, 60)).join("；")}`] };
-      }
       report = params;
       return { ...text("已收到结果。"), terminate: true };
     },
@@ -238,17 +209,19 @@ const customTools = [
 ];
 
 const SYSTEM = `你在 pi 里运行，工具和 Claude Code 不同：
-- read / grep / find / ls：读文件与搜索（只读），只许读工作区、产物目录、临时目录与 pi 的 SDK 目录${v2 ? `，以及 skill 目录 ${SKILL_DIR}` : ""}；别处的文件用 bash 读。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
+- read / grep / find / ls：读文件与搜索（只读），只许读工作区、产物目录、临时目录与 pi 的 SDK 目录，以及 skill 目录 ${SKILL_DIR}；别处的文件用 bash 读。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
 - pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
 - 你的模型 ID 是 ${modelId}，结果里的 model 字段照写。
-- 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。${v2 ? `\n- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。\n\n${PLAYBOOK}` : ""}`;
+- 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。
+- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。
+
+${PLAYBOOK}`;
 
 const resourceLoader = new DefaultResourceLoader({
   cwd,
   agentDir: tmpDir,
   noExtensions: true,
-  noSkills: !v2,
-  additionalSkillPaths: v2 ? [SKILL_DIR] : [],
+  additionalSkillPaths: [SKILL_DIR],
   skillsOverride: (base: { skills: { filePath: string }[]; diagnostics: unknown[] }) => ({ ...base, skills: base.skills.filter((skill) => skill.filePath.startsWith(SKILL_DIR)) }),
   noPromptTemplates: true,
   noThemes: true,
@@ -289,7 +262,7 @@ const { session } = await createAgentSession({
   thinkingLevel: values.thinking,
   modelRuntime,
   resourceLoader,
-  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", "pr_view", ...(v2 ? ["docs_sync", "compare_base", "claims"] : []), "submit_report"],
+  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", "pr_view", "docs_sync", "compare_base", "claims", "submit_report"],
   customTools,
   sessionManager: SessionManager.inMemory(cwd),
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
@@ -301,15 +274,14 @@ const STREAM_EVENTS = new Set(["message_update", "provider_stream_event", "tool_
 const toolCounts = new Map<string, number>();
 session.subscribe((event: { type: string; toolName?: string; args?: unknown }) => {
   if (!STREAM_EVENTS.has(event.type)) transcript?.write(`${JSON.stringify({ at: Date.now(), ...event })}\n`);
-  if (event.type === "tool_execution_start" && event.toolName === "compare_base") comparedBase = true;
   if (event.type === "tool_execution_start" && event.toolName) {
     toolCounts.set(event.toolName, (toolCounts.get(event.toolName) ?? 0) + 1);
     console.error(`[tool] ${event.toolName} ${JSON.stringify(event.args).slice(0, 160)}`);
   }
 });
 
-// v2 开跑前就把 PR 描述放进提示词：中档模型常常不去读，声明台账也要从描述里取
-if (v2 && !hasDescription(prompt) && values.pr && githubToken) {
+// 开跑前就把 PR 描述放进提示词：中档模型常常不去读，声明台账也要从描述里取
+if (!/\n描述：\n\s*\S/.test(prompt) && values.pr && githubToken) {
   const pull = await fetchPull();
   prompt += `\n\nPR 的标签与描述原文（开跑前读好的，不用再调 pr_view）：\n标签：${JSON.stringify(pull.labels.map((label) => label.name))}\n描述：\n${pull.body ?? ""}`;
 }
@@ -350,8 +322,6 @@ const usage = {
   costUsd: Math.round(stats.cost * 10_000) / 10_000,
   sandbox: bwrap ? "bwrap" : "none",
   submitted: report !== null,
-  harness: values.harness,
-  rejections,
   effortSent,
 };
 console.error(JSON.stringify(usage));

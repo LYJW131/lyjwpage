@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { quote } from "./guard.ts";
-import type { Claim } from "./review.ts";
 
 type Run = (command: string, timeoutMs: number, dir?: string) => Promise<{ code: string | number; output: string }>;
+export type Claim = { id: string; claim: string; check: string };
 export type ToolContext = { cwd: string; base: string; tmpDir: string; run: Run; workLog: (name: string, text: string) => string | null };
 
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: undefined });
@@ -43,7 +43,7 @@ export function prDiffTool(ctx: ToolContext) {
   };
 }
 
-export function runTestsTool(ctx: ToolContext, onPass: () => void) {
+export function runTestsTool(ctx: ToolContext) {
   return {
     name: "run_tests",
     label: "Run tests",
@@ -57,7 +57,6 @@ export function runTestsTool(ctx: ToolContext, onPass: () => void) {
     execute: async (_id: string, params: { files: string[]; name?: string }) => {
       const started = Date.now();
       const { code, output } = await ctx.run(`node --test --test-reporter=tap --experimental-strip-types --import ./src/lib/testing/register-alias.mjs ${params.files.map(quote).join(" ")}`, 10 * 60_000);
-      if (code === 0) onPass();
       const file = ctx.workLog(`${(params.name ?? "tests").replace(/[^\w.-]/g, "_")}-${++logSeq}.log`, output);
       const counts = output.match(/^# (tests|pass|fail|cancelled|skipped) \d+$/gm)?.join(", ") ?? "没读到计数";
       const failures = output.match(/^not ok .*$[\s\S]*?(?=^(?:ok|not ok) |\n# tests)/gm)?.join("\n").slice(0, 6000) ?? "";

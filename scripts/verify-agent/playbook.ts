@@ -4,7 +4,7 @@ export const PLAYBOOK = `## 验证的做法（按顺序）
 3. 逐条核对。逻辑改动至少用 compare_base 跑一次差分探针：专门造能推翻声明的输入（量词的反例、阈值两侧、空与极大、大小写、时区跨日、多个候选同时满足），不要只喂测试里已有的输入。探针写法见 skill verify-probes。
 4. 用 docs_sync 查改了的名字、常量、规则在文档、.claude/ 与 README 里有没有跟着改。
 5. 用 run_tests 跑覆盖改动的单测当证据。
-6. submit_report 交结果；它会按下面的规则复核，退回时照提示改完再交。
+6. submit_report 交结果，按下面的规则定每一行。
 
 ## FAIL 还是「另：」
 FAIL：这次改动带进来、合并前该修的问题。下面三种都是 FAIL，不是措辞小毛病：
