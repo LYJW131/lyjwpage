@@ -19,6 +19,9 @@ const CIRCLES: Circle[] = [
   { src: "img0659", out: "runes", cx: 429, cy: 429.5, r: 416.5, size: 640 },
   { src: "img0638", out: "ring", cx: 489.5, cy: 489.5, r: 476, size: 512 },
   { src: "img0641", out: "octa", cx: 456.5, cy: 457.5, r: 443, size: 256 },
+  // img0609 地面法阵的两层：外圈（符文带、星形弦线、印章环）与内盘（旋刃、中心四枚印章、粗亮边）；边长按 aoko-floor.ts 纹理里法阵的像素数取，再大投到地面也看不出。
+  { src: "img0640", out: "floor-outer", cx: 487, cy: 489.5, r: 482, size: 800 },
+  { src: "img1627", out: "floor-inner", cx: 1372.5, cy: 1372.5, r: 1348.5, size: 400 },
 ];
 
 // 电弧是 img0627–0630 那组镜头的整帧图层（2400×1440，与 2100×1260 的镜头同框），保留整帧，aoko-fx.ts 按镜头取景换算位置。

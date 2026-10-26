@@ -9,7 +9,7 @@ export type { FxState } from "./aoko-paint";
 export type { HandPose } from "./aoko-rings";
 
 export const FX_ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
-const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine"];
+const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine", "floor-outer", "floor-inner"];
 
 // 在 img0628-HD（2100×1260）上量的位置，按两眼中点和瞳距换算进立绘：镜头瞳距 196px、立绘 85px。
 const SHOT_K = 85 / 196;
@@ -222,9 +222,9 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     }
   };
 
-  const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine]) => {
+  const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine, floorOuter, floorInner]) => {
     sprites = { band, runes, ring, octa, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
-    floor = floorTextures(runes);
+    floor = floorTextures(floorOuter, floorInner);
   })
     // 特效贴图缺一张时只是不画特效，立绘照常挂（aoko.ts 等这个 promise）。
     .catch(() => undefined);

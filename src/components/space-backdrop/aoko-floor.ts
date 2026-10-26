@@ -1,61 +1,15 @@
-import { SCENE, circle, hash, smooth, tone } from "./aoko-paint";
+import { SCENE, circle, smooth, tone } from "./aoko-paint";
 
-// 脚下的地面法阵照 img0609（俯视）的结构画：内盘八片宽刃、中心四枚印章、盘边的菱形符块，外面一条偏心的粗亮月牙带、
-// 带大印章的细亮环、符文带；底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。
+// 脚下的地面法阵就是 img0609（俯视）里那面：外圈 img0640（符文带、星形弦线、印章环）套内盘 img1627（旋刃、中心四枚印章、粗亮边），
+// 底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。
 const TEX = 1280;
 // 纹理半边长 = 法阵外圈半径 × EXTENT，多出来的一圈是砖地的余光。
 const EXTENT = 1.6;
 const R = TEX / 2 / EXTENT;
-// 透视按条带拼，每条按自己的深度横向缩放；相邻条宽度一变，圆弧左右两端就是一级台阶。
-// 条带按投影后的设备像素算，每条不超过 STRIP_PX 高，台阶小到看不出来。
-const STRIP_PX = 1.5;
+// img0640 圈内 0.43 R 以内是空的，img0609 里内盘的粗亮边正好贴着这一圈。
+const INNER_R = 0.43 * R;
 
-type Glyph = (ctx: CanvasRenderingContext2D) => void;
-// 印章与符块里的大字形，只求和 img0609 里那几笔的走势像：钩、弯、折。
-const GLYPHS: Glyph[] = [
-  (c) => {
-    c.moveTo(-0.5, -0.3);
-    c.quadraticCurveTo(0.6, -0.7, 0.4, 0);
-    c.quadraticCurveTo(0.2, 0.6, -0.4, 0.5);
-  },
-  (c) => {
-    c.moveTo(-0.45, -0.5);
-    c.lineTo(-0.2, 0.45);
-    c.moveTo(0.1, -0.45);
-    c.quadraticCurveTo(0.55, 0, 0.25, 0.5);
-  },
-  (c) => {
-    c.moveTo(0.4, -0.5);
-    c.quadraticCurveTo(-0.6, -0.2, -0.1, 0.1);
-    c.quadraticCurveTo(0.5, 0.4, -0.45, 0.5);
-  },
-];
-
-function ring(ctx: CanvasRenderingContext2D, r: number, width: number) {
-  ctx.lineWidth = width;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.stroke();
-}
-
-function seal(ctx: CanvasRenderingContext2D, r: number, glyph: number) {
-  ring(ctx, r, 3);
-  ring(ctx, r * 0.8, 2);
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2;
-    ctx.fillRect(Math.cos(a) * r * 0.9 - 2, Math.sin(a) * r * 0.9 - 2, 3 + hash(i + glyph) * 4, 3);
-  }
-  ctx.save();
-  ctx.scale(r * 0.75, r * 0.75);
-  ctx.lineWidth = 0.14;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  GLYPHS[glyph % GLYPHS.length](ctx);
-  ctx.stroke();
-  ctx.restore();
-}
-
-export function floorTextures(runes: HTMLImageElement) {
+export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement) {
   const bricks = document.createElement("canvas");
   bricks.width = bricks.height = TEX;
   const b = bricks.getContext("2d")!;
@@ -84,89 +38,8 @@ export function floorTextures(runes: HTMLImageElement) {
   c.arc(0, 0, R, 0, Math.PI * 2);
   c.fill();
   c.globalCompositeOperation = "lighter";
-  circle(c, runes, R * 0.97);
-
-  c.strokeStyle = c.fillStyle = tone(SCENE.ice, 0.9);
-  c.shadowColor = tone(SCENE.deep, 1);
-  c.shadowBlur = 16;
-  ring(c, R, 3);
-  ring(c, R * 0.74, 5);
-  ring(c, R * 0.5, 3);
-  // 外圈的八芒星弦线（{8/3} 星形）。
-  c.lineWidth = 2;
-  c.globalAlpha = 0.5;
-  c.beginPath();
-  for (let i = 0; i <= 8; i++) {
-    const a = ((i * 3) / 8) * Math.PI * 2 + 0.2;
-    c[i ? "lineTo" : "moveTo"](Math.cos(a) * R * 0.98, Math.sin(a) * R * 0.98);
-  }
-  c.stroke();
-  c.globalAlpha = 1;
-
-  // 偏心的粗亮月牙带：左下最粗、右上收细，两圆错开圆心做出来。
-  c.beginPath();
-  c.arc(-R * 0.015, R * 0.02, R * 0.665, 0, Math.PI * 2);
-  c.arc(R * 0.022, -R * 0.014, R * 0.585, 0, Math.PI * 2, true);
-  c.fill();
-
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    c.beginPath();
-    c.arc(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, 5, 0, Math.PI * 2);
-    c.fill();
-  }
-  c.lineWidth = 2;
-  for (let i = 0; i < 8; i++) {
-    const a = ((i + 0.5) / 8) * Math.PI * 2;
-    c.beginPath();
-    c.moveTo(Math.cos(a) * R * 0.06, Math.sin(a) * R * 0.06);
-    c.lineTo(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5);
-    c.stroke();
-  }
-  // img0609 的八片刃：内端尖、最宽处在六成半径附近、外端越过内盘边一点收尖。
-  c.shadowBlur = 22;
-  for (let i = 0; i < 8; i++) {
-    c.save();
-    c.rotate((i / 8) * Math.PI * 2);
-    c.beginPath();
-    c.moveTo(R * 0.05, 0);
-    c.lineTo(R * 0.37, R * 0.085);
-    c.lineTo(R * 0.57, 0);
-    c.lineTo(R * 0.37, -R * 0.085);
-    c.closePath();
-    c.fill();
-    c.restore();
-  }
-  c.shadowBlur = 10;
-  [0.5, 2.1, 3.7, 5.3].forEach((a, i) => {
-    c.save();
-    c.translate(Math.cos(a) * R * 0.16, Math.sin(a) * R * 0.16);
-    seal(c, R * 0.075, i);
-    c.restore();
-    c.beginPath();
-    c.moveTo(0, 0);
-    c.quadraticCurveTo(Math.cos(a + 0.9) * R * 0.12, Math.sin(a + 0.9) * R * 0.12, Math.cos(a) * R * 0.1, Math.sin(a) * R * 0.1);
-    c.stroke();
-  });
-  [2.8, 4.4, 5.95].forEach((a, i) => {
-    c.save();
-    c.translate(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5);
-    c.rotate(a + Math.PI / 4);
-    c.strokeRect(-R * 0.04, -R * 0.04, R * 0.08, R * 0.08);
-    c.strokeRect(-R * 0.03, -R * 0.03, R * 0.06, R * 0.06);
-    c.rotate(-Math.PI / 4);
-    c.scale(R * 0.03, R * 0.03);
-    c.lineWidth = 0.15;
-    c.beginPath();
-    GLYPHS[i % GLYPHS.length](c);
-    c.stroke();
-    c.restore();
-  });
-  c.save();
-  c.translate(R * 0.74, 0);
-  seal(c, R * 0.11, 0);
-  c.restore();
-  return { bricks, tex };
+  circle(c, outer, R);
+  return { bricks, tex, inner };
 }
 
 export type FloorSpot = { x: number; y: number; r: number; tilt: number; depth: number };
@@ -178,7 +51,7 @@ export function floorPainter() {
   scratch.width = scratch.height = TEX;
   const s = scratch.getContext("2d")!;
   s.imageSmoothingQuality = "high";
-  return (ctx: CanvasRenderingContext2D, { bricks, tex }: ReturnType<typeof floorTextures>, spin: number, alpha: number, spot: FloorSpot) => {
+  return (ctx: CanvasRenderingContext2D, { bricks, tex, inner }: ReturnType<typeof floorTextures>, spin: number, alpha: number, spot: FloorSpot) => {
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.globalCompositeOperation = "source-over";
     s.globalAlpha = 1;
@@ -189,22 +62,28 @@ export function floorPainter() {
     s.translate(TEX / 2, TEX / 2);
     s.rotate(spin);
     s.drawImage(tex, -TEX / 2, -TEX / 2);
+    s.rotate(-2.6 * spin);
+    circle(s, inner, INNER_R);
 
+    // 透视按条带拼，每条按自己的深度横向缩放。条带取设备像素的整行、一行一条：条宽一变圆弧两端就是一级台阶，
+    // 行高再小就看不出；条带也不能互相盖住，砖地是半透明的，盖住的那一线会叠两遍，整片地面出现细横纹。
     const { x, y, r, tilt, depth } = spot;
     const reach = r * EXTENT;
-    const scaleAt = (v: number) => 1 / (1 - depth * v);
-    const yAt = (v: number) => y + ((reach * tilt) / depth) * (scaleAt(v) - 1);
-    const device = Math.hypot(ctx.getTransform().a, ctx.getTransform().b);
-    const strips = Math.max(48, Math.ceil(((yAt(1) - yAt(-1)) * device) / STRIP_PX));
+    const k = (reach * tilt) / depth;
+    const m = ctx.getTransform();
+    const rowAt = (v: number) => m.d * (y + k * (1 / (1 - depth * v) - 1)) + m.f;
+    const vAt = (row: number) => Math.max(-1, Math.min(1, (1 - 1 / (((row - m.f) / m.d - y) / k + 1)) / depth));
+    const cx = m.a * x + m.e;
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "source-over";
     ctx.imageSmoothingQuality = "high";
-    for (let i = 0; i < strips; i++) {
-      const v0 = -1 + (2 * i) / strips;
-      const v1 = v0 + 2 / strips;
-      const half = reach * scaleAt((v0 + v1) / 2);
-      const top = yAt(v0);
-      ctx.drawImage(scratch, 0, (i * TEX) / strips, TEX, TEX / strips, x - half, top, 2 * half, yAt(v1) - top + 1 / device);
+    for (let row = Math.floor(rowAt(-1)); row < Math.ceil(rowAt(1)); row++) {
+      const v0 = vAt(row);
+      const v1 = vAt(row + 1);
+      if (v1 <= v0) continue;
+      const half = (m.a * reach) / (1 - (depth * (v0 + v1)) / 2);
+      ctx.drawImage(scratch, 0, ((v0 + 1) / 2) * TEX, TEX, ((v1 - v0) / 2) * TEX, cx - half, row, 2 * half, 1);
     }
     ctx.restore();
   };
