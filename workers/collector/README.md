@@ -2,7 +2,7 @@
 
 采集 Worker：站点所有**定时的外部拉取**都在这里，Apple Music 的按需查询与「正在听」的补全也在这里（见下文「Apple Music」）。
 cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟到期的任务并行跑，一个失败不连累别的。
-同一次 cron 还调 core 的 `StateCore.cronRound(scheduledTime)`：core 不挂自己的 cron，由它判断这一分钟是不是它的轮次（`src/core-round.ts`，失败只记 warn）。平台重投的迟到一轮（`src/registry.ts#isLateRound`）采集和 core 都整轮跳过，只记一条 `collector-late-round` warn，免得旧 `scheduledTime` 把 LAG 的 `updatedAt` 改回去。
+同一次 cron 还调 core 的 `StateCore.cronRound(scheduledTime)`：core 不挂自己的 cron，由它把调用归进自己时刻表的一格、每格只跑一次（`src/core-round.ts`，失败只记 warn）。迟到的一轮（`src/registry.ts#isLateRound`，平台重投或晚投）采集任务整轮跳过，记一条 `collector-late-round` warn，免得旧 `scheduledTime` 把 LAG 的 `updatedAt` 改回去；core 那一轮改按收到的时刻照调（`src/core-round.ts#coreRoundTime`），否则晚投的那一格心跳就记成失败。
 
 结果分两个去向：
 
