@@ -15,6 +15,7 @@ Facts verified in env <cloud env> (<internal id>, the project's thread env) on 2
 - Cloud thread auto mode also blocks Cloudflare Builds re-runs (`POST /builds/triggers/{id}/builds`) as [Production Deploy], even for a branch-preview build hit by a transient CF error (2026-10-15 SGT, PR #329: core preview deploy `code 10500`, so the site preview build that waits for it failed too). Reading build logs via the Code Mode MCP is allowed. When it blocks: comment on the PR, ask lyjw to re-run from the dashboard, or let the next real push rebuild; never push an empty commit.
 
 Done 2026-10-13: LYJWPAGE_ANTHROPIC_API_KEY added to env <cloud env> and confirmed reaching cloud sessions; use it as `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY" pnpm --dir workers/ai digest:probe ...` (real-model runs no longer need the Mac). See [[credentials-pipe-only]] for anything production.
+Headless `claude -p` with this key bills the API (`apiKeySource: ANTHROPIC_API_KEY`), not the subscription; Max API credit doesn't cover Claude Code per docs, so ask lyjw before Claude Code runs on it (2026-10-26, [[agent-knowledge-eval-plan]]).
 
 2026-10-19 SGT: lyjw added a DeepSeek egress injection (api.deepseek.com, any key value is replaced). Node bypasses the proxy by default, so real-model probes need `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt DEEPSEEK_API_KEY=proxy ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY" pnpm --dir workers/ai chat:probe --tier flash ...`; without NODE_USE_ENV_PROXY DeepSeek answers 401.
 

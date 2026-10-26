@@ -1,26 +1,23 @@
 ---
 name: agent-knowledge-eval-plan
-description: Control-vs-treatment eval of whether agents use lyjwpage skills (from Thorsten Ball's post); first run 2026-10-26 SGT, three arms
+description: Control-vs-treatment eval of whether agents use lyjwpage skills (Thorsten Ball's idea), Sonnet and Opus rounds done 2026-10-26; process steps are followed only when the task text says them
 metadata:
   type: project
 ---
 
-Source: Thorsten Ball "How I work with Agents" (X article, 2026-10-25), item "Eval agentic knowledge".
+Source: Thorsten Ball "How I work with Agents" (X article, 2026-10-25), item "Eval agentic knowledge". Thread「解读 Thorsten Ball 的推文」. lyjw 2026-10-26 19:22 SGT「现在就跑一次」, 19:44「测详细一点呗」, 20:46「成本低一点跑吧」.
 
-lyjw first said wait a week (10-26 18:47 SGT), then 19:22 SGT「算了 现在就跑一次」. Reminder cancelled.
+Harness (copies in /mnt/project-files/agent-knowledge-eval/, newest `2026-10-26-opus/`): headless `claude -p` per run, fresh CLAUDE_CONFIG_DIR, `env -i` (else children share this session's ids), bwrap hiding /mnt, memory and main repo, shallow clones; arm C's skill deletion must be committed with a neutral message (uncommitted deletes leak via `git diff`). Arms: A registered, B `--disable-slash-commands`, C deleted, D the process step written into the task prompt. Runs bill the API key at list-price estimates ([[cloud-env-gaps]]).
 
-Design of run 1 (scratchpad, headless `claude -p`, Sonnet 5.5, fresh CLAUDE_CONFIG_DIR per run, read-only tools, worktrees from origin/main 55910c4):
-- Arm A: skills registered (current state). Arm B: files present but `--disable-slash-commands` (like threads before #639). Arm C: skill dirs deleted.
-- Tasks: t1 diagnose (Today Tokens card low, plan only) → lyjwpage-diagnose; t2 borrow (Thorsten article) → lyjwpage-borrow. 4 reps each.
-- Grading: trace metrics (Skill call, SKILL.md read) + blind rubric grader. Results: see thread「解读 Thorsten Ball 的推文」 and /mnt/project-files/agent-knowledge-eval/.
+Sonnet rounds (n=5 per arm; report <private claude.ai link>, Opus section added):
+- Skill bodies are reached via AGENTS.md paths, rarely the Skill tool (2/25). Unnamed skills reach agents only via the description (formal-model: TLA+ mentioned only in A).
+- Content mattered for borrow (A 5.8, B 6.0, C 4.2 /8). Verify ~5/6 in all arms.
+- Process lines skipped: repro-before-fix 0/15, delegate to Haiku 0/15.
+- Round-2 debug task was mis-specified (bug off the Today Tokens path); Sonnet's 15 "fixes" claimed an unverified cause. One Opus smoke run on it called diagnose, built repro tests and refused to guess.
 
-Result run 1 (2026-10-26 ~19:50 SGT, data /mnt/project-files/agent-knowledge-eval/2026-10-26/, cost ≈$3.4 runs + grading):
-- t2 borrow: Skill called 3/4 in A (4th read SKILL.md), 0/4 in B and C. Blind score A 5.75/8, B 3.88, C 3.25. Gains in "check references.md" and "wait for lyjw to pick numbers". Nobody did "how to test each item" or "check not-adopting".
-- t1 diagnose: 0 tool calls in all 12 runs; skill never loaded even in A. Scores ≈1/6 in every arm. Plan-only answers came from AGENTS.md context; skill-only steps (repro command first, bisect, falsifiable hypotheses, red→green) missing.
-- Flaws: agents could read /mnt/project-files and memory and saw this eval existed (not arm-blind leak, but breaks B8). Next run: sandbox reads to the worktree, use act-type tasks, n≥5.
+Opus round (n=3 per arm, $6.26; bug on the symptom path: Pulse Tokens lane, cloud segments, Cache read 0/min):
+- Debug A and C: 6/6 fixed with a regression test, 0/6 loaded diagnose, 0/6 saw red before the fix (fixed first, then reverted to prove). 4/6 found the path via `.claude/memory/pulse-tokens-lane-coverage.md`.
+- Debug D (「改代码之前，先造出一条能复现这个症状、现在会报红的命令或测试」): 3/3 red test first, then fix; same cost (~$0.5/run), ~6 more calls before the fix.
+- Verify A: 3/3 called the Skill and caught both planted defects; 0/3 delegated. Verify D (「这些检查派一个 Haiku 子代理去跑」): 3/3 delegated; Haiku ran more gates (full `pnpm test`, docs:check, design:scale, ui:copy) at the same total cost (Haiku part $0.01–0.02).
 
-Round 2 (lyjw 19:44 SGT「测详细一点呗」; done ~20:40 SGT). bwrap sandbox (hides /mnt, memory, main repo; env -i so child sessions don't share this session's ids), shallow clones, arm C deletion committed (first 75-run pass discarded: C read deleted skills via `git diff`). 5 tasks × 3 arms × 5, Sonnet 5.5, ≈$15. Report: <private claude.ai link> ; data /mnt/project-files/agent-knowledge-eval/2026-10-26-round2/.
-- Main entry to a skill is the AGENTS.md path, not the Skill tool (A called Skill 2/25). Unregistered arm B read borrow/verify via the path.
-- borrow: A 5.8, B 6.0, C 4.2 /8. verify: ~5/6 all arms (AGENTS.md suffices). diag: 15/15 fixed, skill read 0/15, "red before fix" 0/15 (bug too easy: git log shows it). delegate: 0/15 delegated (task ≤6 tool calls). formal (not in AGENTS.md): only A mentions TLA+ (0.5) from the description, never reads body.
-- Skill lines read but not followed: receipt format, 「每条怎么试」, red-before-green → candidates for checks or task-start prompts.
-Next-round ideas: bug not visible in history, delegate task clearly >5 calls, Opus arm.
+Conclusion: skill and AGENTS.md text gets read, but process steps in it are skipped unless the task looks hard; the same step in the task text is followed 3/3. Applied 2026-10-26: MEMORY.md line "Process steps go in the brief". Not measured: fresh sessions have small contexts, so delegation's savings in long threads don't show.

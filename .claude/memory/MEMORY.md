@@ -37,6 +37,7 @@
 - **Decision cards:** coordinator re-posts open cards in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints:** [[handoff-carry-user-constraints]].
+- **Process steps go in the brief:** bug threads get 「改代码前先造一条会报红的复现」, threads that change code get 「开 PR 前的验证派 Haiku 子代理」; written only in skills/AGENTS.md, Opus skipped both, in the task text it did both 3/3 (eval 2026-10-26): [[agent-knowledge-eval-plan]].
 - **Secrets** piped on the Mac with `rotate-secret`, never pasted: [[credentials-pipe-only]]. Secret checks that flag memory get fixed, not the memory: [[repo-memory-mirror]].
 - **Commit identity:** as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
 - **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. api.x.com via proxy (app-only, public only) is the fallback when the connector is missing: [[x-api-via-proxy]].
