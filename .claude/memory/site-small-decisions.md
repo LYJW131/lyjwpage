@@ -18,3 +18,5 @@ Settled by lyjw; don't revert or re-propose:
 - HealthKit returns null (not 0) for days with no samples; the site shows 0 when steps exist (#589).
 - Workers Issues email alerts: scanner-probe issues ignored, threshold unchanged.
 - README has no overview screenshot; every card is a live `/cards/*.svg`.
+
+- README also has the personal-info card and the Cloudflare outage banner (#633).
