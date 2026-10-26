@@ -68,7 +68,7 @@
 - Chat tiers, consent and log retention: [[chat-tiers]].
 - **DO locations** (2026-10-23): StateHub KIX, LivePushRoom NRT, ChatQuota NRT, AnthropicEgress jp-0 KIX, ChatLog SEA, BuildCoordinator DFW: [[do-physical-locations]].
 - **Workers Issues alert emails stay as-is** (lyjw 2026-10-23 23:50 SGT「不用了」): platform DO/D1 storage errors are not downgraded to warn.
-- **Cron late delivery (2026-10-26):** Cloudflare delays/misses collector's per-minute cron; core heartbeat red 5 days. Fix #675: core runs per 5-min slot on first call in slot. Collector stays 1-min (superfan advised against lowering).
+- **Cron late delivery (2026-10-26):** Cloudflare delays/misses collector's per-minute cron; core heartbeat red 5 days. Fix #675: core runs per 5-min slot on first call in slot. Collector stays 1-min (lyjw OK'd「行」); #681: every collector job claims its own slot in collector DO `CronSlots`, late rounds run with current time: [[core-heartbeat-slot-claim]].
 - Small settled site decisions (README live cards `v=`, Today Tokens in M, no LICENSE, type assertions, legacy R2 assets, digest pools, dial sizes, Claude limit card, HealthKit nulls, Issues alerts): [[site-small-decisions]]. README also has the personal-info card and Cloudflare outage banner (#633).
 - Desktop CLS fixed by `scrollbar-gutter: stable` (#534): [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy (AGENTS.md, #482).
