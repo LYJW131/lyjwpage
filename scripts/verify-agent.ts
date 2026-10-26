@@ -210,12 +210,13 @@ const customTools = [
     name: "submit_report",
     label: "Submit report",
     description: v2
-      ? "交最终结果。参数照结果 schema；交上来会按判定规则复核，退回时照提示改完再交，通过才结束。"
+      ? `交最终结果。参数照结果 schema；交上来会按判定规则复核，不过就退回、照提示改完再交；退回 ${MAX_REJECTIONS} 次后照收，还没过的那几条记进 notVerified。`
       : "交最终结果，整轮到此结束。参数照结果 schema；只调一次，调之前把要跑的检查都跑完。",
     parameters: schema,
     execute: async (_id: string, params: unknown) => {
-      if (v2 && role === "verifier" && rejections < MAX_REJECTIONS) {
-        const issues = reviewReport(params as VerifierReport, {
+      if (v2 && role === "verifier") {
+        const submitted = params as VerifierReport;
+        const issues = reviewReport(submitted, {
           checklistIds: checklistIds(prompt),
           claims: [...claims.values()],
           hasDescription: hasDescription(prompt),
@@ -223,10 +224,12 @@ const customTools = [
           testsPassed,
           comparedBase,
         });
-        if (issues.length) {
+        if (issues.length && rejections < MAX_REJECTIONS) {
           rejections++;
           return { ...text(`没收，先改这几处再交（第 ${rejections} 次退回，最多 ${MAX_REJECTIONS} 次）：\n${issues.map((issue, index) => `${index + 1}. ${issue}`).join("\n")}`), isError: true };
         }
+        // 退回到上限仍有没过的，照收但留在回执里，不悄悄吞掉
+        if (issues.length) params = { ...submitted, notVerified: [...submitted.notVerified, `交结果时的规则复核退回 ${MAX_REJECTIONS} 次后仍有 ${issues.length} 条没过：${issues.map((issue) => issue.slice(0, 60)).join("；")}`] };
       }
       report = params;
       return { ...text("已收到结果。"), terminate: true };
