@@ -208,7 +208,7 @@ X_SELF = {"x-likes": "x_get_users_liked_posts", "x-bookmarks": "x_get_users_book
 # 连接器单次返回超过约 2 万字符会被截断，每页条数与正文截断长度按这个上限取。
 X_TIMELINE_PAGE, X_TIMELINE_TEXT = 10, 1500
 X_SELF_PAGE, X_SELF_TEXT = 40, 280
-X_TIMELINE_MAX_PAGES, X_SELF_MAX_PAGES = 10, 5
+X_TIMELINE_MAX_PAGES, X_SELF_MAX_PAGES = 30, 5
 X_SELF_FIRST = 20
 # 点赞、收藏按操作时间倒序、没有 since_id，用最近见过的这么多条 id 当书签；取消点赞删掉几条也还能对上。
 X_SELF_KNOWN = 50
