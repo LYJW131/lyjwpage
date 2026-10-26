@@ -191,3 +191,15 @@ test("认领调用失败时退回只跑正好到期的任务，记一条 warn", 
   assert.equal(JSON.parse(String(warnings.mock.calls[0].arguments[0])).event, "collector-slot-claim");
 });
 
+
+test("认领失败的一轮不写认领：DO 在同一格里恢复时这一格再跑一次，换来 DO 调不通时到期任务照跑", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const healthy = memorySlots();
+  let broken = true;
+  const flaky: SlotClaimer = { claim: (slots) => (broken ? Promise.reject(new Error("Durable Object reset")) : healthy.claim(slots)) };
+  const digest = fakeJob(async () => ({ status: "ok" }), { name: "digest", everyMinutes: 15, offset: 5 });
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:05:00Z"), [digest], flaky), [digest]);
+  broken = false;
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:06:00Z"), [digest], flaky), [digest]);
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:07:00Z"), [digest], flaky), []);
+});
