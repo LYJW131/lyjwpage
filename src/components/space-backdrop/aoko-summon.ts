@@ -7,11 +7,9 @@ const SEQUENCE = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "
 const IDLE_MS = 2500;
 // 最后一键的闪光里镜头退回原位的时长；宇航员等它退完再起飞，不然换到置顶层时会跳一下大小。
 export const RELEASE_MS = 400;
-// 贴图都是游戏里的演出图层（scripts/aoko-fx-assets.ts 导出）。全屏闪电是另一段演出里从画面边缘劈进来的六张整帧，
-// swoop 是横扫的电弧、storm 是电柱与悬浮法环，都铺满整屏画。
+// strike-*、swoop、storm 是整帧图层，按铺满整屏画；往里加的图也要是整帧（来源见 scripts/aoko-fx-assets.ts）。
 const STRIKES = Array.from({ length: 6 }, (_, i) => `strike-${i + 1}`);
-// 每个键一张不同的图层，立在立绘要出现的位置：从小光点、星芒到整面法阵、刃环、能量触须，越往后越大越烈。
-// spin 是淡出时转过的角度，from / to 是出现与淡出时相对最终大小的缩放。
+// spin 是淡出时转过的角度（度），from / to 是出现与淡出时相对最终大小的缩放。
 const CUES = [
   { sprite: "glint", spin: 0, from: 0.3, to: 1.3 },
   { sprite: "star", spin: 20, from: 0.2, to: 1.4 },

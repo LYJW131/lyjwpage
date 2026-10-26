@@ -284,8 +284,10 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     last = now;
     draw(t, closed);
   };
+  // 没有 WebGL 时退回 2D 画一张静止的原图，场景也停在 STILL。
+  let still = reducedMotion;
   const draw = (t: number, closed = 0) => {
-    const state = reducedMotion ? STILL : fxState(t);
+    const state = still ? STILL : fxState(t);
     const p = revealAt === null ? 1 : (t - revealAt) / REVEAL_S;
     render?.(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p));
     if (revealAt === null) return fx.render(state, handPose(t));
@@ -324,11 +326,16 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     fx.setHand({ img: arm, box: ARM_BOX, palm: PALM });
     render = rigRenderer(canvas, art, rig, faces, arm, fill);
     if (!render) {
+      // 回退也做成 render：layout 重设画布尺寸会清空位图，要能重画，不然调整窗口后人物就没了。
       front.style.opacity = "";
+      still = true;
       const ctx = canvas.getContext("2d");
-      const k = canvas.width / (SRC_W + 2 * PAD);
-      ctx?.drawImage(art, PAD * k, PAD * k, SRC_W * k, SRC_H * k);
-      fx.render(STILL, handPose(0));
+      render = () => {
+        const k = canvas.width / (SRC_W + 2 * PAD);
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+        ctx?.drawImage(art, PAD * k, PAD * k, SRC_W * k, SRC_H * k);
+      };
+      draw(0);
       return;
     }
     if (summon && !reducedMotion) revealAt = (performance.now() - t0) / 1000;

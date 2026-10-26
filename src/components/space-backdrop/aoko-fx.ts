@@ -14,7 +14,6 @@ const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine", "floor-o
 // 在 img0628-HD（2100×1260）上量的位置，按两眼中点和瞳距换算进立绘：镜头瞳距 196px、立绘 85px。
 const SHOT_K = 85 / 196;
 const shot = (x: number, y: number): [number, number] => [(x - 1153) * SHOT_K + 488.5, (y - 507) * SHOT_K + 186];
-// 身后光环圆心落在掌心一带；亮环外缘半径 940，符文带外缘 740（镜头像素）。
 const [RING_X, RING_Y] = shot(936, 860);
 const RING_R = 940 * SHOT_K;
 const RUNE_R = 740 * SHOT_K;
@@ -29,7 +28,6 @@ const FLARE_ANGLE = -0.5;
 // 半径是 lyjw 要的大小：伸到卡片列背后的那半边被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。
 const FLOOR = { x: 490, y: 1858, r: 1100, tilt: 0.21, depth: 0.22 };
 
-// 一轮演出：闲置时法阵慢转、电弧偶尔噼啪；CHARGE 起蓄力，FIRE 时星芒一闪，之后回落。
 export const CYCLE = 20;
 export const CHARGE = 13;
 export const FIRE = 16;

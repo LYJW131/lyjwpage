@@ -100,7 +100,6 @@ export function armRings(ctx: CanvasRenderingContext2D, sprites: RingSprites, { 
     gaps.forEach((gap, j) => {
       if (gap.open < 0.02) return;
       const mid = gap.end + (SHARD * gap.open) / 2;
-      // 碎片随断口张开往外错开，再叠一点快抖，像隔着扭动的空气看。
       const push = ring.r * gap.open * (0.08 + 0.025 * Math.sin(t * 9 + j * 2 + k));
       ctx.save();
       ctx.translate(Math.cos(mid) * push, Math.sin(mid) * push);
@@ -128,7 +127,6 @@ export function armRings(ctx: CanvasRenderingContext2D, sprites: RingSprites, { 
   });
 }
 
-// img0667 环边上一闪一闪的四芒小星。
 export function glints(ctx: CanvasRenderingContext2D, t: number, power: number) {
   for (let i = 0; i < 8; i++) {
     const ring = ARM_SPOTS[i % ARM_SPOTS.length];
