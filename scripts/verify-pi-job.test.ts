@@ -58,7 +58,7 @@ test("verify-pi 的 agent 步骤：head 与分叉点都没有（分支早于 pi 
   assert.deepEqual(present(repo([{ action: false }, { action: false }], { action: true })), { value: "false", notice: true });
 });
 
-test("verify-pi 的 agent 步骤：PR 自己删掉了分叉点上有的 action 时 present 留空，末步照旧报红", () => {
+test("verify-pi 的 agent 步骤：PR 自己删掉了分叉点上有的 action 时 present 留空", () => {
   assert.deepEqual(present(repo([{ action: true }, { action: false }], { action: true })), { value: "", notice: false });
 });
 
