@@ -30,9 +30,9 @@ const FLARE_ANGLE = -0.5;
 const FLOOR = { x: 490, y: 1858, r: 1100, tilt: 0.21, depth: 0.22 };
 
 // 一轮演出：闲置时法阵慢转、电弧偶尔噼啪；CHARGE 起蓄力，FIRE 时星芒一闪，之后回落。
-const CYCLE = 20;
-const CHARGE = 13;
-const FIRE = 16;
+export const CYCLE = 20;
+export const CHARGE = 13;
+export const FIRE = 16;
 const SETTLE = 18.5;
 
 export function fxState(t: number): FxState {

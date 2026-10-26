@@ -165,8 +165,12 @@ export function mountSpaceScene(host: HTMLElement) {
       const r = s.actor.getRect();
       return x >= r.left && x <= r.left + r.w && y >= r.top && y <= r.top + r.h;
     });
+  let nearAoko = false;
   const onPointer = (e: PointerEvent) => {
     pointer = e.pointerType === "mouse" ? { x: e.clientX, y: e.clientY } : null;
+    const near = !!pointer && pointer.x < column.left - EDGE;
+    if (near && !nearAoko) aoko?.notice();
+    nearAoko = near;
     setCursor(!!pointer && onBackdrop(e.target) && !!pokeable(e.clientX, e.clientY));
   };
   const onClick = (e: MouseEvent) => {
