@@ -7,6 +7,8 @@ import { tierOf } from "./pr-gate/tier.ts";
 import { bodyDigest } from "./verify-action/body.ts";
 import { carryOver, judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks, staleRead } from "./verify-action.ts";
 import { machineLine, proofPlan } from "./verify-action/machine.ts";
+import { previousReceipt, type History } from "./verify-action/previous.ts";
+import { verifierPrompt } from "./verify-action/prompts.ts";
 import { parseComments, stampLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -249,4 +251,36 @@ test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的�
   const rows = [{ id: "V1", check: "a\\|b", result: "PASS", evidence: "`C:\\dir` 与 `\\d+`" }];
   const receipt = receiptComment({ stamp: { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) }, report: { model: "m", level: "unit-test-verified", rows, notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" });
   assert.ok(receipt.split("\n").includes("| V1 | a\\\\\\|b | PASS | `C:\\dir` 与 `\\d+` |"));
+});
+
+test("previousReceipt：同一份清单、按的提交是 head 的祖先、之间 PR 自己改过文件时，拿最新那份回执当底；别的情况整轮重验", () => {
+  const digest = "b".repeat(64);
+  const old = "c".repeat(40);
+  const receipt = (sha: string, body = digest) =>
+    [`验证回执 ${sha}：verifier-failed`, stampLine({ sha, level: "verifier-failed", body }), "", "没过：", "- V2 FAIL：x", '<img src="https://example.test/a.png" alt="a" width="360">'].join("\n");
+  const history = (changed: string[], ancestor = true): History => ({ isAncestor: () => ancestor, changed: () => changed });
+  const bot = (body: string) => ({ user: { id: 338272049 }, body });
+  const comments = [bot(receipt("d".repeat(40))), { user: { id: 153256373 }, body: receipt(HEAD) }, bot(receipt(old))];
+  const args = { head: HEAD, body: digest, prFiles: ["src/a.ts", "src/b.ts"] };
+  const got = previousReceipt(comments, { ...args, history: history(["src/a.ts", "workers/core/x.ts"]) });
+  assert.deepEqual(got && { sha: got.sha, level: got.level, changed: got.changed }, { sha: old, level: "verifier-failed", changed: ["src/a.ts"] });
+  assert.ok(got?.text.includes("V2 FAIL") && !got.text.includes("<img"));
+  assert.equal(previousReceipt([bot(receipt(old, "e".repeat(64)))], { ...args, history: history(["src/a.ts"]) }), null);
+  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["src/a.ts"], false) }), null);
+  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["workers/core/x.ts"]) }), null);
+  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["src/a.ts", "AGENTS.md"]) }), null);
+  assert.equal(previousReceipt([bot(receipt(old))], { ...args, history: history(["src/a.ts", "scripts/verify-action.ts"]) }), null);
+  assert.equal(previousReceipt([bot(receipt(HEAD))], { ...args, history: history(["src/a.ts"]) }), null);
+});
+
+test("verifierPrompt：有上一份回执时写明沿用规则、改过的文件与回执原文，没有时不出现这一节", () => {
+  const base = { pr: 7, title: "t", head: HEAD, base: "main", files: ["src/a.ts"], tier: "ui", need: "live-ui-verified", preview: null, checklist: [{ id: "V1", text: "x" }], outDir: "/o", proof: null };
+  const old = "c".repeat(40);
+  const again = verifierPrompt({ ...base, previous: { sha: old, level: "verifier-failed", text: "回执原文", changed: ["src/a.ts"] } });
+  assert.match(again, /上一轮：这个 PR 在 ccccccc 上已有一份回执（verifier-failed）/);
+  assert.match(again, /「沿用 ccccccc：」/);
+  assert.match(again, /- src\/a\.ts\n\n这轮只复验/);
+  assert.match(again, /<<<\n回执原文\n>>>/);
+  assert.match(again, /至少重截一张/);
+  assert.ok(!verifierPrompt(base).includes("上一轮"));
 });
