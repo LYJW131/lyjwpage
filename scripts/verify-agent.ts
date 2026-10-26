@@ -106,6 +106,8 @@ if (process.env.CI && !values["api-key-file"]) {
 const cwd = process.cwd();
 const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-agent", "skills");
 const outDir = values["out-dir"] ? path.resolve(values["out-dir"]) : null;
+// bwrap 的 --bind 要求源目录已存在
+if (outDir) fs.mkdirSync(outDir, { recursive: true });
 const tmpDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-agent-"));
 // pi 自己的状态（模型表、凭据表、agentDir）不放进沙箱可写的 tmpDir：PR 代码改了模型表的 baseUrl，钥匙就跟着请求发到别处
 const piStateDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp", "verify-pi-state-"));
@@ -148,7 +150,7 @@ const text = (body: string) => ({ content: [{ type: "text" as const, text: body 
 
 const run = (command: string, timeoutMs: number, dir = cwd) =>
   new Promise<{ code: string | number; output: string }>((resolve) => {
-    const child = spawn("bash", ["-c", wrap(command)], { cwd: dir, env: childEnvNow() as NodeJS.ProcessEnv, signal: AbortSignal.timeout(timeoutMs) });
+    const child = spawn("bash", ["-c", wrap(command)], { cwd: dir, env: childEnvNow() as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"], signal: AbortSignal.timeout(timeoutMs) });
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));

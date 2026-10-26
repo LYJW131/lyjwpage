@@ -112,7 +112,7 @@ export function docsSyncTool(ctx: ToolContext) {
       }
       const body = `${auto.length ? `自动加入的关键词：${auto.join("、")}\n` : ""}${lines.join("\n")}`;
       const file = ctx.workLog(`docs-sync-${Date.now()}.txt`, body);
-      return text(`${body.slice(0, 12_000)}${body.length > 12_000 ? `\n…（截断，全文 ${file}）` : ""}\n\n标着「这次没改」又仍写着旧说法的，要判断是不是该同步却漏了。`);
+      return text(`${body.slice(0, 12_000)}${body.length > 12_000 ? `\n…（截断，全文 ${file ?? "未保存"}）` : ""}\n\n标着「这次没改」又仍写着旧说法的，要判断是不是该同步却漏了。`);
     },
   };
 }

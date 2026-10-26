@@ -434,6 +434,6 @@ test("规则漂移：分支起点以来 main 改了规则文件时进 notes 不�
 });
 
 test("verifierFiles：验证链本身、合并钩子及其依赖、判定员照读的根 AGENTS.md 与 REVIEW.md 都算", () => {
-  const files = ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts", "docs/explainer/AGENTS.md", "src/lib/x.ts"];
-  assert.deepEqual(verifierFiles(files), ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts"]);
+  const files = ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts", ".github/actions/verify-agent/action.yml", "scripts/verify-agent.ts", "scripts/verify-agent/guard.ts", "scripts/verify-agentx.ts", "docs/explainer/AGENTS.md", "src/lib/x.ts"];
+  assert.deepEqual(verifierFiles(files), ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts", ".github/actions/verify-agent/action.yml", "scripts/verify-agent.ts", "scripts/verify-agent/guard.ts"]);
 });
