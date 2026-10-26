@@ -52,6 +52,7 @@ export default function AppImage({
   decoding,
   fetchPriority,
   onError,
+  onLoad,
   ...rest
 }: ImageProps) {
   const [failed, setFailed] = useState({ src, count: 0 });
@@ -97,6 +98,10 @@ export default function AppImage({
       ref={imgRef}
       src={retrying ? proxyFallback : optimizedSrc}
       srcSet={!retrying && optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : undefined}
+      onLoad={(event) => {
+        if (failed.src !== src || failures > 1) setFailed({ src, count: Math.min(failures, 1) });
+        onLoad?.(event);
+      }}
       onError={(event) => {
         setFailed({ src, count: failures + 1 });
         onError?.(event);
