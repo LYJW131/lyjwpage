@@ -279,22 +279,25 @@ def x_ingest(folder):
     with open(os.path.join(STATE_DIR, "pending.json")) as f:
         pending = json.load(f)
     cursors, report = dict(state["cursors"].get("x") or {}), {}
-    new, errors, started = [], {}, []
+    new, errors, started, truncated = [], {}, [], []
     for group, accounts in X_ACCOUNTS.items():
         for name in accounts:
             try:
-                tweets = {t["id"]: t for p in x_pages(folder, name) for t in p["items"]}
+                pages = x_pages(folder, name)
+                tweets = {t["id"]: t for p in pages for t in p["items"]}
             except Exception as e:
                 errors[name] = str(e)[:200]
                 continue
             if name not in cursors:
                 started.append(name)
+            if pages[-1].get("next") and len(pages) >= X_TIMELINE_MAX_PAGES:
+                truncated.append(name)
             if tweets:
                 cursors[name] = max(tweets, key=int)
             for t in sorted(tweets.values(), key=lambda t: int(t["id"])):
                 new.append({"group": group, "account": name, "url": f"https://x.com/{name}/status/{t['id']}", **t})
     pending["cursors"]["x"] = cursors
-    report["x"] = {"ok": not errors, "new": new, "failedAccounts": errors, "firstRunAccounts": started}
+    report["x"] = {"ok": not errors, "new": new, "failedAccounts": errors, "firstRunAccounts": started, "truncatedAccounts": truncated}
     for key in X_SELF:
         known = state["cursors"].get(key)
         try:
