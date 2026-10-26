@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
-import { childEnv, filterGrepOutput, quote, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, filterGrepOutput, inside, quote, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
 import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
@@ -278,7 +278,9 @@ const { session } = await createAgentSession({
 });
 
 if (values.transcript) {
-  fs.mkdirSync(path.dirname(values.transcript), { recursive: true });
+  const dir = path.dirname(path.resolve(values.transcript));
+  fs.mkdirSync(dir, { recursive: true });
+  if (outDir && inside(outDir, dir) && !realInside(outDir, dir)) throw new Error(`${dir} 指出了产物目录`);
   fs.rmSync(values.transcript, { force: true });
 }
 const transcript = values.transcript ? fs.createWriteStream(values.transcript, { flags: "wx" }) : null;
