@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
 import {
   IMAGE_WIDTHS,
@@ -51,8 +51,18 @@ export default function AppImage({
   width,
   decoding,
   fetchPriority,
+  onError,
+  onLoad,
   ...rest
 }: ImageProps) {
+  const [failed, setFailed] = useState({ src, count: 0 });
+  const failures = failed.src === src ? failed.count : 0;
+  const imgRef = useRef<HTMLImageElement>(null);
+  // SSR 出的图可能在水合前就加载失败，React 不重放那次 error 事件，挂载时补查一次。
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth === 0 && img.currentSrc) setFailed((prev) => (prev.src === src && prev.count > 0 ? prev : { src, count: 1 }));
+  }, [src]);
   // WebKit 对 lazy 图（data URI 也一样）先挂可见性观察，回调在首帧绘制之后，内联图首帧必空。
   const inline = src.startsWith("data:");
   const fixed = Boolean(priority) || inline || loading === "eager";
@@ -74,18 +84,34 @@ export default function AppImage({
         q,
       )
     : src;
+  // 访客网络连不上第三方图床时，直连图改走一次站点代理；代理也失败就藏起图，露出容器底色而不是 alt 文字。
+  const proxyFallback =
+    !optimizable && !inline && parseImageSource(src) !== null
+      ? optimizerImagePath(src, numericWidth === undefined ? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1] : imageWidthBucket(numericWidth * 2), q)
+      : null;
+  const retrying = failures > 0 && proxyFallback !== null;
+  const hidden = proxyFallback !== null && failures > 1;
 
   return (
     <img
       {...rest}
-      src={optimizedSrc}
-      srcSet={optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : undefined}
+      ref={imgRef}
+      src={retrying ? proxyFallback : optimizedSrc}
+      srcSet={!retrying && optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : undefined}
+      onLoad={(event) => {
+        if (failed.src !== src || failures > 1) setFailed({ src, count: Math.min(failures, 1) });
+        onLoad?.(event);
+      }}
+      onError={(event) => {
+        setFailed({ src, count: failures + 1 });
+        onError?.(event);
+      }}
       alt={alt ?? ""}
       width={width}
       loading={priority || inline ? undefined : (resolved.loading ?? "lazy")}
       decoding={decoding ?? "async"}
       fetchPriority={fetchPriority ?? (priority ? "high" : noPreload ? "low" : undefined)}
-      style={fill ? { ...FILL_STYLE, ...style } : style}
+      style={hidden ? { ...(fill ? FILL_STYLE : null), ...style, visibility: "hidden" } : fill ? { ...FILL_STYLE, ...style } : style}
     />
   );
 }

@@ -51,7 +51,7 @@ test("远程内联：重定向出白名单、超大响应都拒绝", async () =>
   await assert.rejects(remoteImageDataUri(ALLOWED, streamed.impl), ImageUpstreamError);
 });
 
-test("远程内联：PSN 带尺寸图床与 Quest 封面链可内联，公开 /image 代理仍不认这些主机", async () => {
+test("远程内联：PSN 带尺寸图床与 Quest 封面链可内联，公开 /image 代理不认 Quest 封面链", async () => {
   for (const src of [
     "https://image.api.playstation.com/x.png?w=224&h=224",
     "https://psnobj.prod.dl.playstation.net/x.png",
@@ -68,7 +68,7 @@ test("远程内联：PSN 带尺寸图床与 Quest 封面链可内联，公开 /i
   const chain = recordingFetch(() => hops.shift()!);
   assert.match(await remoteImageDataUri(quest, chain.impl), /^data:image\/webp;base64,/);
   assert.deepEqual(chain.calls, [quest, "https://scontent-ord5-1.oculuscdn.com/v/x.webp"]);
-  for (const src of ["https://media.discordapp.net/external/a/https/www.oculus.com/x", "https://image.api.playstation.com/x.png", quest]) {
+  for (const src of ["https://media.discordapp.net/external/a/https/www.oculus.com/x", "https://cdn.discordapp.com/app-assets/123/cover.png", quest]) {
     assert.equal(parseImageSource(src), null, src);
   }
 });
