@@ -1,0 +1,38 @@
+name: Collapse Worker Preview Comments
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions: {}
+
+jobs:
+  # Cloudflare 每个 Worker 发一条预览评论，只有 site 的链接是要点开的页面；其余按「已解决」折叠。
+  # 认 Worker 靠正文里的日志链接 services/view/<worker>/，刚建、还没链接的那一版跳过，等 edited 再判。
+  collapse:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == 'cloudflare-workers-and-pages[bot]' &&
+      contains(github.event.comment.body, '/services/view/') &&
+      !contains(github.event.comment.body, '/services/view/site/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - name: Minimize as lyjw131[bot]
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          NODE_ID: ${{ github.event.comment.node_id }}
+        run: |
+          gh api graphql -f id="$NODE_ID" -f query='
+            mutation($id: ID!) {
+              minimizeComment(input: {subjectId: $id, classifier: RESOLVED}) {
+                minimizedComment { isMinimized }
+              }
+            }' --jq '.data.minimizeComment.minimizedComment.isMinimized'
