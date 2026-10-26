@@ -119,6 +119,10 @@
   - 是什么：Jev、Clef 这类决策模型当评测判官时怎么用：不信默认 0.5 阈值，拿标注数据按精确率、召回率的底线用分层五折选阈值，再看概率校准。
   - 取了什么：用标注问题集给 Clef 预取两题定阈值、分层五折验证、按分箱与 Brier 看校准，并在同一题集上对比 Jev。
   - 状态：采用。落在 `workers/ai/scripts/prefetch-calibrate.ts` 与问题集 `workers/ai/scripts/prefetch-cases.json`，阈值是 `workers/ai/src/chat/router.ts#PREFETCH_MIN_PROBABILITY`。
+- **[tstack](https://github.com/t3dotgg/tstack)**（Theo，[发布推文](https://x.com/theo/status/2114623574371963360)）
+  - 是什么：Theo 日常用的一组 agent skill，围绕「改动到合并」：证据、评审循环、开 PR、盯 PR、接手别人的 PR。
+  - 取了什么：只取 `sol-loop`：开 PR 前让另一家模型只读审改动，默认 3 轮、blocker / should / nit 三级、逐条核实后最小修或带证据驳回、不为结束循环而同意。审查员换成 Devin CLI 的免费 `swe-2-max`。
+  - 状态：部分采用。落在 [lyjwpage-swe-loop](../.claude/skills/lyjwpage-swe-loop/SKILL.md)。其余 skill 与已有的 PR 订阅、[lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 合并门槛重合；`council`（三家模型一起审）不采用，同 Jev 不当第二验证员的理由。
 
 - **[What a task costs on Opus 5.5](https://claude.dev/blog/what-a-task-costs-on-opus-5-5/)**（claude.dev）、**[Using Claude Code: Spending your effort](https://claude.dev/blog/spending-your-effort/)**（claude.dev）、**[Subagents](https://code.claude.com/docs/en/sub-agents)**（Claude Code 文档）
   - 是什么：各类任务的成本、effort 档位怎么选、子代理的 `model` / `effort` 字段。
