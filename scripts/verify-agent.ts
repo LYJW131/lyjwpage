@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
-import { childEnv, filterGrepOutput, inside, quote, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, filterGrepOutput, inside, prepareInside, quote, readAllowed, realInside, sandboxed, writeInside } from "./verify-agent/guard.ts";
 import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
@@ -138,15 +138,10 @@ if (provider === "deepseek") model.compat = { ...model.compat, supportsReasoning
 
 let report: unknown = null;
 let effortSent: string | undefined;
-// 产物目录 bash 也能写：PR 代码能把 work/ 或其中的文件预先做成指出去的链接，而这里在沙箱外写
 const workLog = (name: string, text: string) => {
   if (!outDir) return null;
-  const dir = path.join(outDir, "work");
-  fs.mkdirSync(dir, { recursive: true });
-  if (!realInside(outDir, dir)) throw new Error(`${dir} 指出了产物目录`);
-  const file = path.join(dir, name);
-  fs.rmSync(file, { force: true });
-  fs.writeFileSync(file, text, { flag: "wx" });
+  const file = path.join(outDir, "work", name);
+  writeInside(outDir, file, text);
   return file;
 };
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: undefined });
@@ -277,12 +272,7 @@ const { session } = await createAgentSession({
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
 });
 
-if (values.transcript) {
-  const dir = path.dirname(path.resolve(values.transcript));
-  fs.mkdirSync(dir, { recursive: true });
-  if (outDir && inside(outDir, dir) && !realInside(outDir, dir)) throw new Error(`${dir} 指出了产物目录`);
-  fs.rmSync(values.transcript, { force: true });
-}
+if (values.transcript) prepareInside(outDir && inside(outDir, path.resolve(values.transcript)) ? outDir : path.dirname(path.resolve(values.transcript)), values.transcript);
 const transcript = values.transcript ? fs.createWriteStream(values.transcript, { flags: "wx" }) : null;
 // 流式事件每次都带着整条消息，一轮能写出好几 GB；完整内容在 message_end 与工具事件里都有
 const STREAM_EVENTS = new Set(["message_update", "provider_stream_event", "tool_execution_update"]);

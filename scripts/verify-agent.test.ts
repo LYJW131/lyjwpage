@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { childEnv, filterGrepOutput, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
+import { childEnv, filterGrepOutput, forbiddenRead, inside, prepareInside, readAllowed, realInside, sandboxed, writeInside } from "./verify-agent/guard.ts";
 import { compareBaseTool, docsSyncTool, prDiffTool, removedIdentifiers } from "./verify-agent/tools.ts";
 
 test("childEnv：凭据与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
@@ -130,4 +130,41 @@ test("工具里的 git 一律经 ctx.git（runner 把它放进和 bash 同一个
     calls.map((args) => args[0] === "-C" ? args[2] : args[0]),
     ["diff", "diff", "grep", "rev-parse", "clone", "checkout"],
   );
+});
+
+test("writeInside / prepareInside：目录被换成指出去的链接（含悬空的）就拒，预先放好的同名链接删掉重建，不写穿到链接目标", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "write-inside-"));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const out = path.join(base, "out");
+  const outside = path.join(base, "outside");
+  fs.mkdirSync(out);
+  fs.mkdirSync(outside);
+  writeInside(out, path.join(out, "work", "a.log"), "a");
+  assert.equal(fs.readFileSync(path.join(out, "work", "a.log"), "utf8"), "a");
+  fs.writeFileSync(path.join(outside, "victim"), "keep");
+  fs.symlinkSync(path.join(outside, "victim"), path.join(out, "work", "b.log"));
+  writeInside(out, path.join(out, "work", "b.log"), "b");
+  assert.equal(fs.readFileSync(path.join(outside, "victim"), "utf8"), "keep");
+  assert.equal(fs.lstatSync(path.join(out, "work", "b.log")).isSymbolicLink(), false);
+  fs.rmSync(path.join(out, "work"), { recursive: true });
+  fs.symlinkSync(outside, path.join(out, "work"));
+  assert.throws(() => writeInside(out, path.join(out, "work", "c.log"), "c"), /指出了/);
+  assert.throws(() => prepareInside(out, path.join(out, "work", "agent-transcript.jsonl")), /指出了/);
+  fs.rmSync(path.join(out, "work"));
+  fs.symlinkSync(path.join(outside, "made-later"), path.join(out, "work"));
+  assert.throws(() => writeInside(out, path.join(out, "work", "d.log"), "d"), /指出了/);
+  assert.deepEqual(fs.readdirSync(outside), ["victim"]);
+});
+
+test("docs_sync：git grep 没命中（退出 1）记 0 处，别的失败记搜索失败、不写成 0 处", async () => {
+  const fail = (status: number) => (args: string[]) => {
+    if (args[0] !== "grep") return "";
+    throw Object.assign(new Error(`git grep 退出 ${status}`), { status });
+  };
+  const ctx = (git: (args: string[]) => string) => ({ cwd: "/repo", base: "origin/main", tmpDir: "/tmp", run: async () => ({ code: 0, output: "" }), git, workLog: () => null });
+  const none = (await docsSyncTool(ctx(fail(1))).execute("1", { keywords: ["OLD_LIMIT"], auto: false })).content[0].text;
+  assert.match(none, /「OLD_LIMIT」：文档里 0 处/);
+  const broken = (await docsSyncTool(ctx(fail(128))).execute("2", { keywords: ["OLD_LIMIT"], auto: false })).content[0].text;
+  assert.match(broken, /「OLD_LIMIT」：搜索失败/);
+  assert.doesNotMatch(broken, /0 处/);
 });

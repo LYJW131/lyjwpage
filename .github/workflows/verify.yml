@@ -161,7 +161,9 @@ jobs:
           EXECUTION: ${{ steps.claude.outputs.execution_file }}
       # 验证员能在产物目录里建符号链接，upload-artifact 会把链接指向的文件内容一起传上去
       - if: always()
-        run: find "$RUNNER_TEMP/verify-out" -type l -delete
+        run: |
+          [ ! -L "$RUNNER_TEMP/verify-out" ] || rm "$RUNNER_TEMP/verify-out"
+          find "$RUNNER_TEMP/verify-out" -type l -delete 2>/dev/null || true
       - id: ci
         if: always()
         timeout-minutes: 6
@@ -290,7 +292,9 @@ jobs:
           OUTCOME: ${{ steps.pi.outcome }}
       - if: always()
         continue-on-error: true
-        run: find "$RUNNER_TEMP/verify-out" -type l -delete
+        run: |
+          [ ! -L "$RUNNER_TEMP/verify-out" ] || rm "$RUNNER_TEMP/verify-out"
+          find "$RUNNER_TEMP/verify-out" -type l -delete 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         continue-on-error: true

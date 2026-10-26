@@ -83,13 +83,17 @@ export function docsSyncTool(ctx: ToolContext) {
       const lines: string[] = [];
       for (const keyword of keywords) {
         // 搜 HEAD 的树、不搜工作区：verify-agent action 已把工作区的 .claude/ 换成默认分支的版本
-        const out = (() => {
-          try {
-            return ctx.git(["grep", "-n", "-I", "-F", "--no-color", "-e", keyword, "HEAD", "--", ...DOC_SCOPES]);
-          } catch {
-            return "";
+        let out: string;
+        try {
+          out = ctx.git(["grep", "-n", "-I", "-F", "--no-color", "-e", keyword, "HEAD", "--", ...DOC_SCOPES]);
+        } catch (caught) {
+          // git grep 没命中退出 1；别的退出码是搜索本身没跑成，不能写成 0 处
+          if ((caught as { status?: number }).status === 1) out = "";
+          else {
+            lines.push(`「${keyword}」：搜索失败，没查到（${String((caught as Error).message).split("\n")[0].slice(0, 160)}），写进 notVerified`);
+            continue;
           }
-        })();
+        }
         const hits = out
           .split("\n")
           .filter(Boolean)
