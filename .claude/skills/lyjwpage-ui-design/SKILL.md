@@ -48,7 +48,7 @@ node .claude/skills/lyjwpage-ui-design/ui-audit.mjs --dark --only=digest # 深�
 - 首屏 SSR 就是最终样子，水合和补数据时不跳。
 - 可点的东西够大（≥24px，手机主操作 ≥44px）、有 focus 样式、图标按钮有 `aria-label`。
 - 动画只动 transform / opacity，一屏不超过一两处在动。
-- 最坏数据压过一遍：换进真实可能出现的最坏值（超长歌名与艺人名、CJK 与 emoji 混排、只有一个字、可选字段缺失、计数为 0 / 1 / 上万、空列表），值从夹具或 `pnpm dev:scene` 的场景进，不手改标记或 CSS。看这些征兆：图标或头像被挤扁（缺 `shrink-0`）、文字撑出卡片（文字列缺 `min-w-0`）、长串不换行（`overflow-wrap: anywhere`）、行尾操作被挤出去、徽标折成两行、数字跳动（`tabular-nums`）、截断了却没有办法看全文。先列出全部问题再修；截断还是换行这类取舍按字段定。
+- 最坏数据压过一遍：换进真实可能出现的最坏值（超长歌名与艺人名、CJK 与 emoji 混排、只有一个字、可选字段缺失、计数为 0 / 1 / 上万、空列表），值从夹具进，不手改标记或 CSS（`pnpm dev:scene` 要先起 `pnpm dev:worker` 与 `pnpm dev:local`，`pnpm dev` 连的是生产，注入不进去；验完 `pnpm dev:scene --reset`）。看这些征兆：图标或头像被挤扁（缺 `shrink-0`）、文字撑出卡片（文字列缺 `min-w-0`）、长串不换行（`overflow-wrap: anywhere`）、行尾操作被挤出去、徽标折成两行、数字跳动（`tabular-nums`）、截断了却没有办法看全文。先列出全部问题再修；截断还是换行这类取舍按字段定。
 - 文案英文、短；数据原样；不出现 lyjw 中文全名。
 
 截图与端到端验证的执行按 `.claude/skills/lyjwpage-verify/SKILL.md` 派验证员；合并前要 lyjw 看过效果点头（lyjw 明确要求的小改动除外），见 `DESIGN.md`「交付与合并」。

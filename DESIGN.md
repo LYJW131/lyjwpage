@@ -145,7 +145,7 @@
 - 首屏到稳定只允许一次变化：水合对时、换锚点、换数据这类大跨度变化直接落位，不做补间；正常走时、换句才用动画。
 - 已知没有的内容（如无歌词）首帧就画对应布局，不先画占位再收起。
 - `transition` 列出具体属性，不写 `transition: all`（Tailwind 的 `transition-all` 同理）：`all` 会顺带补间后来改到的布局属性。
-- 阴影要动时动 `filter: drop-shadow()` 或叠一层阴影改 `opacity`，不补间 `box-shadow`；补间的 `blur()` 不超过 20px（Safari 上会掉帧）。
+- 阴影要动时叠一层带阴影的伪元素改它的 `opacity`，不补间 `box-shadow`；补间的 `blur()` 不超过 20px（Safari 上会掉帧）。
 - `will-change` 只在看到动画起止时抖 1px 才加，不预先撒。掉帧先在 4 倍 CPU 降速下录性能面板找原因，不凭快电脑判断「够顺」。
 - `prefers-reduced-motion` 由 `src/app/styles/reduced-motion.css` 全局处理；新加的 view transition 伪元素要单独写进 reduced-motion 规则。
 - 一屏里同时在动的东西不超过一两处；每个动画都对应一个真实变化。

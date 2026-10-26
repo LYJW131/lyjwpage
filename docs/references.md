@@ -145,7 +145,7 @@
   - 状态：采用。落在 [DESIGN.md](../DESIGN.md)、[lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)，以及只减不增的门禁 [design-scale-check.ts](../scripts/design-scale-check.ts)（`pnpm design:scale`）。
 - **[emilkowalski/skills](https://github.com/emilkowalski/skills)**（Emil Kowalski）
   - 是什么：一套偏动画与 UI 打磨的 agent skill，把 agent 常犯的品味小错写成规则。
-  - 取了什么：`break-ui` 的最坏数据压测与失败征兆表；`animation-performance` 的不写 `transition: all`、阴影与模糊的廉价替代、`will-change` 后置。其余与 DESIGN.md「Motion」重复，不装。
+  - 取了什么：`break-ui` 的最坏数据压测与失败征兆表；`animation-performance` 的不写 `transition: all`、阴影改叠层动 `opacity`、模糊上限、`will-change` 后置。其余与 DESIGN.md「Motion」重复，不装。
   - 状态：部分采用。落在 [DESIGN.md](../DESIGN.md)「Motion」、[lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)「交付前清单」。
 - **[Google Labs DESIGN.md 格式](https://github.com/google-labs-code/design.md)**
   - 是什么：给 agent 读的设计规范文件格式。
