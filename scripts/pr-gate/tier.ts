@@ -18,10 +18,12 @@ const EXEC_PATHS = [
 export const JUDGE_LABEL = "needs-judge";
 export const judgeAsked = (pull: { labels?: { name: string }[] }) => pull.labels?.some((label) => label.name === JUDGE_LABEL) ?? false;
 
-export function tierOf(files: string[], { trustedAuthor, judgeAsked = false }: { trustedAuthor: boolean; judgeAsked?: boolean }) {
+// commentOnly：经 docs:comment-only 证明只改了注释的文件。lyjw 的账号开的 PR 里按文档档算，不因路径进界面档或逻辑档。
+export function tierOf(files: string[], { trustedAuthor, judgeAsked = false, commentOnly = [] }: { trustedAuthor: boolean; judgeAsked?: boolean; commentOnly?: string[] }) {
   const exec = (file: string) => EXEC_PATHS.some((re) => re.test(file));
-  const ui = files.filter((file) => !exec(file) && UI_PATHS.some((re) => re.test(file)));
-  const logic = files.filter((file) => !ui.includes(file) && (exec(file) || !trustedAuthor || !DOC_PATHS.some((re) => re.test(file))));
+  const notes = (file: string) => trustedAuthor && commentOnly.includes(file);
+  const ui = files.filter((file) => !exec(file) && !notes(file) && UI_PATHS.some((re) => re.test(file)));
+  const logic = files.filter((file) => !ui.includes(file) && !notes(file) && (exec(file) || !trustedAuthor || !DOC_PATHS.some((re) => re.test(file))));
   const name = ui.length > 0 && logic.length > 0 ? "ui+logic" : ui.length > 0 ? "ui" : logic.length > 0 ? "logic" : "docs";
   const hints: string[] = [];
   if (name === "docs") hints.push("只改文档与 skill：CI 绿、线程解决了就合，不要回执、不等机器评审");

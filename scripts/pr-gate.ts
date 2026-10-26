@@ -7,9 +7,10 @@ import { decide } from "./pr-gate/decide.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
-import { judgeAsked, tierOf, verifierFiles } from "./pr-gate/tier.ts";
+import { verifierFiles } from "./pr-gate/tier.ts";
 import { ruleDrift } from "./rule-drift.ts";
 import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
+import { prTier, type gitCommentOnlyFiles } from "./verify-receipt/notes-only.ts";
 
 export { buildCoverage } from "./pr-gate/checks.ts";
 export { REQUIRED_CHECKS } from "./pr-gate/decide.ts";
@@ -58,7 +59,7 @@ JSON 里有：
 
 export async function gate(
   { pr, need, judge }: { pr: number; need?: string | null; judge?: boolean },
-  deps: { fetch?: FetchLike; patchId?: PatchId } = {},
+  deps: { fetch?: FetchLike; patchId?: PatchId; commentOnly?: typeof gitCommentOnlyFiles } = {},
 ) {
   const fetchImpl: FetchLike = deps.fetch ?? fetch;
   const gh = client(fetchImpl);
@@ -76,7 +77,7 @@ export async function gate(
   ]);
   const paths = changedPaths(files);
   const trustedAuthor = isTrustedAuthor(pull);
-  const tier = tierOf(paths, { trustedAuthor, judgeAsked: judgeAsked(pull) });
+  const tier = prTier(pull, paths, deps.commentOnly);
   const wantNeed = trustedAuthor && need !== undefined ? need : tier.need;
   const wantJudge = trustedAuthor ? (judge ?? tier.judge) : true;
   const [builds, receipt, rules] = await Promise.all([

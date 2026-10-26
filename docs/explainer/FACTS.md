@@ -504,7 +504,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 合并
 
-- 大改代码逻辑的 PR 要 CI 全绿；文档、skill 与小改动本地跑过改动涉及的检查就合，不等 CI。碰到 Worker 监视路径的，Workers Builds 也要绿；行内评审线程全部解决（`HUMAN.md`「5. PR 与合并」）。这些门槛里机器核得了的部分（检查、该有的 Workers Builds、评审线程、Codex 轮数、回执与判定）由主线程跑 `node scripts/pr-gate.ts --pr <号>` 一条命令读全，它按改动路径给出档位 `tier`（`docs` / `ui` / `logic`），点不点头它不判（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）」）。在此之上分三档（根 `AGENTS.md`「工作方式」、`HUMAN.md`「5. PR 与合并」）：
+- 大改代码逻辑的 PR 要 CI 全绿；文档、skill 与小改动本地跑过改动涉及的检查就合，不等 CI。碰到 Worker 监视路径的，Workers Builds 也要绿；行内评审线程全部解决（`HUMAN.md`「5. PR 与合并」）。这些门槛里机器核得了的部分（检查、该有的 Workers Builds、评审线程、Codex 轮数、回执与判定）由主线程跑 `node scripts/pr-gate.ts --pr <号>` 一条命令读全，它按改动路径给出档位 `tier`（`docs` / `ui` / `logic`；只改了注释的 JS / TS 文件按 `docs` 算，`scripts/verify-receipt/notes-only.ts#prTier`），点不点头它不判（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）」）。在此之上分三档（根 `AGENTS.md`「工作方式」、`HUMAN.md`「5. PR 与合并」）：
   1. 小改动、文档、skill，以及 lyjw 说过「推进到合并」或明确让推进的事：门槛过了 Claude 自己合，不等机器评审，不再问「合」。
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。

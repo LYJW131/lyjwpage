@@ -5,9 +5,9 @@ import { pathToFileURL } from "node:url";
 
 import { mergeMethodFor } from "./merge-message.ts";
 import { commentAdvice } from "./pr-gate/checks.ts";
-import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull } from "./pr-gate/github.ts";
-import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
+import { changedPaths, client, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull } from "./pr-gate/github.ts";
 import { check as checkReceipt } from "./verify-receipt.ts";
+import { prTier } from "./verify-receipt/notes-only.ts";
 
 const REPO = { owner: "lyjw131", repo: "lyjwpage" };
 
@@ -67,7 +67,7 @@ export async function receiptReason(pr: number, deps: { fetch?: FetchLike; patch
   try {
     const gh = client(fetchImpl);
     const [pull, files] = await Promise.all([gh.get<Pull>(`pulls/${pr}`), gh.all<PrFile>(`pulls/${pr}/files`)]);
-    const tier = tierOf(changedPaths(files), { trustedAuthor: isTrustedAuthor(pull), judgeAsked: judgeAsked(pull) });
+    const tier = prTier(pull, changedPaths(files));
     if (tier.need === null) return null;
     const result = await checkReceipt({ pr, need: tier.need, wantJudge: tier.judge }, { fetch: fetchImpl, patchId: deps.patchId });
     if (result.pass) return null;
