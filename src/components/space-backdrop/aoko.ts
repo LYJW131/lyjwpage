@@ -37,15 +37,15 @@ function lidAt(dt: number) {
   return (1 - (dt - BLINK_CLOSE - BLINK_HOLD) / BLINK_OPEN) ** 2;
 }
 
-// 手臂环附近的空气折射：在每圈环的椭圆带上、以及每个张开的断口周围沿径向来回推几像素，环里外的立绘跟着波动（img0667 环后面的手臂是扭的）；
-// 环的光带经过的袖子与衣服同时被照亮一圈青光（img0667 环下的手臂是亮的）。
+// 手臂环附近的空气扭曲：环的椭圆带上和每个张开的断口周围，立绘按两道错开的正弦轻轻晃一两个像素，像隔着热空气看（img0667 环后面的手臂是扭的）。
+// 不用径向波：同心推开的那种读起来是水波纹，lyjw 不要。
 // 最大那圈的上沿离下巴很近，折射只做在 CHIN_Y（原图下巴高度）以下，不把嘴扭花。
 const CHIN_Y = 255;
 const f = (n: number) => n.toFixed(3);
 const REFRACT = ARM_RING_SHAPES.rings
   .map(({ x, y, r }, k) => {
     const [c, s] = [Math.cos(ARM_RING_SHAPES.axis), Math.sin(ARM_RING_SHAPES.axis)];
-    return `  {vec2 o=P-vec2(${f(x)},${f(y)});vec2 l=vec2(dot(o,vec2(${f(c)},${f(s)})),dot(o,vec2(${f(-s)},${f(c)})));float e=length(vec2(l.x/${f(r * ARM_RING_SHAPES.squash)},l.y/${f(r)}));air+=o/max(length(o),1.)*sin(e*24.-t*4.+${k}.)*3.*smoothstep(.3,0.,abs(e-1.));ringLit+=smoothstep(.22,0.,abs(e-.92));}`;
+    return `  {vec2 o=P-vec2(${f(x)},${f(y)});vec2 l=vec2(dot(o,vec2(${f(c)},${f(s)})),dot(o,vec2(${f(-s)},${f(c)})));float e=length(vec2(l.x/${f(r * ARM_RING_SHAPES.squash)},l.y/${f(r)}));air+=vec2(sin(P.y*.07+t*2.3+${k}.),sin(P.x*.06-t*1.9+${k * 2}.))*2.*smoothstep(.3,0.,abs(e-1.));}`;
   })
   .join("\n");
 
@@ -78,9 +78,9 @@ void main(){
   d+=h*mix(hang,sway,lft);
   float k=w.g;
   d+=k*vec2(6.*sin(t*1.5+P.x*.008),3.*sin(t*2.+P.x*.012));
-  vec2 air=vec2(0.);float ringLit=0.;
+  vec2 air=vec2(0.);
 ${REFRACT}
-  for(int i=0;i<${RIFTS};i++){vec2 o=P-rift[i].xy;float l=max(length(o),1.);air+=o/l*sin(l*.3-t*9.)*5.*rift[i].z*smoothstep(48.,0.,l);}
+  for(int i=0;i<${RIFTS};i++){vec2 o=P-rift[i].xy;float l=max(length(o),1.);air+=vec2(sin(P.y*.11+t*5.+float(i)),sin(P.x*.1-t*4.3+float(i)))*2.5*rift[i].z*smoothstep(44.,0.,l);}
   float belowChin=smoothstep(${CHIN_Y}.,${CHIN_Y + 35}.,P.y);
   d+=air*belowChin;
   vec2 po=P-ORB;float pl=max(length(po),1.);
@@ -131,7 +131,6 @@ ${REFRACT}
   float rim=clamp((c.a-near*.25)*2.,0.,1.);
   base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
   c.rgb=base*c.a;
-  c.rgb+=GLOW*min(ringLit,1.)*belowChin*(.22+.2*glow)*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
   c.rgb+=smoothstep(170.,20.,length(P-ORB))*(.05+.09*pulse)*GLOW*c.a;
   vec2 eL=(P-vec2(447.,180.))/vec2(26.,30.);

@@ -50,6 +50,7 @@ export function mountSpaceScene(host: HTMLElement) {
   };
   let pointer: { x: number; y: number } | null = null;
   let column = columnRect();
+  let headerBottom = 0;
   let aoko: ReturnType<typeof aokoStanding> | null = null;
 
   const gutterCenter = (s: Side) => (s === "left" ? column.left / 2 : (column.right + innerWidth) / 2);
@@ -98,6 +99,7 @@ export function mountSpaceScene(host: HTMLElement) {
 
   const syncActors = () => {
     column = columnRect();
+    headerBottom = document.querySelector("header.sticky")?.getBoundingClientRect().bottom ?? 0;
     const aokoWide = column.left >= AOKO_MIN_GUTTER;
     if (aokoWide !== !!aoko) {
       // 立绘挂上或卸下时 Clawd 的站位规则跟着变，先都收起来，下面按新规则从默认侧重挂。
@@ -169,6 +171,7 @@ export function mountSpaceScene(host: HTMLElement) {
     spacing: 9,
     reducedMotion,
     avoidRef: () => slots.flatMap((s) => (s.actor ? [s.actor.getRect()] : [])),
+    topInset: () => headerBottom,
     clickHost: document,
     shouldShoot: (e) => onBackdrop(e.target) && !pokeable(e.clientX, e.clientY),
   });

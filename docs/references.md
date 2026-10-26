@@ -174,7 +174,7 @@
   - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 - **[claude.dev](https://claude.dev/) 页脚的点阵宇宙**（Anthropic）
   - 是什么：claude.dev 页脚 `.site-footer .scene` 的两层画布：`spaceField` 按 9px 网格画漂移的点阵星云、左上月牙和右下带环行星，点击放沿网格走的流星；`clawdActor` 的 astronaut 模式画戴头盔的像素 Clawd（40×33 精灵、12fps），弹簧跟着鼠标飘，周围的点阵按距离抖动着让开。
-  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧（青子立绘挂上时左侧让给立绘，两只一起待在右侧、上下错开，只让宇航员追指针），鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。
+  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧（青子立绘挂上时左侧让给立绘，两只一起待在右侧、上下错开，只让宇航员追指针），鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。月牙的高度从视口的 0.3 提到 0.16，给左侧留白的青子立绘让位。
   - 状态：采用。落在 `src/components/space-backdrop.tsx`、`src/components/space-backdrop/`，颜色 token 在 `src/app/styles/theme.css` 的 `.dark`。
 - **Claude App 会话加载时的踱步 Clawd**（Anthropic）
   - 是什么：Claude iOS App 打开会话时「正在加载消息」上方的像素 Clawd，12fps 一轮 32 拍，正面、侧身、跳起、眨眼几种姿势轮换。

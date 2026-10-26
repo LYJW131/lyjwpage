@@ -3,7 +3,7 @@
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
 import { floorPainter, floorTextures } from "./aoko-floor";
 import { BOKEH, type FxState, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
-import { type Hand, type HandPose, armRings, cutArm, ringSparks, ringTextures } from "./aoko-rings";
+import { type Hand, type HandPose, armRings, cutArm, glints } from "./aoko-rings";
 
 export type { FxState } from "./aoko-paint";
 export type { HandPose } from "./aoko-rings";
@@ -53,7 +53,7 @@ export function loadImage(src: string) {
   });
 }
 
-type Sprites = Record<"band" | "runes", HTMLImageElement> & Record<"bolt" | "boltFine", HTMLCanvasElement>;
+type Sprites = Record<"band" | "runes" | "ring" | "octa", HTMLImageElement> & Record<"bolt" | "boltFine", HTMLCanvasElement>;
 
 // 电弧贴图是镜头整帧，电弧在帧边被截断；搬到立绘旁边后帧边会露成一条直线，所以四边先渐隐。
 function fadeFrame(img: HTMLImageElement) {
@@ -80,7 +80,6 @@ function fadeFrame(img: HTMLImageElement) {
 export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   let sprites: Sprites | null = null;
   let floor: ReturnType<typeof floorTextures> | null = null;
-  let rings: ReturnType<typeof ringTextures> | null = null;
   const paintFloor = floorPainter();
   let view = { left: 0, ox: 0, oy: 0, scale: 1, dpr: 1 };
   let hand: Hand | null = null;
@@ -156,7 +155,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const drawFront = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, pose: HandPose) => {
     const { power, flash, t, still } = state;
     begin(ctx);
-    if (rings) armRings(ctx, rings, state, false);
+    armRings(ctx, s, state, false);
     if (hand) cutArm(ctx, hand, pose);
     // 闲置时电弧每几秒噼啪一阵，蓄力起持续闪；闪烁按 70ms 一格取随机亮度。
     const win = Math.floor(t / 3.2);
@@ -172,8 +171,8 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
       ctx.drawImage(s.boltFine, BOLT_X, BOLT_Y, BOLT_W, BOLT_H);
     }
 
-    if (rings) armRings(ctx, rings, state, true);
-    ringSparks(ctx, t, power);
+    armRings(ctx, s, state, true);
+    glints(ctx, t, power);
 
     const r = 46 + 70 * power + 140 * flash;
     const g = ctx.createRadialGradient(ORB[0], ORB[1], 0, ORB[0], ORB[1], r);
@@ -210,12 +209,13 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const ready = Promise.all([
     loadImage(ASSET("band")),
     loadImage(ASSET("runes")),
+    loadImage(ASSET("ring")),
+    loadImage(ASSET("octa")),
     loadImage(ASSET("bolt")),
     loadImage(ASSET("bolt-fine")),
-  ]).then(([band, runes, bolt, boltFine]) => {
-    sprites = { band, runes, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
+  ]).then(([band, runes, ring, octa, bolt, boltFine]) => {
+    sprites = { band, runes, ring, octa, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
     floor = floorTextures(runes);
-    rings = ringTextures();
   })
     // 特效贴图缺一张时只是不画特效，立绘照常挂（aoko.ts 等这个 promise）。
     .catch(() => undefined);

@@ -1,13 +1,14 @@
-import { SCENE, circle, hash, tone } from "./aoko-paint";
+import { SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 
 // 脚下的地面法阵照 img0609（俯视）的结构画：内盘八片宽刃、中心四枚印章、盘边的菱形符块，外面一条偏心的粗亮月牙带、
 // 带大印章的细亮环、符文带；底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。
-const TEX = 1024;
+const TEX = 1280;
 // 纹理半边长 = 法阵外圈半径 × EXTENT，多出来的一圈是砖地的余光。
-const EXTENT = 1.3;
+const EXTENT = 1.6;
 const R = TEX / 2 / EXTENT;
-// 透视按条带拼：每条按自己的深度缩放；条数少了近处会看出阶梯。
-const STRIPS = 56;
+// 透视按条带拼，每条按自己的深度横向缩放；相邻条宽度一变，圆弧左右两端就是一级台阶。
+// 条带按投影后的设备像素算，每条不超过 STRIP_PX 高，台阶小到看不出来。
+const STRIP_PX = 1.5;
 
 type Glyph = (ctx: CanvasRenderingContext2D) => void;
 // 印章与符块里的大字形，只求和 img0609 里那几笔的走势像：钩、弯、折。
@@ -59,17 +60,16 @@ export function floorTextures(runes: HTMLImageElement) {
   bricks.width = bricks.height = TEX;
   const b = bricks.getContext("2d")!;
   const lit = b.createRadialGradient(TEX / 2, TEX / 2, 0, TEX / 2, TEX / 2, TEX / 2);
-  lit.addColorStop(0, tone(SCENE.brick, 0.85));
-  lit.addColorStop(0.6, tone(SCENE.brick, 0.55));
-  lit.addColorStop(1, tone(SCENE.brick, 0));
+  // 四成半径内保持亮，往外按 smoothstep 落到零，到边上斜率也归零；线性收尾在透视压扁的远端会显出一道硬边。
+  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(SCENE.brick, 0.85 * (1 - smooth(0.4, 1, i / 16))));
   b.fillStyle = lit;
   b.fillRect(0, 0, TEX, TEX);
   b.globalCompositeOperation = "destination-out";
   b.fillStyle = tone(SCENE.brick, 0.6);
-  const row = R * 0.075;
+  const row = R * 0.09;
   for (let y = 0, i = 0; y < TEX; y += row, i++) {
-    b.fillRect(0, y, TEX, 2);
-    for (let x = (i % 2) * row; x < TEX; x += row * 2.1) b.fillRect(x, y, 2, row);
+    b.fillRect(0, y, TEX, 4);
+    for (let x = (i % 2) * row; x < TEX; x += row * 2.1) b.fillRect(x, y, 3, row);
   }
 
   const tex = document.createElement("canvas");
@@ -177,13 +177,14 @@ export function floorPainter() {
   const scratch = document.createElement("canvas");
   scratch.width = scratch.height = TEX;
   const s = scratch.getContext("2d")!;
+  s.imageSmoothingQuality = "high";
   return (ctx: CanvasRenderingContext2D, { bricks, tex }: ReturnType<typeof floorTextures>, spin: number, alpha: number, spot: FloorSpot) => {
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.globalCompositeOperation = "source-over";
     s.globalAlpha = 1;
     s.clearRect(0, 0, TEX, TEX);
     s.drawImage(bricks, 0, 0);
-    s.globalCompositeOperation = "lighter";
+    // 法阵盖在砖上而不是叠加：叠加时砖缝会从亮线里透出来，压扁后成了一道道横纹。
     s.globalAlpha = alpha;
     s.translate(TEX / 2, TEX / 2);
     s.rotate(spin);
@@ -193,14 +194,17 @@ export function floorPainter() {
     const reach = r * EXTENT;
     const scaleAt = (v: number) => 1 / (1 - depth * v);
     const yAt = (v: number) => y + ((reach * tilt) / depth) * (scaleAt(v) - 1);
+    const device = Math.hypot(ctx.getTransform().a, ctx.getTransform().b);
+    const strips = Math.max(48, Math.ceil(((yAt(1) - yAt(-1)) * device) / STRIP_PX));
     ctx.save();
     ctx.globalCompositeOperation = "source-over";
-    for (let i = 0; i < STRIPS; i++) {
-      const v0 = -1 + (2 * i) / STRIPS;
-      const v1 = v0 + 2 / STRIPS;
+    ctx.imageSmoothingQuality = "high";
+    for (let i = 0; i < strips; i++) {
+      const v0 = -1 + (2 * i) / strips;
+      const v1 = v0 + 2 / strips;
       const half = reach * scaleAt((v0 + v1) / 2);
       const top = yAt(v0);
-      ctx.drawImage(scratch, 0, (i * TEX) / STRIPS, TEX, TEX / STRIPS, x - half, top, 2 * half, yAt(v1) - top + 1);
+      ctx.drawImage(scratch, 0, (i * TEX) / strips, TEX, TEX / strips, x - half, top, 2 * half, yAt(v1) - top + 1 / device);
     }
     ctx.restore();
   };
