@@ -1,0 +1,46 @@
+name: Region Check
+
+on:
+  workflow_run:
+    workflows: ["Purge ESA and Notify Pages on Deploy"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: Comma-separated country codes
+        required: false
+        default: SG,US,DE
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  region-check:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    concurrency:
+      group: region-check
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Visit the site from residential IPs in each region
+        env:
+          PINECOMPUTER_API_KEY: ${{ secrets.PINECOMPUTER_API_KEY }}
+          REGIONS: ${{ inputs.regions || 'SG,US,DE' }}
+        run: node scripts/region-check.ts --regions "$REGIONS" --out region-check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: region-check
+          path: region-check/
+          if-no-files-found: ignore

@@ -53,6 +53,7 @@
     "@cloudflare/vite-plugin": "1.63.1",
     "@eslint/compat": "^2.1.1",
     "@eslint/js": "10.0.1",
+    "@pinesandbox/computer": "0.3.4",
     "@react-router/dev": "8.4.0",
     "@resvg/resvg-js": "2.6.2",
     "@rolldown/plugin-babel": "0.2.4",
