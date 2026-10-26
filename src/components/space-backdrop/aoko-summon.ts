@@ -10,16 +10,16 @@ export const RELEASE_MS = 400;
 // 贴图都是游戏里的演出图层（scripts/aoko-fx-assets.ts 导出）。全屏闪电是另一段演出里从画面边缘劈进来的六张整帧，
 // swoop 是横扫的电弧、storm 是电柱与悬浮法环，都铺满整屏画。
 const STRIKES = Array.from({ length: 6 }, (_, i) => `strike-${i + 1}`);
-// 每个键一张不同的图层，立在立绘要出现的位置：从小光点、星芒到整面法阵、碎晶、能量触须，越往后越大越烈。
+// 每个键一张不同的图层，立在立绘要出现的位置：从小光点、星芒到整面法阵、刃环、能量触须，越往后越大越烈。
 // spin 是淡出时转过的角度，from / to 是出现与淡出时相对最终大小的缩放。
 const CUES = [
   { sprite: "glint", spin: 0, from: 0.3, to: 1.3 },
   { sprite: "star", spin: 20, from: 0.2, to: 1.4 },
   { sprite: "compass", spin: 45, from: 0.6, to: 1.05 },
   { sprite: "seal-ring", spin: 60, from: 0.5, to: 1.1 },
-  { sprite: "vortex", spin: -200, from: 0.4, to: 1.2 },
+  { sprite: "vortex", spin: -240, from: 0.4, to: 1.25 },
   { sprite: "seal-star", spin: 90, from: 0.5, to: 1.1 },
-  { sprite: "crystals", spin: 15, from: 0.6, to: 1.7 },
+  { sprite: "blades", spin: 135, from: 0.3, to: 1.3 },
   { sprite: "spikes", spin: 0, from: 0.4, to: 1.25 },
   { sprite: "shatter", spin: 25, from: 0.3, to: 1.6 },
   { sprite: "tendrils", spin: 40, from: 0.3, to: 1.5 },
