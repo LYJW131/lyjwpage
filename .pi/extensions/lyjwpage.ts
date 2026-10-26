@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileOptions } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,19 +46,18 @@ type ExtensionAPI = {
   }): void;
 };
 
-function runHook(cwd: string, script: string, toolInput: unknown, timeout: number, env: Record<string, string> = {}): Promise<HookResult> {
+function run(file: string, args: string[], options: ExecFileOptions, input?: string): Promise<HookResult> {
   return new Promise((resolve) => {
-    const child = execFile(
-      process.execPath,
-      [script],
-      { cwd, timeout, maxBuffer: 1 << 20, env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, ...env } },
-      (error, stdout, stderr) => {
-        const code = error === null ? 0 : typeof error.code === "number" ? error.code : -1;
-        resolve({ code, stdout: String(stdout), stderr: String(stderr) });
-      },
-    );
-    child.stdin?.end(JSON.stringify({ tool_input: toolInput }));
+    const child = execFile(file, args, { maxBuffer: 1 << 20, ...options }, (error, stdout, stderr) => {
+      const code = error === null ? 0 : typeof error.code === "number" ? error.code : -1;
+      resolve({ code, stdout: String(stdout), stderr: String(stderr) });
+    });
+    if (input !== undefined) child.stdin?.end(input);
   });
+}
+
+function runHook(cwd: string, script: string, toolInput: unknown, timeout: number, env: Record<string, string> = {}): Promise<HookResult> {
+  return run(process.execPath, [script], { cwd, timeout, env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, ...env } }, JSON.stringify({ tool_input: toolInput }));
 }
 
 const program = (token: string) => path.posix.basename(token);
@@ -216,12 +215,7 @@ const MERGE_PARAMETERS = {
 };
 
 function runGh(cwd: string, args: string[], signal: AbortSignal | undefined): Promise<HookResult> {
-  return new Promise((resolve) => {
-    execFile("gh", args, { cwd, timeout: 120_000, maxBuffer: 1 << 20, signal }, (error, stdout, stderr) => {
-      const code = error === null ? 0 : typeof error.code === "number" ? error.code : -1;
-      resolve({ code, stdout: String(stdout), stderr: String(stderr) });
-    });
-  });
+  return run("gh", args, { cwd, timeout: 120_000, signal });
 }
 
 export default function lyjwpage(pi: ExtensionAPI) {

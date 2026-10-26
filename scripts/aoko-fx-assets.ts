@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-// 法阵贴图裁成以圆心为中心、边长 2R/RIM 的正方形：aoko-fx.ts 按「外圈半径 = 半边长 × RIM」摆放，须与那边的 RIM 同步。
+// 法阵贴图裁成以圆心为中心、边长 2R/RIM 的正方形：src/components/space-backdrop/aoko-paint.ts 按「外圈半径 = 半边长 × RIM」摆放，须与那边的 RIM 同步。
 const RIM = 0.98;
 const SR_SCALE = 4;
 
