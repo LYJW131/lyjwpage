@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { judgeRegion } from "./region-check.ts";
+import { escapeMarkdownTableCell, judgeRegion } from "./region-check.ts";
 
 const clean = JSON.stringify({ ok: true, issues: [] });
 
@@ -32,4 +32,12 @@ test("missing, malformed or incomplete result.json fails", () => {
 
 test("a turn that did not complete fails", () => {
   assert.equal(judgeRegion("failed", clean, 100).ok, false);
+});
+
+test("markdown table cells escape every pipe and the backslashes that would unescape them", () => {
+  assert.equal(escapeMarkdownTableCell("plain"), "plain");
+  assert.equal(escapeMarkdownTableCell("a|b|c"), "a\\|b\\|c");
+  assert.equal(escapeMarkdownTableCell("a\\b"), "a\\\\b");
+  assert.equal(escapeMarkdownTableCell("\\|"), "\\\\\\|");
+  assert.equal(escapeMarkdownTableCell("end\\"), "end\\\\");
 });

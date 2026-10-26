@@ -49,6 +49,10 @@ export function judgeRegion(state: string, resultJson: string | undefined, scree
   return { ok: state === "completed" && reported && screenshotBytes > 0, issues, unreachable };
 }
 
+export function escapeMarkdownTableCell(text: string): string {
+  return text.replace(/[|\\]/g, "\\$&");
+}
+
 async function checkRegion(client: Client, url: string, region: string, outDir: string): Promise<RegionResult> {
   const started = Date.now();
   const dir = join(outDir, region);
@@ -128,7 +132,7 @@ async function main() {
       const unreachable = (r.unreachable ?? []).map((h) => `unreachable from probe: ${h}`);
       const issues = [...r.issues.map((i) => `${i.where}: ${i.what}`), ...unreachable].join("<br>") || "—";
       const cost = r.costUsd === undefined ? "—" : `$${r.costUsd.toFixed(3)}`;
-      return `| ${r.region} | ${r.ok ? "✅" : "❌"} ${r.state} | ${r.seconds}s | ${cost} | ${issues.replace(/\|/g, "\\|")} |`;
+      return `| ${r.region} | ${r.ok ? "✅" : "❌"} ${r.state} | ${r.seconds}s | ${cost} | ${escapeMarkdownTableCell(issues)} |`;
     });
     appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
