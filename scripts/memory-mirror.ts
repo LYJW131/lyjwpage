@@ -39,9 +39,10 @@ export function sanitize(text: string) {
   return CLOUD_ENV_NAMES.reduce((out, name) => out.replaceAll(name, "<cloud env>"), redacted);
 }
 
-const CREDENTIAL_VARIABLE_VALUE = /(?<=[:=]\s*["'`]?)(?:[A-Z][A-Z0-9]{0,11}_)+(?:SECRET|TOKEN|PASSWORD|PASSWD|KEY|NPSSO)(?=["'`]?[).,;:]*(?:[\s\u0080-\uffff]|$))/g;
+// 记忆里当作值写出的凭据变量名（`apiKeySource: ANTHROPIC_API_KEY`）不是凭据；只放行列出的确切名字，按形状放行会把 `PASSWORD=ABCD1234_KEY` 这类真密码一起放过
+const KNOWN_CREDENTIAL_VARIABLE = /(?<=[:=]\s*["'`]?)(?:ANTHROPIC_API_KEY)(?=["'`]?[).,;:]*(?:[\s\u0080-\uffff]|$))/g;
 
-const asReference = (view: string) => view.replace(CREDENTIAL_VARIABLE_VALUE, "$$$&");
+const asReference = (view: string) => view.replace(KNOWN_CREDENTIAL_VARIABLE, "$$$&");
 
 export function findSecrets(text: string) {
   const folded = text.normalize("NFKC");
