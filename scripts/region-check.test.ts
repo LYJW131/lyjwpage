@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { escapeMarkdownTableCell, judgeRegion } from "./region-check.ts";
+import { GOAL, escapeMarkdownTableCell, judgeRegion } from "./region-check.ts";
 
 const clean = JSON.stringify({ ok: true, issues: [] });
 
@@ -40,4 +40,8 @@ test("markdown table cells escape every pipe and the backslashes that would unes
   assert.equal(escapeMarkdownTableCell("a\\b"), "a\\\\b");
   assert.equal(escapeMarkdownTableCell("\\|"), "\\\\\\|");
   assert.equal(escapeMarkdownTableCell("end\\"), "end\\\\");
+});
+
+test("goal tells the agent that service error counters on the page are data, not issues", () => {
+  assert.match(GOAL("https://lyjw.me"), /counters like "53 err"[^.]*data, not page problems/);
 });

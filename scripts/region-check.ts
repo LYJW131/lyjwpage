@@ -17,7 +17,7 @@ const AGENT_WALL_MS = 240_000;
 // Pine 自己按 maxWallMs 收尾；这段余量之后还没到终态就不再等，finally 里 kill 掉止损。
 const WAIT_GRACE_MS = 120_000;
 
-const GOAL = (url: string) => `You are checking the personal site ${url} the way a real visitor in this country sees it. Do not submit forms, send chat messages or follow links that leave the site.
+export const GOAL = (url: string) => `You are checking the personal site ${url} the way a real visitor in this country sees it. Do not submit forms, send chat messages or follow links that leave the site.
 1. Open ${url}, wait 5 seconds, then scroll slowly to the bottom so lazy content loads, then back to the top.
 2. Run JavaScript in the page to collect: images with complete && naturalWidth === 0 (their src and the nearest card heading), whether document.documentElement.scrollWidth > clientWidth, and any visible text like "error", "failed", "unavailable" that says a part of the page itself failed to load. The page shows live service metrics on purpose, including counters like "53 err"; those numbers are data, not page problems, so never report them.
 3. For each host that has broken images, open one of its image URLs directly in a new tab. If that tab shows a browser network error (for example ERR_SOCKS_CONNECTION_FAILED, ERR_CONNECTION_*, ERR_NAME_NOT_RESOLVED), this checking machine cannot reach that host at all: put it in "unreachable" instead of "issues". Only list broken images under "issues" when the image URL itself loads or returns an HTTP error page.
