@@ -28,12 +28,12 @@ X_ACCOUNTS = {
     "anthropic": {
         "bcherny": "159337660",
         "_catwu": "974757274206978049",
-        "trq212": "352806502",
         "alexalbert__": "1380719534970040322",
         "felixrieseberg": "28576494",
     },
     "builders": {
         "poteto": "2832427459",
+        "trq212": "352806502",
         "mattpocockuk": "346640777",
         "karpathy": "33836629",
         "HamelHusain": "825766640",
