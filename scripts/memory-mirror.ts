@@ -28,7 +28,7 @@ const SECRET_PATTERNS: [string, RegExp][] = [
   ["JWT", /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
   ["Bearer token", /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/i],
   ["netrc credential", /\bmachine\s+\S+\s+login\s+\S+\s+password\s+\S+/i],
-  ["secret assignment", /[A-Za-z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY|PRIVATE[_-]?KEY|NPSSO)[A-Za-z0-9_]*\s*[:=]\s*(?!["'`]?[A-Z0-9_]*_(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY|PRIVATE[_-]?KEY)(?:_[A-Z0-9]+)*(?![\w-]))(?:(["'`])(?![$<])[^"'`\n]{8,}\1|["'`]?(?![$<"'`-])[^\s"'`\u0080-￿]{8,})/i],
+  ["secret assignment", /[A-Za-z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY|PRIVATE[_-]?KEY|NPSSO)[A-Za-z0-9_]*\s*[:=]\s*(?!["'`]?(?:[A-Z][A-Z0-9]{0,11}_)+(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY|PRIVATE[_-]?KEY)(?![\w-]))(?:(["'`])(?![$<])[^"'`\n]{8,}\1|["'`]?(?![$<"'`-])[^\s"'`\u0080-￿]{8,})/i],
   ["hex secret", /(?<![\w/.-])[a-f0-9]{64}(?![\w/.-])/],
   // `wrkspc_01…`、`cmsg_01…` 这类带类型前缀的资源 ID 不是凭据；句末句号不算进长度
   ["opaque token", /(?<![\w/.-])(?![a-z]+_01[A-Za-z0-9]+(?![\w/-]|\.[\w/.-]))(?=[A-Za-z0-9_.-]*[A-Z])(?=[A-Za-z0-9_.-]*[a-z])(?=[A-Za-z0-9_.-]*\d)[A-Za-z0-9_.-]{31,}[A-Za-z0-9_-](?![\w/-]|\.[\w/.-])/],

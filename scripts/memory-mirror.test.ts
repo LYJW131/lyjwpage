@@ -77,6 +77,8 @@ test("凭据检测：各家 token、分隔符与大小写变体、哈希密钥�
     ["MY_SECRET=`s3cr3tValue99x`", "secret assignment"],
     ["api_key=Ab3dEf7gH9jK1lM3nP5q", "secret assignment"],
     ['PASSWORD="a very long passphrase"', "secret assignment"],
+    ["PASSWORD=SERVICE_TOKEN_9A1B2C3D4E5F6G7H", "secret assignment"],
+    ["api_key: 9A1B2C3D4E5F6G7H_TOKEN", "secret assignment"],
     ["machine api.example.com login lyjw password c3v7K9x2mQ8wR4tY", "netrc credential"],
     ["webhook secret 3f9a1c7e5b2d4a6c8e0f1a3b5c7d9e2f4a6b8c0d1e3f5a7b9c2d4e6f8a0b1c3d", "hex secret"],
     ["-----BEGIN PGP PRIVATE KEY BLOCK-----", "private key"],
