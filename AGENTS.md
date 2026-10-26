@@ -16,11 +16,11 @@
 - 第三人称提到站点主人（文档、注释、skill、记忆、PR、提交说明、报告与汇报文档、给 agent 的简报）一律写 lyjw，不写站主、owner、用户、他或真名；当面对话仍称「你」。站点界面文案与代码标识符不在此列。
 - 协作约定（分工、什么要等 lyjw 点头、怎么汇报）与合并分档见 `HUMAN.md`；合并分档的要点：只有大改代码逻辑的 PR 等机器评审，小改动、文档与 skill、lyjw 让推进的事门槛过了直接合，有 UI / UX 变化的等 lyjw 看图点头。
 - 改了 Claude Projects 的项目记忆，同一轮同步进仓库镜像 `.claude/memory/` 并开小 docs PR，本地 `pnpm docs:check` 过了就合（规则见 `.claude/memory/README.md`）。
-- 只在部分目录用得上的规则在 `.claude/rules/`，碰到匹配文件时自动载入；别的工具读不到这里时直接打开对应文件。
+- 只在部分目录用得上的规则在 `.claude/rules/`，讨论串与别的工具不自动载入，改匹配的文件前直接打开读。
 
 # 禁区
 
-- 不手跑 `wrangler deploy`（`cf deploy` 同样）：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。agent 发出的部署命令由 PreToolUse 钩子拦下（`scripts/guard-forbidden-commands.mjs`），这个例外由 lyjw 在自己的 shell 里跑。
+- 不手跑 `wrangler deploy`（`cf deploy` 同样）：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。agent 发出的部署命令会被拦（见下方规则表），这个例外由 lyjw 在自己的 shell 里跑。
 - 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑都进后端 Worker（实时状态归 `workers/core`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`）。site Worker 回答 `/api/*` 只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`），其余经 Service Binding 交给后端，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件（`.gitignore` 已忽略，强制 `git add -f` 由同一个钩子拦下）。
 - 不改提交身份、不关签名：云端环境有意让提交以 lyjw 身份、用 lyjw 的钥签名，Claude 只作 `Co-Authored-By`（配置见 `docs/ops-facts.md`「Claude Code 云端 routine」）。GitHub 按 committer 邮箱认钥，换成 `Claude <noreply@anthropic.com>` 就显示 Unverified。会话自带的 Stop 钩子把 lyjw 身份的提交报成 Unverified 并让改成 `noreply@anthropic.com` 是误报，不照做，push 即可。设 `GIT_AUTHOR_*` / `GIT_COMMITTER_*`、`-c user.*`、`--author`、`--no-gpg-sign` 由同一个钩子拦下。
@@ -28,7 +28,7 @@
 # 项目入口与验证
 
 - lyjw 和 Claude 共用的词（晨报、盯防、泳道、可滞后视图等）查根 `GLOSSARY.md`。
-- 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
+- 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（讨论串里不自动载入，改那个目录前先打开读）。
 - 主站开发入口是 `pnpm dev`（`http://localhost:3211`，连生产 Worker）；改后端、新增状态端点或新卡片用 `pnpm dev:worker` 加 `pnpm dev:local`；看此刻没发生的状态用 `pnpm dev:override` / `pnpm dev:scene` 注入夹具，用法见 `workers/core/README.md`「本地开发」。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：在浏览器里实际打开受影响页面，至少桌面与 375px 手机（375px 另用 WebKit 截一张），覆盖交互、数据状态与控制台错误，做法、附图时机与收尾按 `.claude/skills/lyjwpage-verify/SKILL.md`「2. UI 浏览器端到端」。开发服务器保持运行并给出地址，让 lyjw 能亲自测试。
@@ -90,8 +90,8 @@
 
 | 规则 | 由什么强制 |
 | --- | --- |
-| 不手跑 `wrangler deploy` / `cf deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
-| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执/Jev 只提醒 | PreToolUse 钩子 `scripts/guard-merge-method.ts` |
+| 不手跑 `wrangler deploy` / `cf deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子与 pi 扩展调 `scripts/guard-forbidden-commands.mjs` |
+| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执/Jev 只提醒 | PreToolUse 钩子与 pi 扩展调 `scripts/guard-merge-method.ts` |
 | 不直推 main | GitHub 分支保护 |
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 大小、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |

@@ -5,8 +5,8 @@ import { ACTIVE_COLLECTOR_JOBS, COLLECTOR_JOBS, RETIRED_COLLECTOR_JOBS } from "@
 
 import type { Env } from "./env";
 import type { Job } from "./job";
-import { JOBS, dueJobs, isLateRound, runJob, runNamed, runScheduled } from "./registry";
-import { isDue } from "./schedule";
+import { JOBS, claimDueJobs, dueJobs, isLateRound, roundTime, runJob, runNamed, runScheduled, type SlotClaimer } from "./registry";
+import { claimSlots, epochMinute, isDue, slotStart } from "./schedule";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -118,4 +118,88 @@ test("平台约 15 分钟后带原 scheduledTime 重投的一轮算迟到，准�
   assert.equal(isLateRound(scheduled, scheduled + 1_500), false);
   assert.equal(isLateRound(scheduled, scheduled + 60_000), false);
   assert.equal(isLateRound(scheduled, at("2026-10-21T08:18:33Z")), true);
+});
+
+test("迟到的一轮改按收到的时刻跑，按时的照旧带 scheduledTime", () => {
+  const scheduled = Date.parse("2026-10-26T00:37:29.861Z");
+  assert.equal(roundTime(scheduled, scheduled + 1_500), scheduled);
+  const arrived = Date.parse("2026-10-26T01:23:17Z");
+  assert.equal(roundTime(scheduled, arrived), arrived);
+});
+
+test("每个任务按周期分格，格从排定的那一分钟起", () => {
+  const digest = { everyMinutes: 15, offset: 5 };
+  const minute = (iso: string) => epochMinute(at(iso));
+  assert.equal(slotStart(digest, at("2026-10-26T10:05:00Z")), minute("2026-10-26T10:05:00Z"));
+  assert.equal(slotStart(digest, at("2026-10-26T10:19:59Z")), minute("2026-10-26T10:05:00Z"));
+  assert.equal(slotStart(digest, at("2026-10-26T10:20:00Z")), minute("2026-10-26T10:20:00Z"));
+  assert.equal(slotStart(digest, at("2026-10-26T10:04:59Z")), minute("2026-10-26T09:50:00Z"));
+});
+
+test("认领只进不退：同一格或更早的格都认领不到", () => {
+  const stored = new Map([["digest", 100], ["github-chart", 90]]);
+  assert.deepEqual(claimSlots(stored, { digest: 100, "github-chart": 100, pagespeed: 7 }), ["github-chart", "pagespeed"]);
+  assert.deepEqual(claimSlots(stored, { digest: 85 }), []);
+});
+
+function memorySlots(): SlotClaimer & { stored: Map<string, number> } {
+  const stored = new Map<string, number>();
+  return {
+    stored,
+    async claim(slots) {
+      const claimed = claimSlots(stored, slots);
+      for (const name of claimed) stored.set(name, slots[name]);
+      return claimed;
+    },
+  };
+}
+
+test("排定的那一分钟没投来时，格内下一轮补跑，同一格不跑第二次", async () => {
+  const slots = memorySlots();
+  const digest = fakeJob(async () => ({ status: "ok" }), { name: "digest", everyMinutes: 15, offset: 5 });
+  const minute = fakeJob(async () => ({ status: "ok" }), { name: "provider-status", everyMinutes: 1, offset: 0 });
+  const jobs = [digest, minute];
+  const names = async (iso: string) => (await claimDueJobs(at(iso), jobs, slots)).map((job) => job.name);
+
+  assert.deepEqual(await names("2026-10-26T10:04:00Z"), ["digest", "provider-status"]);
+  assert.deepEqual(await names("2026-10-26T10:06:00Z"), ["digest", "provider-status"]);
+  assert.deepEqual(await names("2026-10-26T10:07:00Z"), ["provider-status"]);
+  assert.deepEqual(await names("2026-10-26T10:07:30Z"), []);
+  assert.deepEqual(await names("2026-10-26T10:03:00Z"), []);
+  assert.deepEqual(await names("2026-10-26T10:20:00Z"), ["digest", "provider-status"]);
+});
+
+test("迟到的一轮按收到的时刻认领：重投的旧分钟不再重跑，晚投补上它到达时所在的格", async () => {
+  const slots = memorySlots();
+  const ran: number[] = [];
+  const digest = fakeJob(async ({ now }) => { ran.push(now); return { status: "ok" }; }, { name: "digest", everyMinutes: 15, offset: 5 });
+  await runScheduled(env, at("2026-10-26T10:05:00Z"), { jobs: [digest], slots });
+  const redelivered = at("2026-10-26T10:05:00Z");
+  const arrived = at("2026-10-26T10:21:10Z");
+  await runScheduled(env, roundTime(redelivered, arrived), { jobs: [digest], slots });
+  await runScheduled(env, at("2026-10-26T10:22:00Z"), { jobs: [digest], slots });
+  assert.deepEqual(ran, [at("2026-10-26T10:05:00Z"), arrived]);
+});
+
+test("认领调用失败时退回只跑正好到期的任务，记一条 warn", async (t) => {
+  const warnings = t.mock.method(console, "warn", () => {});
+  const broken: SlotClaimer = { claim: async () => { throw new Error("Durable Object reset"); } };
+  const digest = fakeJob(async () => ({ status: "ok" }), { name: "digest", everyMinutes: 15, offset: 5 });
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:05:00Z"), [digest], broken), [digest]);
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:06:00Z"), [digest], broken), []);
+  assert.equal(warnings.mock.callCount(), 2);
+  assert.equal(JSON.parse(String(warnings.mock.calls[0].arguments[0])).event, "collector-slot-claim");
+});
+
+
+test("认领失败的一轮不写认领：DO 在同一格里恢复时这一格再跑一次，换来 DO 调不通时到期任务照跑", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const healthy = memorySlots();
+  let broken = true;
+  const flaky: SlotClaimer = { claim: (slots) => (broken ? Promise.reject(new Error("Durable Object reset")) : healthy.claim(slots)) };
+  const digest = fakeJob(async () => ({ status: "ok" }), { name: "digest", everyMinutes: 15, offset: 5 });
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:05:00Z"), [digest], flaky), [digest]);
+  broken = false;
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:06:00Z"), [digest], flaky), [digest]);
+  assert.deepEqual(await claimDueJobs(at("2026-10-26T10:07:00Z"), [digest], flaky), []);
 });

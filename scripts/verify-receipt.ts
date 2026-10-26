@@ -9,6 +9,9 @@ import { gitNotesOnly, gitRulesChanged, type NotesOnly, type RulesChanged } from
 const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
 export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
+
+export const notesOnlyFor = (authorId: number | undefined, notesOnly: NotesOnly | undefined) => (TRUSTED_AUTHOR_IDS.has(authorId ?? 0) ? notesOnly : undefined);
+
 // 回执和判定只认 lyjw131[bot]（GitHub App 的机器人账号）：由 .github/workflows/verify.yml 的 publish job 拿 App 令牌发；
 // github-actions[bot] 任何工作流都能冒充，线程用 lyjw 的账号发的同格式评论也不算。
 // verify、judge job 带着 Claude 的令牌从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）
@@ -23,7 +26,8 @@ const VERDICTS = ["PASS", "FAIL"];
 // 契约：回执与判定评论里机器只读第二行的这行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；第一行的中文只给人看。
 // 只认第二行：同一个 lyjw131[bot] 发的评论正文里会带验证员证据、Jev 意见这类 PR 能左右的文字，别处的戳行一律不算
 const STAMP_LINE = /^<!-- verify-stamp (\{.*\}) -->$/;
-export type Stamp = { sha: string; level?: string; verdict?: string; body: string };
+// base 是签发时 PR 的目标分支，只有回执带（verify-action/previous.ts 拿上一份回执当底时要它对得上）；早先的回执没有这一项
+export type Stamp = { sha: string; level?: string; verdict?: string; body: string; base?: string };
 export const stampLine = (stamp: Stamp) => `<!-- verify-stamp ${JSON.stringify(stamp)} -->`;
 export const stampTitle = ({ sha, level, verdict }: Omit<Stamp, "body">) => (level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`);
 
@@ -41,7 +45,8 @@ function readStamp(text: string): Stamp | null {
   const level = typeof stamp.level === "string" && LEVELS.includes(stamp.level) ? stamp.level : undefined;
   const verdict = typeof stamp.verdict === "string" && VERDICTS.includes(stamp.verdict) ? stamp.verdict : undefined;
   if ((level === undefined) === (verdict === undefined)) return null;
-  return { sha: stamp.sha, body: stamp.body, ...(level !== undefined ? { level } : { verdict }) };
+  const base = typeof stamp.base === "string" && /^[\w./-]+$/.test(stamp.base) ? { base: stamp.base } : {};
+  return { sha: stamp.sha, body: stamp.body, ...base, ...(level !== undefined ? { level } : { verdict }) };
 }
 
 const HELP = `用法：
@@ -63,12 +68,12 @@ check 的选项：
 
 回执或判定按的提交不是当前 head 时，比两边相对 main 的补丁（逐字节，含空白与二进制，只忽略行号）：
 相同就沿用（coverage=carried，常见于只把 main 合进分支）；补丁不同，但那个提交到 head 只改了文档或代码注释，
-也沿用（coverage=notes-only，见 verify-receipt/notes-only.ts）；其余作废（coverage=stale）。
+也沿用（coverage=notes-only，见 verify-receipt/notes-only.ts；只限 lyjw 的账号开的 PR）；其余作废（coverage=stale）。
 那个提交到 head 之间改了规则文档或验证流程自己的文件（含合进来的 main 带的），回执一律作废。
 比补丁要用本地 git：先 git fetch origin main。`;
 
 export type Comment = { user?: { id?: number } | null; body?: string | null; html_url?: string | null };
-type Receipt = { sha: string; level: string; body?: string | null; url?: string | null };
+type Receipt = { sha: string; level: string; body?: string | null; url?: string | null; base?: string };
 type Judge = { sha: string; verdict: string; body?: string | null; url?: string | null };
 type Coverage = "exact" | "carried" | "notes-only" | "stale";
 type PatchId = (sha: string) => string | null;
@@ -109,7 +114,7 @@ export function parseComments(comments: Comment[]) {
     const stamp = readStamp(comment.body ?? "");
     if (!stamp) continue;
     const url = comment.html_url ?? null;
-    if (stamp.level !== undefined) receipt = { sha: stamp.sha, level: stamp.level, body: stamp.body, url };
+    if (stamp.level !== undefined) receipt = { sha: stamp.sha, level: stamp.level, body: stamp.body, url, ...(stamp.base ? { base: stamp.base } : {}) };
     else if (stamp.verdict !== undefined) judge = { sha: stamp.sha, verdict: stamp.verdict, body: stamp.body, url };
   }
   return { receipt, judge };
@@ -237,7 +242,7 @@ export async function check(
   // 测试只注入 patchId 时也别真去跑 git
   const notesOnly = deps.notesOnly ?? (deps.patchId ? undefined : gitNotesOnly);
   const rulesChanged = deps.rulesChanged ?? (deps.patchId ? undefined : gitRulesChanged);
-  const pull = (await github(`pulls/${pr}`, fetchImpl)) as { head: { sha: string }; body?: string | null };
+  const pull = (await github(`pulls/${pr}`, fetchImpl)) as { head: { sha: string }; body?: string | null; user?: { id?: number } | null };
   const head = pull.head.sha;
   const comments: Comment[] = [];
   for (let page = 1; ; page += 1) {
@@ -245,7 +250,7 @@ export async function check(
     comments.push(...batch);
     if (batch.length < 100) break;
   }
-  return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId, notesOnly, rulesChanged, body: await bodyDigest(pull.body) }) };
+  return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId, notesOnly: notesOnlyFor(pull.user?.id, notesOnly), rulesChanged, body: await bodyDigest(pull.body) }) };
 }
 
 const USAGE = "用法：check --pr <号> [--need 等级] [--judge]，或 sign --sha <提交> (--level 等级 | --verdict PASS|FAIL)；见 --help";

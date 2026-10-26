@@ -17,6 +17,6 @@ Data (PRs #628–#656, runs 2026-10-24 04:12 to 10-25 06:44 SGT, Sonnet worker r
 
 lyjw chose 2026-10-25 07:17 SGT「保留 high，停掉 A/B」. PR #659 removed the A/B job and added two prompt lines: no unit-test-verified unless covering unit tests ran; on WebFetch denial use curl.
 
-Same thread, lyjw 2026-10-25 07:21 SGT picked「只跳过纯注释和文档改动」: after a passing receipt, pushes that only touch docs-tier files or code comments reuse it (coverage `notes-only`) and the verifier is not rerun; small code changes still re-verify. Also in #659.
+Same thread, lyjw 2026-10-25 07:21 SGT picked「只跳过纯注释和文档改动」: after a passing receipt, pushes that only touch docs-tier files or code comments reuse it (coverage `notes-only`) and the verifier is not rerun; small code changes still re-verify. Also in #659. Since #670 (lyjw 2026-10-26 05:00 SGT「限制作者」) this applies only to PRs opened by lyjw's accounts (`TRUSTED_AUTHOR_IDS`).
 
 Related: [[verify-in-actions-plan]], [[verify-action-token-usage]], [[verify-run-timing]].

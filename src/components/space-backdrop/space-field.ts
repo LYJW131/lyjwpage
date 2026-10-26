@@ -43,7 +43,7 @@ const RING_COS = 0.9492354180824408;
 const RING_SIN = 0.31456656061611776;
 
 export type SpaceFieldOptions = {
-  avoidRef?: () => AvoidRect | null;
+  avoidRef?: () => AvoidRect[];
   clickHost?: EventTarget;
   shouldShoot?: (event: MouseEvent) => boolean;
   spacing?: number;
@@ -108,7 +108,7 @@ export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
     const ox = (W % h) / 2 + h / 2;
     const oy = (H % h) / 2 + h / 2;
     const snap = (v: number, o: number) => o + Math.round((v - o) / h) * h;
-    const avoid = avoidRef?.() ?? null;
+    const avoid = avoidRef?.() ?? [];
     ctx.fillStyle = shotColor;
     for (let s = shots.length - 1; s >= 0; s--) {
       const shot = shots[s];
@@ -133,7 +133,7 @@ export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
         px = x;
         py = y;
         if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
-        if (avoid && x > avoid.left - h && x < avoid.left + avoid.w + h && y > avoid.top - h && y < avoid.top + avoid.h + h) continue;
+        if (avoid.some((a) => x > a.left - h && x < a.left + a.w + h && y > a.top - h && y < a.top + a.h + h)) continue;
         const r = (k === 0 ? 0.267 * h : 0.15 * h * (1 - k / 12)) * fade;
         if (r < 0.4) continue;
         ctx.beginPath();
@@ -153,7 +153,7 @@ export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
     ctx.clearRect(0, 0, W, H);
     const floor = 0.62 - maxDensity * 0.42;
     const ceil = floor + 0.34 - 0.22 * mix;
-    const avoid = avoidRef?.() ?? null;
+    const avoid = avoidRef?.() ?? [];
     const offX = (W % h) / 2;
     const offY = (H % h) / 2;
     const rSmall = 0.15 * h;
@@ -231,10 +231,10 @@ export function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {
         const fadeIn = 0.2 + (y / H) * 0.8;
         const kind = body(x, y, col, row);
         if (kind === 0 || (kind < 0 && hash(col, row, 170 ^ seed) > 1.15 * fadeIn)) continue;
-        if (avoid) {
-          const dx = Math.max(0, Math.max(avoid.left - x, x - (avoid.left + avoid.w)));
-          const dy = Math.max(0, Math.max(avoid.top + 2 * h - y, y - (avoid.top + avoid.h)));
-          const cells = Math.max(dx, dy) / h;
+        if (avoid.length) {
+          const cells = Math.min(
+            ...avoid.map((a) => Math.max(Math.max(0, a.left - x, x - (a.left + a.w)), Math.max(0, a.top + 2 * h - y, y - (a.top + a.h))) / h),
+          );
           if (cells <= 7 && hash(col, row, 3098 ^ seed) > smooth(Math.max(0, Math.min(1, (cells - 1) / 6)))) continue;
         }
         if (kind > 0) {

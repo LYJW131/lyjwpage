@@ -78,7 +78,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### collector 的任务
 
-- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
+- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）；排定的那一分钟没投来时，这一格里后面的一轮补跑，每格只跑一次（认领调用失败的那一轮除外，见 `workers/collector/README.md`；`workers/collector/src/schedule.ts#slotStart`、`workers/collector/src/cron-slots.ts#CronSlots`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
 - GitHub、站点部署与访问量、Cloudflare、站点健康、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。在线探测 `uptime-probe` 每分钟只把成败记进 D1，站点健康 `site-health` 每 5 分钟第 4 分钟把它汇总进 `LAG`（§8）。第 01 章钟楼那一站的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - GitHub 头像：avatar-watch 每 5 分钟第 1 分钟比对头像的 sha256 与 main 上的 `.github/github-avatar.sha256`，不一致才触发 `.github/workflows/avatar-sync.yml` 提交新哈希、让站点重建；不写状态（`workers/collector/src/jobs/avatar-watch.ts#avatarWatchJob`）。
@@ -221,7 +221,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - core 不调 Clef 给 Coding 打分，生产没有 Workers AI 绑定；`workers/core/wrangler.toml` 的 `[previews.ai]` 只给分支预览组合入口里的 ai 用。第 06 章的 Coding 那一层只画原始观测，三色带在推近时现场刷出、镜头一走就消失，不画打分。
 - 每一轮跑完，不论成败，都按排定时刻往 D1 的 `health_buckets` 记一笔心跳，这一笔就是第 06 章的「报到」；只在开着历史归档时记（`workers/core/src/state-core.ts#StateCore`、`shared/health.ts#HEARTBEAT_SERIES`、`shared/health.ts#CRON_HEARTBEAT_EVERY_MINUTES`、`workers/core/src/runtime.ts#historyArchive`）。
 - StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
-- 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
+- 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronSlot` 把调用归进时刻表的一格，每格只跑第一次（`workers/collector/src/core-round.ts#driveCoreRound`）。
 
 ### 闹钟
 
@@ -455,6 +455,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
 - `.github/workflows/verify-cache.yml`：每天和 `.github/actions/verify-tools` 改动合进 main 时，在默认分支上存一份 Playwright 浏览器和沙箱 bubblewrap、socat 的 .deb 缓存；Verify 只在 PR 上跑，PR 自己存的缓存别的 PR 读不到，不参与发布。
 - `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
+- `.github/workflows/collapse-worker-previews.yml`：Cloudflare 在 PR 上为各 Worker 发的预览评论里，不是 `site` 的（按正文日志链接 `services/view/<worker>/` 认）由 `lyjw131[bot]` 标为已解决折叠，只留 site 的预览链接；不参与发布。
 - `.github/workflows/comment-check.yml`：改了 JS / TS 的 PR 上，Jev 逐条判断新增注释该不该删（`scripts/comment-check.ts`），建一项 `Comment check (Jev)` 检查，有该删的或没问全为 neutral；问过注释时，另一个只跑默认分支脚本的 job 以 `lyjw131[bot]` 在 PR 上原地更新一条评论；只是建议，不参与发布。
 - `.github/workflows/do-not-merge.yml`：一次性测试 PR 开的时候就贴 `do-not-merge` 标签；带这个标签时 `do-not-merge` 检查失败，合并钩子 `scripts/guard-merge-method.ts` 用 `gh` 读标签，带标签或读不到都拦。
 - `.github/workflows/codeql-autofix.yml`（main 上的 CodeQL 跑完后为告警开修复）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
@@ -489,7 +490,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
   ```
   验证回执 <被验提交的完整 SHA>：<等级>
-  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>"} -->
+  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>","base":"<PR 的目标分支>"} -->
 
   全过：V1 V2 …（有没过的就写「没过：」，逐项一行，检查与证据各截短）
   没验到：<至多三条，每条截短；多的与原文折进明细；没有就不写>
@@ -498,7 +499,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
 - SHA 不手抄：publish job 用 `scripts/verify-receipt.ts#signStamp` 展开完整 SHA、核等级。脚本只读第二行的 JSON（`scripts/verify-receipt.ts#stampLine`），第一行中文只给人看；JSON 里的 `body` 是 PR 描述摘要，之后改了清单或原话，旧回执与判定作废（`scripts/verify-action/report.ts#receiptComment`）。
-- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 lyjw131[bot]（按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）、`carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）或 `notes-only`（补丁变了，但从回执的提交到 head 只改了文档或代码注释，`scripts/verify-receipt/notes-only.ts#gitNotesOnly`）；其余是 `stale`，从回执的提交到 head 改了规则文档或验证员自己的文件（`scripts/verify-receipt/notes-only.ts#gitRulesChanged`）也是 `stale`，要重验（`scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
+- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 lyjw131[bot]（按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）、`carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）或 `notes-only`（补丁变了，但从回执的提交到 head 只改了文档或代码注释，`scripts/verify-receipt/notes-only.ts#gitNotesOnly`；只限 lyjw 的账号开的 PR，`scripts/verify-receipt.ts#notesOnlyFor`）；其余是 `stale`，从回执的提交到 head 改了规则文档或验证员自己的文件（`scripts/verify-receipt/notes-only.ts#gitRulesChanged`）也是 `stale`，要重验（`scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
 - 贴了 `needs-judge` 标签的 PR（线程判为大改动时贴，`scripts/pr-gate/tier.ts#JUDGE_LABEL`）每次推送，同一工作流另派一个 Opus 判定员和验证员并行（`.github/workflows/verify.yml#judge`）：没写这段代码，只拿 PR 描述里的 lyjw 原话、PR 号与 head，自己读 diff，判做没做到、有没有回归。publish job 把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，第二行同样是 `verify-stamp` JSON（`"verdict"` 代替 `"level"`），FAIL 不合（同文件「3b. 大改动的 PR：由没写代码的 Opus 判做完没有」）。
 
 ### 合并

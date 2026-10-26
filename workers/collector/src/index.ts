@@ -7,13 +7,15 @@ import type { LocalNowPlaying } from "@shared/types";
 
 import { serveAppleLookup, serveAppleMusic } from "./apple-music-http";
 import { driveCoreRound } from "./core-round";
+import { CRON_SLOTS_NAME } from "./cron-slots";
 import { enrichTrack, followUpTrack } from "./enrichment";
 import type { Env } from "./env";
-import { isLateRound, runNamed, runScheduled } from "./registry";
+import { isLateRound, roundTime, runNamed, runScheduled } from "./registry";
 import { installCollectorPorts } from "./ports";
 import { bindEnv } from "./runtime";
 
 export type { Env } from "./env";
+export { CronSlots } from "./cron-slots";
 
 installCollectorPorts();
 
@@ -43,13 +45,13 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    if (isLateRound(controller.scheduledTime)) {
-      console.warn(JSON.stringify({ event: "collector-late-round", scheduledTime: controller.scheduledTime, lateMs: Date.now() - controller.scheduledTime }));
-      return;
-    }
+    const now = Date.now();
+    if (isLateRound(controller.scheduledTime, now)) console.warn(JSON.stringify({ event: "collector-late-round", scheduledTime: controller.scheduledTime, lateMs: now - controller.scheduledTime }));
+    const time = roundTime(controller.scheduledTime, now);
+    const slots = env.CRON_SLOTS?.getByName(CRON_SLOTS_NAME, { locationHint: "apac" });
     await Promise.all([
-      runScheduled(bindEnv(env), controller.scheduledTime),
-      driveCoreRound(env.CORE, controller.scheduledTime),
+      runScheduled(bindEnv(env), time, { slots }),
+      driveCoreRound(env.CORE, time),
     ]);
   },
 

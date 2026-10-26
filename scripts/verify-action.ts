@@ -9,10 +9,11 @@ import { buildCoverage } from "./pr-gate/checks.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type FetchLike, type PrFile, type Pull } from "./pr-gate/github.ts";
 import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
-import { evaluate, gitPatchId, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
+import { evaluate, gitPatchId, notesOnlyFor, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
 import { gitNotesOnly, gitRulesChanged } from "./verify-receipt/notes-only.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { machineLine, runProof, type ProofSummary } from "./verify-action/machine.ts";
+import { gitHistory, previousReceipt, type Previous } from "./verify-action/previous.ts";
 import { judgePrompt, verifierPrompt } from "./verify-action/prompts.ts";
 import {
   blockedComment,
@@ -42,7 +43,8 @@ const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选
                                等 head 上 CI 的 check 跑完（默认 20 分钟，工作流里给 5），输出它的结论（没跑完是 pending，没有是 none）
   wait-preview [--timeout-min N]  等站点分支预览部署到 head（默认 20 分钟），输出 preview 地址；没就绪输出空
   prompt --role verifier|judge [--preview URL] [--out-dir DIR]
-                               输出 prompt 与 schema（结构化结果的 JSON Schema）
+                               输出 prompt 与 schema（结构化结果的 JSON Schema）；验证员这边有上一份能当底的回执时（verify-action/previous.ts），
+                               提示词只要求复验没过的与之后改动碰得到的项，其余沿用
   publish --head SHA --run-url URL [--verify-result R] [--judge-result R] [--shots-dir DIR] [--shots-url URL]
                                读环境变量 VERIFY_OUTPUT / JUDGE_OUTPUT（两个 job 的结构化结果）与 CI_OUTPUT / PROOF_OUTPUT（脚本跑的两项），对照清单定回执等级，发回执与判定评论（第二行是 PR 描述的摘要）；
                                head 已不是 PR 当前 head 时什么都不发`;
@@ -100,7 +102,7 @@ async function plan(gh: Client, pr: number) {
         need: planned.need,
         wantJudge: planned.judge,
         patchId: gitPatchId,
-        notesOnly: gitNotesOnly,
+        notesOnly: notesOnlyFor(pull.user?.id, gitNotesOnly),
         rulesChanged: gitRulesChanged,
         body: await bodyDigest(pull.body),
       });
@@ -155,18 +157,26 @@ async function prompt(gh: Client, pr: number, role: string, preview: string, out
   const { pull, files, tier } = await load(gh, pr);
   const { checklist, words } = parseBody(pull.body);
   const common = { pr, title: pull.title, head: pull.head.sha, base: pull.base?.ref ?? "main", files };
+  const digest = await bodyDigest(pull.body);
   if (role === "verifier") {
     fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
     fs.mkdirSync(path.join(outDir, "work"), { recursive: true });
     const p = planOf(pull, tier);
     const proof = parsed<{ summary?: ProofSummary }>(readIfExists(path.join(outDir, "work", "revert-proof.json")))?.summary ?? { verdict: "error", tests: [] };
-    setOutput("prompt", verifierPrompt({ ...common, tier: tier.name, need: p.need, preview: preview || null, checklist, outDir, proof: machineLine({ proof })?.replace(/^脚本：/, "") ?? null }));
+    let previous: Previous | null = null;
+    try {
+      previous = previousReceipt(await gh.all<Comment>(`issues/${pr}/comments`), { head: common.head, body: digest, base: common.base, history: gitHistory });
+    } catch (error) {
+      console.log(`查上一份回执失败，整轮重验：${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (previous) console.log(`以 ${previous.sha.slice(0, 7)} 的回执为底，只复验改动碰得到的项：${previous.changed.join(" ")}`);
+    setOutput("prompt", verifierPrompt({ ...common, tier: tier.name, need: p.need, preview: preview || null, checklist, outDir, proof: machineLine({ proof })?.replace(/^脚本：/, "") ?? null, previous }));
     setOutput("schema", JSON.stringify(VERIFIER_SCHEMA));
   } else {
     setOutput("prompt", judgePrompt({ ...common, words, body: pull.body ?? "" }));
     setOutput("schema", JSON.stringify(JUDGE_SCHEMA));
   }
-  setOutput("read", readMark(common.base, await bodyDigest(pull.body)));
+  setOutput("read", readMark(common.base, digest));
 }
 
 const readMark = (base: string, digest: string) => `${base}@${digest}`;
@@ -235,9 +245,10 @@ async function publish(
   }
   const { checklist } = parseBody(pull.body);
   const digest = await bodyDigest(pull.body);
-  const stamp = (parts: { level?: string; verdict?: string }) => ({ ...signStamp({ ref: opts.head, ...parts }), body: digest });
+  const base = pull.base?.ref ?? "main";
+  const stamp = (parts: { level?: string; verdict?: string }) => ({ ...signStamp({ ref: opts.head, ...parts }), body: digest, ...(parts.level ? { base } : {}) });
   const comments: string[] = [];
-  const current = readMark(pull.base?.ref ?? "main", digest);
+  const current = readMark(base, digest);
   const readOld = (read: string | undefined, result: string, role: string) => {
     if (!staleRead(read, result, current)) return false;
     console.log(`${role}读的${read ? "是改之前的 PR 描述或目标分支" : "版本没交回来"}，这次不发`);

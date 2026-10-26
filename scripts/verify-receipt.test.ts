@@ -159,6 +159,22 @@ test("check 读 PR head、描述与分页评论，描述在回执之后改过就
   assert.match(edited.next ?? "", /描述的验证清单或 lyjw 原话改过/);
 });
 
+test("check 只给 lyjw 的账号开的 PR 按 notes-only 沿用旧回执，别人的 PR 只改了注释也作废", async () => {
+  const signed = "## 验证清单\n- V1：单测绿";
+  const fetchAs = (user: { id: number }) => async (url: string) => {
+    if (url.endsWith("/pulls/7")) return { ok: true, json: async () => ({ head: { sha: HEAD }, body: signed, user }) };
+    return { ok: true, json: async () => [{ user: owner, body: stamp({ sha: OLD, level: "unit-test-verified", body: await bodyDigest(signed) }) }] };
+  };
+  const args = { pr: 7, need: "unit-test-verified", wantJudge: false };
+  const deps = { patchId: patchIds({ [HEAD]: "p1", [OLD]: "p2" }), notesOnly: () => ["docs/a.md"], rulesChanged: () => false };
+  const mine = await check(args, { ...deps, fetch: fetchAs(lyjw) });
+  assert.equal(mine.receipt?.coverage, "notes-only");
+  assert.equal(mine.pass, true);
+  const theirs = await check(args, { ...deps, fetch: fetchAs({ id: 1 }) });
+  assert.equal(theirs.receipt?.coverage, "stale");
+  assert.equal(theirs.pass, false);
+});
+
 test("patchDigest 只忽略行号，空白和二进制内容变了都算补丁变了", () => {
   const diff = (header: string, line: string) => `diff --git a/x b/x\nindex 1111111..2222222 100644\n${header}\n${line}\n`;
   const a = patchDigest(diff("@@ -1,2 +1,2 @@", '+const label = "a b"'));

@@ -20,6 +20,7 @@ export type PulseTick = { archive: PulseArchiveSnapshot };
 const REPURGE_KEY = "lag-repurge";
 const PENDING_PURGE_KEY = "purge-pending";
 const PURGE_FLUSHED_KEY = "purge-flushed-at";
+const CRON_SLOT_KEY = "cron-slot";
 
 type CommitIngestWire =
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
@@ -118,6 +119,15 @@ export class StateHub extends DurableObject<Env> {
       ? await this.pulseArchiveState.readPulseArchive().catch((error: unknown) => (console.warn("[pulse-archive]", error), idle))
       : idle;
     return { archive };
+  }
+
+  // 只进不退：同一格或更早的格（迟到、重投的调用）都认领失败。
+  async claimCronSlot(slot: number): Promise<boolean> {
+    return this.ctx.storage.transaction(async (txn) => {
+      if (((await txn.get<number>(CRON_SLOT_KEY)) ?? -Infinity) >= slot) return false;
+      await txn.put(CRON_SLOT_KEY, slot);
+      return true;
+    });
   }
 
   async confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number> {

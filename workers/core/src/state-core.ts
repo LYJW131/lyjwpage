@@ -11,7 +11,7 @@ import type { EnrichmentPatch } from "@shared/track-enrichment";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { watchClockLayout } from "./clock-layout-watch";
-import { cronRoundDue } from "./cron-heartbeat";
+import { cronSlot } from "./cron-heartbeat";
 import { runCronRound } from "./cron-round";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { expireStatusTags, liveRoom } from "./live-platform";
@@ -94,15 +94,16 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
     await this.scoped(() => watchClockLayout()).catch((error: unknown) => {
       console.warn("[clock-layout]", error instanceof Error ? error.message : String(error));
     });
-    if (!cronRoundDue(scheduledTime)) return { ran: false };
+    const slot = cronSlot(scheduledTime);
+    if (!await this.hub().claimCronSlot(slot)) return { ran: false };
     let ok = false;
     try {
-      await runCronRound(this.env, scheduledTime);
+      await runCronRound(this.env, slot);
       ok = true;
     } finally {
       const db = historyArchive(this.env);
       if (db) {
-        await recordCheck(db, HEARTBEAT_SERIES, scheduledTime, ok)
+        await recordCheck(db, HEARTBEAT_SERIES, slot, ok)
           .catch((error: unknown) => console.error("[cron-heartbeat]", error));
       }
     }
