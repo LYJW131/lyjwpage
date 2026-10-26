@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { bodyDigest } from "./verify-action/body.ts";
-import { isRuleOrVerifierFile, notesOnlyFiles, parseRawDiff } from "./verify-receipt/notes-only.ts";
+import { isRuleOrVerifierFile, notesOnlyFiles, parseRawDiff, prTier } from "./verify-receipt/notes-only.ts";
 import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, stampTitle, type Stamp } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -203,4 +203,14 @@ test("命令行：别的子命令的选项按用法错退出 2，不悄悄用默
   assert.equal(run("sign", "--sha", "HEAD", "--need", "live-ui-verified"), 2);
   assert.equal(run("sign", "--level", "unit-test-verified"), 2);
   assert.equal(run("sign", "--sha", "HEAD", "--level", "unit-test-verified"), 0);
+});
+
+test("prTier：lyjw 的账号开的 PR 才去证明只改注释，证明的结果决定分档", () => {
+  const pull = (id: number) => ({ number: 1, title: "t", state: "open", mergeable: true, head: { sha: "h" }, base: { ref: "main", sha: "b" }, user: { login: "x", id } });
+  const asked: [string, string, string[]][] = [];
+  const proven = (base: string, head: string, files: string[]) => (asked.push([base, head, files]), ["src/components/a.tsx"]);
+  assert.equal(prTier(pull(153256373), ["src/components/a.tsx"], proven).name, "docs");
+  assert.deepEqual(asked, [["b", "h", ["src/components/a.tsx"]]]);
+  assert.equal(prTier(pull(153256373), ["src/components/a.tsx"], () => []).name, "ui");
+  assert.equal(prTier(pull(1), ["src/components/a.tsx"], () => assert.fail()).name, "ui");
 });
