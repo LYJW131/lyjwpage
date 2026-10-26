@@ -10,3 +10,5 @@ lyjw contributed Claude Code cloud support to missuo/tokens (PR #89). Project th
 Credential: Network secret on <cloud env> (host `tokens.ci`, path `/api/submit`, Bearer), recorded in `docs/ops-facts.md`. Verified: placeholder-Bearer request went 401 → 400 after the secret was added.
 
 **Pending:** confirm uploads from a new thread on tokens.ci (lyjw to check).
+
+Earlier repo-level hook PRs: #626, #630 (superseded by the user-level hook in #636).
