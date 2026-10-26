@@ -17,8 +17,7 @@ type Circle = { src: string; out: string; cx: number; cy: number; r: number; siz
 const CIRCLES: Circle[] = [
   { src: "img0642", out: "band", cx: 441.5, cy: 442.5, r: 430, size: 560 },
   { src: "img0659", out: "runes", cx: 429, cy: 429.5, r: 416.5, size: 640 },
-  { src: "img0638", out: "floor", cx: 489.5, cy: 489.5, r: 476, size: 512 },
-  { src: "img0656", out: "seal", cx: 164.5, cy: 164.5, r: 161, size: 128 },
+  { src: "img0638", out: "ring", cx: 489.5, cy: 489.5, r: 476, size: 512 },
   { src: "img0641", out: "octa", cx: 456.5, cy: 457.5, r: 443, size: 256 },
 ];
 

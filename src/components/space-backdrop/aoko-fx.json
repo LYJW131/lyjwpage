@@ -5,7 +5,13 @@
     "ice": "#96f0ff",
     "thread": "#54f1fb",
     "core": "#78d2ff",
-    "white": "#ebf8ff"
+    "white": "#ebf8ff",
+    "brick": "#6b57d6"
   },
-  "bokeh": ["#abc4f6", "#8a5ce4", "#704fdd", "#c9e6f9"]
+  "bokeh": [
+    "#abc4f6",
+    "#8a5ce4",
+    "#704fdd",
+    "#c9e6f9"
+  ]
 }
