@@ -5,7 +5,7 @@ export const { scene: SCENE, bokeh: BOKEH } = palette;
 export const tone = (hex: string, a: number) => hex + (256 + Math.round(Math.max(0, Math.min(1, a)) * 255)).toString(16).slice(1);
 
 // 法阵外圈半径 = 贴图半边长 × RIM，须与 scripts/aoko-fx-assets.ts 的 RIM 同步。
-const RIM = 0.98;
+export const RIM = 0.98;
 
 export function circle(ctx: CanvasRenderingContext2D, img: CanvasImageSource, r: number) {
   const half = r / RIM;
