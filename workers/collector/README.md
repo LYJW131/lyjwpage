@@ -164,7 +164,7 @@ Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推
 `ALLOWED_ORIGINS`（MusicKit token 按它签 origin 声明）在 `[vars]`。
 
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`core` 的 `StateCore`），
-`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
+`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`），Durable Object `CRON_SLOTS`（本 Worker 自己的 `CronSlots`，按任务认领格；迁移在 `wrangler.toml#migrations`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
 应用（命令见 [长期归档](../../docs/state-storage.md#长期归档d1)），再发布本 Worker。
 
 ## 部署
