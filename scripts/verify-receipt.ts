@@ -26,7 +26,8 @@ const VERDICTS = ["PASS", "FAIL"];
 // 契约：回执与判定评论里机器只读第二行的这行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；第一行的中文只给人看。
 // 只认第二行：同一个 lyjw131[bot] 发的评论正文里会带验证员证据、Jev 意见这类 PR 能左右的文字，别处的戳行一律不算
 const STAMP_LINE = /^<!-- verify-stamp (\{.*\}) -->$/;
-export type Stamp = { sha: string; level?: string; verdict?: string; body: string };
+// base 是签发时 PR 的目标分支，只有回执带（verify-action/previous.ts 拿上一份回执当底时要它对得上）；早先的回执没有这一项
+export type Stamp = { sha: string; level?: string; verdict?: string; body: string; base?: string };
 export const stampLine = (stamp: Stamp) => `<!-- verify-stamp ${JSON.stringify(stamp)} -->`;
 export const stampTitle = ({ sha, level, verdict }: Omit<Stamp, "body">) => (level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`);
 
@@ -44,7 +45,8 @@ function readStamp(text: string): Stamp | null {
   const level = typeof stamp.level === "string" && LEVELS.includes(stamp.level) ? stamp.level : undefined;
   const verdict = typeof stamp.verdict === "string" && VERDICTS.includes(stamp.verdict) ? stamp.verdict : undefined;
   if ((level === undefined) === (verdict === undefined)) return null;
-  return { sha: stamp.sha, body: stamp.body, ...(level !== undefined ? { level } : { verdict }) };
+  const base = typeof stamp.base === "string" && /^[\w./-]+$/.test(stamp.base) ? { base: stamp.base } : {};
+  return { sha: stamp.sha, body: stamp.body, ...base, ...(level !== undefined ? { level } : { verdict }) };
 }
 
 const HELP = `用法：
@@ -71,7 +73,7 @@ check 的选项：
 比补丁要用本地 git：先 git fetch origin main。`;
 
 export type Comment = { user?: { id?: number } | null; body?: string | null; html_url?: string | null };
-type Receipt = { sha: string; level: string; body?: string | null; url?: string | null };
+type Receipt = { sha: string; level: string; body?: string | null; url?: string | null; base?: string };
 type Judge = { sha: string; verdict: string; body?: string | null; url?: string | null };
 type Coverage = "exact" | "carried" | "notes-only" | "stale";
 type PatchId = (sha: string) => string | null;
@@ -112,7 +114,7 @@ export function parseComments(comments: Comment[]) {
     const stamp = readStamp(comment.body ?? "");
     if (!stamp) continue;
     const url = comment.html_url ?? null;
-    if (stamp.level !== undefined) receipt = { sha: stamp.sha, level: stamp.level, body: stamp.body, url };
+    if (stamp.level !== undefined) receipt = { sha: stamp.sha, level: stamp.level, body: stamp.body, url, ...(stamp.base ? { base: stamp.base } : {}) };
     else if (stamp.verdict !== undefined) judge = { sha: stamp.sha, verdict: stamp.verdict, body: stamp.body, url };
   }
   return { receipt, judge };
