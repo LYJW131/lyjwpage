@@ -39,7 +39,7 @@ export function sanitize(text: string) {
   return CLOUD_ENV_NAMES.reduce((out, name) => out.replaceAll(name, "<cloud env>"), redacted);
 }
 
-const CREDENTIAL_VARIABLE_VALUE = /(?<=[:=]\s*["'`]?)(?:[A-Z][A-Z0-9]{0,11}_)+(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)(?=["'`]?[).,;:]*(?:[\s\u0080-\uffff]|$))/g;
+const CREDENTIAL_VARIABLE_VALUE = /(?<=[:=]\s*["'`]?)(?:[A-Z][A-Z0-9]{0,11}_)+(?:SECRET|TOKEN|PASSWORD|PASSWD|KEY|NPSSO)(?=["'`]?[).,;:]*(?:[\s\u0080-\uffff]|$))/g;
 
 const asReference = (view: string) => view.replace(CREDENTIAL_VARIABLE_VALUE, "$$$&");
 
