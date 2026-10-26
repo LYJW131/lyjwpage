@@ -170,8 +170,12 @@
   - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 - **[claude.dev](https://claude.dev/) 页脚的点阵宇宙**（Anthropic）
   - 是什么：claude.dev 页脚 `.site-footer .scene` 的两层画布：`spaceField` 按 9px 网格画漂移的点阵星云、左上月牙和右下带环行星，点击放沿网格走的流星；`clawdActor` 的 astronaut 模式画戴头盔的像素 Clawd（40×33 精灵、12fps），弹簧跟着鼠标飘，周围的点阵按距离抖动着让开。
-  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），鼠标在卡片上时停在当前这侧，换侧时淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。
+  - 取了什么：两段算法照原样移植（噪声、阈值、月牙与行星的几何、流星、让开 Clawd 的半径），精灵数据整份拷进来；颜色取它深色主题的 `--space-dot` / `--space-shot` 与 0.7 的不透明度。改动有四处：画布改成铺满视口的固定背景、只在深色模式挂载；Clawd 只在卡片列两侧的留白里飘（留白不够宽就不放），和下一条的踱步 Clawd 各占一侧，鼠标进哪侧由那侧的去追，对侧空着才淡出再在另一侧淡入，不从卡片后面横穿；星云空闲时降到 15fps 重绘；从侧边飞来的流星起点最多在视口上沿以上 20px，原版在左上角点击时流星可能整颗飞在视口外。
   - 状态：采用。落在 `src/components/space-backdrop.tsx`、`src/components/space-backdrop/`，颜色 token 在 `src/app/styles/theme.css` 的 `.dark`。
+- **Claude App 会话加载时的踱步 Clawd**（Anthropic）
+  - 是什么：Claude iOS App 打开会话时「正在加载消息」上方的像素 Clawd，12fps 一轮 32 拍，正面、侧身、跳起、眨眼几种姿势轮换。
+  - 取了什么：从 lyjw 的录屏逐帧按 24×16 的像素格取色、去重，帧序和每帧时长照录屏，存成 `src/components/space-backdrop/clawd-walk.json`；颜色换成宇航员精灵里的 Clawd 橙。自己加的：站在一块像素陨石上随 `clawdActor` 一起漂，歇着时停在正面，歇完随机挑踱步、张望、来回走、跳一下、打盹，点它就跳；陨石周围有碎屑尾迹、环绕小石子和闪光。
+  - 状态：采用。只在深色模式挂载，落在 `src/components/space-backdrop/walker.ts`、`src/components/space-backdrop/rock-fx.ts`。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
   - 取了什么：彩铅的做法，一个主斜向的短排线、浅深两色叠层、形体边缘颜色加厚、暗部换方向交叉排线、断续出头的深色轮廓、灯旁的暖黄光晕；配色按原片关键帧取色。没装 skill，也没拷代码：排线改成按种子生成的图块，每帧拿它填形状。手写字用 [霞鹜漫黑](https://github.com/lxgw/LxgwMarkerGothic)（OFL），只取第 08 章用到的字。还取了原片把项目里的梗画成屋里摆设的做法，第 08 章每个机位的彩蛋照这个放。

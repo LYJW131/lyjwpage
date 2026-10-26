@@ -1,62 +1,29 @@
-import sprite from "./clawd-astronaut.json";
+import { CLAWD_PX } from "./layout";
 
 import type { AvoidRect } from "./space-field";
 
-// 精灵前 LAUNCH 帧是起飞，之后 [LAUNCH, LOOP) 循环漂浮；背景里常驻，直接从漂浮段开始（claude.dev 页脚同样 skipIntro）。
-const LAUNCH = 30;
-const LOOP = 98;
-
 export type FloatTarget = { x: number; y: number };
 
-function decodeFrames(): Uint8Array[] {
-  const frames: Uint8Array[] = [];
-  const pixels = Uint8Array.from([...sprite.base].map((c) => (c === "." ? 255 : +c)));
-  frames.push(pixels.slice());
-  for (const delta of sprite.deltas) {
-    if (delta)
-      for (const entry of delta.split(",")) {
-        const end = entry.length - 1;
-        pixels[parseInt(entry.slice(0, end), 36)] = entry[end] === "." ? 255 : +entry[end];
-      }
-    frames.push(pixels.slice());
-  }
-  return frames;
-}
+// world 在视口坐标里画（拖在身后的东西），back / front 在精灵坐标里画（原点是精灵中心、单位 CSS 像素，随倾斜和浮动一起动），分别垫在精灵下面和盖在上面。
+export type ClawdFx = {
+  world: (ctx: CanvasRenderingContext2D, dt: number, x: number, y: number, vx: number, vy: number) => void;
+  back: (ctx: CanvasRenderingContext2D, t: number) => void;
+  front: (ctx: CanvasRenderingContext2D, t: number, dt: number) => void;
+};
 
-type AstronautOptions = {
-  px?: number;
+// w、h 是精灵像素数；frame(t) 返回 t 秒时那一帧的 w×h 画布，按 CLAWD_PX 放大绘制。
+export type ClawdCast = { w: number; h: number; frame: (t: number) => CanvasImageSource; fx?: ClawdFx; poke?: () => void };
+
+type ActorOptions = ClawdCast & {
   home: () => FloatTarget;
   targetRef: () => FloatTarget | null;
   boundsX?: () => [number, number];
   reducedMotion?: boolean;
+  phase?: number;
 };
 
-export function clawdAstronaut(host: HTMLElement, { px = 2.7, home, targetRef, boundsX, reducedMotion = false }: AstronautOptions) {
-  const frames = decodeFrames();
-  const cache = new Map<number, HTMLCanvasElement>();
-  const rgb = sprite.palette.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
-  const frameCanvas = (index: number) => {
-    const hit = cache.get(index);
-    if (hit) return hit;
-    const c = document.createElement("canvas");
-    c.width = sprite.w;
-    c.height = sprite.h;
-    const cctx = c.getContext("2d")!;
-    const img = cctx.createImageData(sprite.w, sprite.h);
-    const data = frames[index];
-    for (let i = 0; i < data.length; i++) {
-      if (data[i] === 255) continue;
-      const [r, g, b] = rgb[data[i]];
-      img.data[4 * i] = r;
-      img.data[4 * i + 1] = g;
-      img.data[4 * i + 2] = b;
-      img.data[4 * i + 3] = 255;
-    }
-    cctx.putImageData(img, 0, 0);
-    cache.set(index, c);
-    return c;
-  };
-
+export function clawdActor(host: HTMLElement, { w, h, frame, fx, home, targetRef, boundsX, reducedMotion = false, phase = 0 }: ActorOptions) {
+  const px = CLAWD_PX;
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
   canvas.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;";
@@ -80,12 +47,13 @@ export function clawdAstronaut(host: HTMLElement, { px = 2.7, home, targetRef, b
   let tilt = 0;
   const t0 = performance.now();
   let prev = t0;
-  const width = sprite.w * px;
-  const height = sprite.h * px;
+  const width = w * px;
+  const height = h * px;
 
   const draw = () => {
     const now = performance.now();
-    const t = (now - t0) / 1000;
+    const elapsed = (now - t0) / 1000;
+    const t = elapsed + phase;
     const dt = Math.min(0.05, Math.max(0.008, (now - prev) / 1000));
     prev = now;
     const W = canvas.clientWidth;
@@ -109,13 +77,17 @@ export function clawdAstronaut(host: HTMLElement, { px = 2.7, home, targetRef, b
       }
     }
     tilt += (Math.max(-8, Math.min(8, 55 * vx)) - tilt) * (1 - Math.exp(-(4 * dt)));
-    const index = LAUNCH + (Math.floor(t * sprite.fps) % (LOOP - LAUNCH));
     ctx.clearRect(0, 0, W, H);
+    const bob = 4 * Math.sin(1.1 * t);
+    const step = reducedMotion ? 0 : dt;
+    fx?.world(ctx, step, x * W, y * H + bob, vx * W, vy * H);
     ctx.save();
     ctx.translate(x * W, y * H);
     ctx.rotate((tilt * Math.PI) / 180);
-    ctx.translate(0, 4 * Math.sin(1.1 * t));
-    ctx.drawImage(frameCanvas(index), -width / 2, -height / 2, width, height);
+    ctx.translate(0, bob);
+    fx?.back(ctx, t);
+    ctx.drawImage(frame(elapsed), -width / 2, -height / 2, width, height);
+    fx?.front(ctx, t, step);
     ctx.restore();
   };
 
