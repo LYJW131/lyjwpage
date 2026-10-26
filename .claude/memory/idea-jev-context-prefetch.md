@@ -10,3 +10,5 @@ lyjw 2026-10-15 22:09 SGT parked the idea: before the first chat model call, pic
 **Status:** built in #384 (merged 2026-10-17 SGT). Clef answers two extra questions in the same routing call (which status group, which project doc); a pick at or above `PREFETCH_MIN_PROBABILITY` is prefetched as a tool round. Home-page presets carry fixed `prefetch` lists. Jev is not used for it. Details: workers/ai/README.md (Clef 选档 paragraph), `src/chat/router.ts`.
 
 **How to apply:** for chat latency or prefetch tuning, start from `pnpm --dir workers/ai route:probe`; don't re-propose the idea as new.
+
+Thresholds: site status 0.45, project doc 0.3 (#384).

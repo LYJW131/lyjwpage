@@ -1,12 +1,13 @@
 # workers/collector（采集 Worker）
 
-站点所有定时的外部拉取都在这里：cron 每分钟响一次，按 `src/registry.ts` 挑出这一分钟到期的任务并行跑，一个失败不连累别的。Apple Music 的按需查询、MusicKit 令牌与「正在听」的补全也在这里，由 site 与上报入口经 Service Binding 调用。任务表、`COLLECTOR_KV` 的键与 Apple Music 的说明在 `README.md`，这里只写不变量、坑和须成对修改的文件。
+站点所有定时的外部拉取都在这里：cron 每分钟响一次，按 `src/registry.ts` 挑出这一格还没跑的任务并行跑，一个失败不连累别的。Apple Music 的按需查询、MusicKit 令牌与「正在听」的补全也在这里，由 site 与上报入口经 Service Binding 调用。任务表、`COLLECTOR_KV` 的键与 Apple Music 的说明在 `README.md`，这里只写不变量、坑和须成对修改的文件。
 
 ## 不变量
 
 - 只展示的结果直接写可滞后层 KV，**成功才写**：KV 里的值本身就是上次成功值，不另存 last-good；失败时旧值原样留着（github-repo 统计全丢时最近提交仍并进的例外见 `README.md`「任务」），过没过时由浏览器按各卡阈值判断。状态核心要拿来算的（最近在听）经 `CORE`（`core` 的 `StateCore`）交付。
 - 缺令牌的任务干净地跳过，不算故障（不记 error）；没配是配置状态，不是失败。
 - 一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑（`src/registry.ts#HEAD_START_MS`）；`uptime-probe` 靠它免得排队时间算进探测超时。新增任务时想想会不会在同一分钟大量并发出网。
+- 每个任务每格只跑一次，靠 `CronSlots` 的认领只进不退（`src/schedule.ts#claimSlots`）。例外是认领调用失败：这一轮退回只跑正好到期的任务、不写认领，DO 在同一格里恢复时这一格会再跑一次。这是有意的取舍：DO 一直调不通时到期的任务照跑，代价是偶尔多跑一次。定时一轮的时刻取 `src/registry.ts#roundTime`：迟到的一轮用收到的时刻，不用旧 `scheduledTime`，否则 LAG 的 `updatedAt` 被改回去，core 误报 stale。
 - core 不挂 cron，它的定时一轮（pulse 归档、断流告警、心跳）靠本 Worker 每分钟调 `CORE.cronRound`（`src/core-round.ts`）；这一调用停了，那些就全停，站点的 Core 在线行也跟着断。
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `core`，预览版一跑就会往生产状态里写。
 - 新增 `StateCore` 方法先发布 `workers/core`，再发布本 Worker；`DIGEST`（ai 的 `Digest`）同理先发布 `workers/ai`。契约只加不改（`shared/state-core.ts`、`shared/collector.ts`、`shared/digest.ts`）。

@@ -78,7 +78,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### collector 的任务
 
-- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
+- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）；排定的那一分钟没投来时，这一格里后面的一轮补跑，每格只跑一次（认领调用失败的那一轮除外，见 `workers/collector/README.md`；`workers/collector/src/schedule.ts#slotStart`、`workers/collector/src/cron-slots.ts#CronSlots`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
 - GitHub、站点部署与访问量、Cloudflare、站点健康、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。在线探测 `uptime-probe` 每分钟只把成败记进 D1，站点健康 `site-health` 每 5 分钟第 4 分钟把它汇总进 `LAG`（§8）。第 01 章钟楼那一站的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - GitHub 头像：avatar-watch 每 5 分钟第 1 分钟比对头像的 sha256 与 main 上的 `.github/github-avatar.sha256`，不一致才触发 `.github/workflows/avatar-sync.yml` 提交新哈希、让站点重建；不写状态（`workers/collector/src/jobs/avatar-watch.ts#avatarWatchJob`）。
@@ -221,7 +221,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - core 不调 Clef 给 Coding 打分，生产没有 Workers AI 绑定；`workers/core/wrangler.toml` 的 `[previews.ai]` 只给分支预览组合入口里的 ai 用。第 06 章的 Coding 那一层只画原始观测，三色带在推近时现场刷出、镜头一走就消失，不画打分。
 - 每一轮跑完，不论成败，都按排定时刻往 D1 的 `health_buckets` 记一笔心跳，这一笔就是第 06 章的「报到」；只在开着历史归档时记（`workers/core/src/state-core.ts#StateCore`、`shared/health.ts#HEARTBEAT_SERIES`、`shared/health.ts#CRON_HEARTBEAT_EVERY_MINUTES`、`workers/core/src/runtime.ts#historyArchive`）。
 - StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
-- 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
+- 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronSlot` 把调用归进时刻表的一格，每格只跑第一次（`workers/collector/src/core-round.ts#driveCoreRound`）。
 
 ### 闹钟
 
@@ -455,6 +455,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
 - `.github/workflows/verify-cache.yml`：每天和 `.github/actions/verify-tools` 改动合进 main 时，在默认分支上存一份 Playwright 浏览器和沙箱 bubblewrap、socat 的 .deb 缓存；Verify 只在 PR 上跑，PR 自己存的缓存别的 PR 读不到，不参与发布。
 - `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
+- `.github/workflows/collapse-worker-previews.yml`：Cloudflare 在 PR 上为各 Worker 发的预览评论里，不是 `site` 的（按正文日志链接 `services/view/<worker>/` 认）由 `lyjw131[bot]` 标为已解决折叠，只留 site 的预览链接；不参与发布。
 - `.github/workflows/comment-check.yml`：改了 JS / TS 的 PR 上，Jev 逐条判断新增注释该不该删（`scripts/comment-check.ts`），建一项 `Comment check (Jev)` 检查，有该删的或没问全为 neutral；问过注释时，另一个只跑默认分支脚本的 job 以 `lyjw131[bot]` 在 PR 上原地更新一条评论；只是建议，不参与发布。
 - `.github/workflows/do-not-merge.yml`：一次性测试 PR 开的时候就贴 `do-not-merge` 标签；带这个标签时 `do-not-merge` 检查失败，合并钩子 `scripts/guard-merge-method.ts` 用 `gh` 读标签，带标签或读不到都拦。
 - `.github/workflows/codeql-autofix.yml`（main 上的 CodeQL 跑完后为告警开修复）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
@@ -489,7 +490,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
   ```
   验证回执 <被验提交的完整 SHA>：<等级>
-  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>"} -->
+  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>","base":"<PR 的目标分支>"} -->
 
   全过：V1 V2 …（有没过的就写「没过：」，逐项一行，检查与证据各截短）
   没验到：<至多三条，每条截短；多的与原文折进明细；没有就不写>
