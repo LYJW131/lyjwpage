@@ -1,0 +1,11 @@
+{
+  "scene": {
+    "deep": "#3c82ff",
+    "sky": "#55afff",
+    "ice": "#96f0ff",
+    "thread": "#54f1fb",
+    "core": "#78d2ff",
+    "white": "#ebf8ff"
+  },
+  "bokeh": ["#abc4f6", "#8a5ce4", "#704fdd", "#c9e6f9"]
+}

@@ -1,23 +1,12 @@
 // 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、
-// 身后的竖直光环与扫向手臂的电弧（img0627–0630）、蓄力时掌前排开的法阵环与发射瞬间的星芒（img0660/0661）。
+// 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）与发射瞬间的星芒（img0660）。
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
+import palette from "./aoko-fx.json";
+
 const ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
-// 场景配色取自参考帧（img0609 法阵高光、img0663 光丝、img0602 散景），是画里的颜色而不是界面色，不走 theme.css 的 token。
-const SCENE = {
-  deep: [60, 130, 255],
-  sky: [85, 175, 255],
-  ice: [150, 240, 255],
-  thread: [84, 241, 251],
-  core: [120, 210, 255],
-  white: [235, 248, 255],
-} as const;
-const BOKEH = [
-  [171, 196, 246],
-  [138, 92, 228],
-  [112, 79, 221],
-  [201, 230, 249],
-] as const;
-const tone = ([r, g, b]: readonly number[], a: number) => `rgba(${r},${g},${b},${a})`;
+// 场景配色取自参考帧（img0609 法阵高光、img0663 光丝、img0602 散景），是画里的颜色而不是界面色，和 Clawd 的精灵调色板一样放在旁边的 JSON 里。
+const { scene: SCENE, bokeh: BOKEH } = palette;
+const tone = (hex: string, a: number) => hex + Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
 // 法阵外圈半径 = 贴图半边长 × RIM，须与 scripts/aoko-fx-assets.ts 的 RIM 同步。
 const RIM = 0.98;
 
@@ -43,7 +32,6 @@ const ARM_RINGS = [
   { x: 368, y: 318, r: 104, sprite: "floor", spin: -0.5, behind: true },
   { x: 411, y: 366, r: 84, sprite: "runes", spin: 0.7, behind: true },
 ] as const;
-// img0660 星芒的斜十字。
 const FLARE_ANGLE = -0.5;
 // 地面法阵：圆心在两脚之间；纵横比取平视偏高的机位，比 img0633 的近地机位厚。
 // 半径是 lyjw 要的大小：左半边伸到卡片列背后被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。
@@ -152,7 +140,6 @@ function floorTexture(s: Sprites) {
     ctx.arc(0, 0, R * r, 0, Math.PI * 2);
     ctx.stroke();
   }
-  // img0607/0609 地面法阵的八片刃：内端尖、外端在第二圈处收尖，最宽处靠外。
   ctx.fillStyle = tone(SCENE.ice, 0.82);
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
@@ -209,7 +196,6 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     if (floor) ctx.drawImage(floor, -FLOOR_R, -FLOOR_R, 2 * FLOOR_R, 2 * FLOOR_R);
     ctx.restore();
 
-    // img0610/0663 那种从地面升起的细光丝。
     for (let i = 0; i < 16; i++) {
       const p = (t * (0.08 + hash(i) * 0.1) + hash(i + 40)) % 1;
       const x = FLOOR_X + (hash(i + 7) * 2 - 1) * FLOOR_R * 0.8;
@@ -223,7 +209,6 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
       ctx.fillRect(x - 1.5, y0 - h, 3, h);
     }
 
-    // img0602/0609 上方的散景光斑。
     for (let i = 0; i < 10; i++) {
       const x = -180 + hash(i + 3) * 1300;
       const y = 900 - ((hash(i + 9) * 1500 + t * (6 + hash(i) * 8)) % 1500);
@@ -259,7 +244,6 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     circle(ctx, s.runes, RUNE_R / 0.96);
     ctx.restore();
 
-    // img0627–0630 里穿过光环圆心的一横一竖两道细光线。
     ctx.globalAlpha = 0.16 + 0.3 * power + 0.4 * flash;
     ctx.fillStyle = tone(SCENE.white, 1);
     ctx.fillRect(RING_X - 1, RING_Y - RING_R * 1.5, 2, RING_R * 3);
@@ -297,7 +281,6 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     ctx.fillStyle = g;
     ctx.fillRect(ORB[0] - r, ORB[1] - r, 2 * r, 2 * r);
 
-    // img0660 发射瞬间的四芒星。
     if (flash > 0.01) {
       ctx.save();
       ctx.translate(ORB[0], ORB[1]);
