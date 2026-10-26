@@ -59,6 +59,7 @@ test("分档：证明只改了注释的文件按文档档算，作者不是 lyjw
   assert.deepEqual([proven.name, proven.need, proven.ui, proven.logic], ["docs", null, [], []]);
   const partly = tierOf(files, { ...trusted, commentOnly: ["src/components/walker.ts"] });
   assert.deepEqual([partly.name, partly.ui, partly.logic], ["logic", [], ["scripts/a.ts"]]);
+  assert.equal(tierOf([".claude/hooks/run.ts"], { ...trusted, commentOnly: [".claude/hooks/run.ts"] }).name, "logic");
   const visitor = tierOf(files, { trustedAuthor: false, commentOnly: files });
   assert.deepEqual([visitor.name, visitor.ui.length > 0], ["ui+logic", true]);
 });
