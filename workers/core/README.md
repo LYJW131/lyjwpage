@@ -389,7 +389,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 
 ### cron 失败口径
 
-- 每轮跑完（成功或抛错）都在 D1 `health_buckets` 记一次心跳（`shared/health.ts#recordCheck`，系列 `HEARTBEAT_SERIES`，时刻取驱动方给的 `scheduledTime`）；Preview 与关着归档的环境不记。站点「Core」在线行由采集 Worker 的 `site-health` 任务按这份记录汇总，漏跑的那几轮也算失败。
+- 每轮跑完（成功或抛错）都在 D1 `health_buckets` 记一次心跳（`shared/health.ts#recordCheck`，系列 `HEARTBEAT_SERIES`，时刻取 `src/cron-heartbeat.ts#cronSlot` 算出的格起点，不是驱动方传来的那一分钟）；Preview 与关着归档的环境不记。站点「Core」在线行由采集 Worker 的 `site-health` 任务按这份记录汇总，漏跑的那几轮也算失败。
 - StateHub 整个调不通（`pulseTick` 抛错）：这一轮记失败心跳，异常抛回采集 Worker 的 `workers/collector/src/core-round.ts#driveCoreRound`，在那边记一条 warn。
 - 子步骤失败（归档、断流检测）：只记一条 `console.error("[cron-step] <步骤>", error)`，这一轮照常记成功心跳。取舍：子步骤坏了 core 本身仍在服务，不该让在线行闪；子步骤的故障靠 Workers Issues 看。StateHub 内部 `pulseTick` 里读归档快照有兜底，只记 warn，不算 StateHub 调不通。
 
