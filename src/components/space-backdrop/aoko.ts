@@ -1,4 +1,5 @@
-import { ARM_RING_SHAPES, aokoFx, fxState, loadImage, ORB, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { aokoFx, fxState, loadImage, ORB, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
 
 const SRC = "/mascots/aoko.webp";
 // 绑定图 RGB 分别是头发、裙摆、头部的权重（0 不动，1 摆幅最大），与立绘同框；离线生成，换立绘要一起重出。
@@ -36,19 +37,22 @@ function lidAt(dt: number) {
   return (1 - (dt - BLINK_CLOSE - BLINK_HOLD) / BLINK_OPEN) ** 2;
 }
 
-// 手臂环附近的空气折射：在每圈环的椭圆带上沿径向来回推几像素，环里外的立绘跟着波动（img0667 环后面的手臂是扭的）。
+// 手臂环附近的空气折射：在每圈环的椭圆带上、以及每个张开的断口周围沿径向来回推几像素，环里外的立绘跟着波动（img0667 环后面的手臂是扭的）；
+// 环的光带经过的袖子与衣服同时被照亮一圈青光（img0667 环下的手臂是亮的）。
+// 最大那圈的上沿离下巴很近，折射只做在 CHIN_Y（原图下巴高度）以下，不把嘴扭花。
+const CHIN_Y = 255;
 const f = (n: number) => n.toFixed(3);
 const REFRACT = ARM_RING_SHAPES.rings
   .map(({ x, y, r }, k) => {
     const [c, s] = [Math.cos(ARM_RING_SHAPES.axis), Math.sin(ARM_RING_SHAPES.axis)];
-    return `  {vec2 o=P-vec2(${f(x)},${f(y)});vec2 l=vec2(dot(o,vec2(${f(c)},${f(s)})),dot(o,vec2(${f(-s)},${f(c)})));float e=length(vec2(l.x/${f(r * ARM_RING_SHAPES.squash)},l.y/${f(r)}));d+=o/max(length(o),1.)*sin(e*24.-t*4.+${k}.)*3.*smoothstep(.3,0.,abs(e-1.));}`;
+    return `  {vec2 o=P-vec2(${f(x)},${f(y)});vec2 l=vec2(dot(o,vec2(${f(c)},${f(s)})),dot(o,vec2(${f(-s)},${f(c)})));float e=length(vec2(l.x/${f(r * ARM_RING_SHAPES.squash)},l.y/${f(r)}));air+=o/max(length(o),1.)*sin(e*24.-t*4.+${k}.)*3.*smoothstep(.3,0.,abs(e-1.));ringLit+=smoothstep(.22,0.,abs(e-.92));}`;
   })
   .join("\n");
 
 const VERT = `attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `precision mediump float;
-uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow,flash;varying vec2 v;
+uniform sampler2D img,rig,blink,arm,fill;uniform float t,lid,glow,flash;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
 const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
@@ -74,7 +78,11 @@ void main(){
   d+=h*mix(hang,sway,lft);
   float k=w.g;
   d+=k*vec2(6.*sin(t*1.5+P.x*.008),3.*sin(t*2.+P.x*.012));
+  vec2 air=vec2(0.);float ringLit=0.;
 ${REFRACT}
+  for(int i=0;i<${RIFTS};i++){vec2 o=P-rift[i].xy;float l=max(length(o),1.);air+=o/l*sin(l*.3-t*9.)*5.*rift[i].z*smoothstep(48.,0.,l);}
+  float belowChin=smoothstep(${CHIN_Y}.,${CHIN_Y + 35}.,P.y);
+  d+=air*belowChin;
   vec2 po=P-ORB;float pl=max(length(po),1.);
   d+=po/pl*smoothstep(46.,0.,abs(pl-(1.-flash)*700.))*flash*9.;
   vec2 s=(P-d)/S;
@@ -123,6 +131,7 @@ ${REFRACT}
   float rim=clamp((c.a-near*.25)*2.,0.,1.);
   base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
   c.rgb=base*c.a;
+  c.rgb+=GLOW*min(ringLit,1.)*belowChin*(.22+.2*glow)*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
   c.rgb+=smoothstep(170.,20.,length(P-ORB))*(.05+.09*pulse)*GLOW*c.a;
   vec2 eL=(P-vec2(447.,180.))/vec2(26.,30.);
@@ -196,6 +205,8 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   const lid = gl.getUniformLocation(program, "lid");
   const glow = gl.getUniformLocation(program, "glow");
   const burst = gl.getUniformLocation(program, "flash");
+  const riftAt = gl.getUniformLocation(program, "rift");
+  const riftData = new Float32Array(RIFTS * 3);
 
   return (t: number, closed: number, light: number, flash: number) => {
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -205,6 +216,7 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
     gl.uniform1f(lid, closed);
     gl.uniform1f(glow, light);
     gl.uniform1f(burst, flash);
+    gl.uniform3fv(riftAt, rifts(t, riftData));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
 }

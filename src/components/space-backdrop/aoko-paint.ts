@@ -21,3 +21,5 @@ export const hash = (n: number) => {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
 };
+
+export type FxState = { power: number; flash: number; t: number; still: boolean };

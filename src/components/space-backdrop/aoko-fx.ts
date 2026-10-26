@@ -2,7 +2,11 @@
 // 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）与发射瞬间的星芒（img0660）。
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
 import { floorPainter, floorTextures } from "./aoko-floor";
-import { BOKEH, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
+import { BOKEH, type FxState, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
+import { type Hand, type HandPose, armRings, cutArm, ringSparks, ringTextures } from "./aoko-rings";
+
+export type { FxState } from "./aoko-paint";
+export type { HandPose } from "./aoko-rings";
 
 const ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
 
@@ -19,28 +23,6 @@ const BOLT_W = 2100 * SHOT_K;
 const BOLT_H = 1260 * SHOT_K;
 
 export const ORB: [number, number] = [368, 318];
-// 伸出的是左手：前臂从腕口横过胸前通到画面右侧的肘，手腕回折、掌心朝外（握腕的是右手）。
-// 套在前臂上的法阵（img0667、img0664）环面垂直于这段前臂，看上去是沿袖子排开的竖向窄椭圆；开口取 img0667 那样约 0.4。
-// FOREARM 是底图里那段袖子的中线与半宽，用来遮住环在袖子后面的半圈。
-const FOREARM = { from: [405, 368], to: [680, 418], half: 40 } as const;
-const ARM_AXIS = Math.atan2(FOREARM.to[1] - FOREARM.from[1], FOREARM.to[0] - FOREARM.from[0]);
-const RING_SQUASH = 0.42;
-// 三圈大小不一：靠手腕的离镜头近、最大，往肘依次变小，和 img0667 一样；最大那圈的上沿要停在下巴以下，不压到嘴。
-const ARM_RINGS = [
-  { at: 0.24, r: 108, sprite: "ring", spin: 0.5 },
-  { at: 0.54, r: 86, sprite: "octa", spin: -0.45 },
-  { at: 0.82, r: 66, sprite: "runes", spin: 0.7 },
-] as const;
-const ARM_SPOTS = ARM_RINGS.map((ring) => ({
-  ...ring,
-  x: FOREARM.from[0] + (FOREARM.to[0] - FOREARM.from[0]) * ring.at,
-  y: FOREARM.from[1] + (FOREARM.to[1] - FOREARM.from[1]) * ring.at,
-}));
-// aoko.ts 的着色器按这组椭圆在环附近扭曲立绘（空气折射），环的位置大小只在这里改。
-export const ARM_RING_SHAPES = { axis: ARM_AXIS, squash: RING_SQUASH, rings: ARM_SPOTS.map(({ x, y, r }) => ({ x, y, r })) };
-// img0667 的环是碎的：每圈几处缺口，缺口后一小段碎片往外错开，沿环有细碎的电弧毛刺。
-const GAPS = 3;
-const SHARD = 0.16;
 const FLARE_ANGLE = -0.5;
 // 地面法阵：圆心在两脚之间；压扁比取平视偏高的机位，比 img0633 的近地机位厚；depth 是近大远小的程度（近端比圆心放大 1/(1-depth)）。
 // 半径是 lyjw 要的大小：伸到卡片列背后的那半边被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。
@@ -51,8 +33,6 @@ const CYCLE = 20;
 const CHARGE = 13;
 const FIRE = 16;
 const SETTLE = 18.5;
-
-export type FxState = { power: number; flash: number; t: number; still: boolean };
 
 export function fxState(t: number): FxState {
   const c = t % CYCLE;
@@ -73,7 +53,7 @@ export function loadImage(src: string) {
   });
 }
 
-type Sprites = Record<"band" | "runes" | "ring" | "octa", HTMLImageElement> & Record<"bolt" | "boltFine", HTMLCanvasElement>;
+type Sprites = Record<"band" | "runes", HTMLImageElement> & Record<"bolt" | "boltFine", HTMLCanvasElement>;
 
 // 电弧贴图是镜头整帧，电弧在帧边被截断；搬到立绘旁边后帧边会露成一条直线，所以四边先渐隐。
 function fadeFrame(img: HTMLImageElement) {
@@ -97,120 +77,10 @@ function fadeFrame(img: HTMLImageElement) {
   return c;
 }
 
-// 手腕比肘离镜头近，环上离镜头近的半圈在肘那一侧：near 画那半圈（立绘前面），否则画手腕那半圈（之后被手层和袖子擦掉被挡的部分）。
-function wedge(ctx: CanvasRenderingContext2D, r: number, from: number, to: number) {
-  ctx.moveTo(0, 0);
-  ctx.arc(0, 0, r, from, to);
-  ctx.closePath();
-}
-
-function armRings(ctx: CanvasRenderingContext2D, s: Sprites, { power, flash, t }: FxState, near: boolean) {
-  const tick = Math.floor(t / 0.08);
-  ARM_SPOTS.forEach((ring, k) => {
-    ctx.save();
-    ctx.translate(ring.x, ring.y);
-    ctx.rotate(ARM_AXIS);
-    ctx.beginPath();
-    ctx.rect(near ? 0 : -ring.r * 2, -ring.r * 2, ring.r * 2, ring.r * 4);
-    ctx.clip();
-    ctx.scale(RING_SQUASH * (1 - 0.4 * flash), 1 + 0.1 * flash);
-    ctx.rotate(t * ring.spin);
-    const a = Math.min(1, 0.55 + 0.45 * smooth(0.1 + 0.15 * k, 0.5 + 0.15 * k, power) + 0.4 * flash);
-    const gaps = Array.from({ length: GAPS }, (_, j) => {
-      const at = ((j + hash(k * 7 + j) * 0.6) / GAPS) * Math.PI * 2;
-      return { at, end: at + 0.12 + hash(k * 7 + j + 3) * 0.16 };
-    });
-    const reach = ring.r * 1.4;
-    const paint = (alpha: number) => {
-      ctx.globalAlpha = alpha;
-      circle(ctx, s[ring.sprite], ring.r);
-      ctx.globalAlpha = alpha * 0.6;
-      circle(ctx, s[ring.sprite], ring.r);
-    };
-    ctx.save();
-    ctx.beginPath();
-    gaps.forEach((gap, j) => wedge(ctx, reach, gap.end + SHARD, gaps[(j + 1) % GAPS].at + (j === GAPS - 1 ? Math.PI * 2 : 0)));
-    ctx.clip();
-    paint(a);
-    ctx.restore();
-    gaps.forEach((gap, j) => {
-      const mid = gap.end + SHARD / 2;
-      const push = ring.r * (0.07 + 0.04 * Math.sin(t * 1.3 + j + k));
-      ctx.save();
-      ctx.translate(Math.cos(mid) * push, Math.sin(mid) * push);
-      ctx.rotate(0.05);
-      ctx.beginPath();
-      wedge(ctx, reach, gap.end, gap.end + SHARD);
-      ctx.clip();
-      paint(a * 0.85);
-      ctx.restore();
-    });
-    ctx.globalAlpha = a * 0.9;
-    ctx.strokeStyle = tone(SCENE.ice, 1);
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    for (let c = 0; c < 3; c++) {
-      const from = hash(tick * 3 + c + k * 11) * Math.PI * 2;
-      for (let i = 0; i < 7; i++) {
-        const angle = from + i * 0.06;
-        const jag = ring.r * (1 + (hash(tick * 17 + i + c * 13 + k) - 0.5) * (i % 3 ? 0.08 : 0.22));
-        ctx[i ? "lineTo" : "moveTo"](Math.cos(angle) * jag, Math.sin(angle) * jag);
-      }
-    }
-    ctx.stroke();
-    ctx.restore();
-  });
-}
-
-// img0667 环边上一闪一闪的四芒小星。
-function glints(ctx: CanvasRenderingContext2D, t: number, power: number) {
-  for (let i = 0; i < 8; i++) {
-    const ring = ARM_SPOTS[i % ARM_SPOTS.length];
-    const slot = Math.floor(t / 0.9 + hash(i) * 3);
-    const life = (t / 0.9 + hash(i) * 3) % 1;
-    const angle = hash(slot * 5 + i) * Math.PI * 2;
-    const lx = Math.cos(angle) * ring.r * RING_SQUASH;
-    const ly = Math.sin(angle) * ring.r;
-    const x = ring.x + lx * Math.cos(ARM_AXIS) - ly * Math.sin(ARM_AXIS);
-    const y = ring.y + lx * Math.sin(ARM_AXIS) + ly * Math.cos(ARM_AXIS);
-    const size = (8 + hash(slot + i * 3) * 12) * Math.sin(Math.PI * life);
-    ctx.globalAlpha = (0.5 + 0.5 * power) * Math.sin(Math.PI * life);
-    const dot = ctx.createRadialGradient(x, y, 0, x, y, size * 0.5);
-    dot.addColorStop(0, tone(SCENE.white, 0.9));
-    dot.addColorStop(1, tone(SCENE.core, 0));
-    ctx.fillStyle = dot;
-    ctx.fillRect(x - size * 0.5, y - size * 0.5, size, size);
-    ctx.fillStyle = tone(SCENE.white, 0.8);
-    ctx.fillRect(x - size, y - 0.5, size * 2, 1);
-    ctx.fillRect(x - 0.5, y - size, 1, size * 2);
-  }
-  ctx.globalAlpha = 1;
-}
-
-export type HandPose = { dx: number; dy: number; zoom: number };
-type Hand = { img: HTMLImageElement; box: readonly number[]; palm: readonly number[] };
-
-// 擦掉手层与袖子覆盖的地方，环在手腕那一侧的半圈就落在手和袖子后面、身体前面；手层的摆动按 aoko.ts 的 handPose 跟上。
-function cutArm(ctx: CanvasRenderingContext2D, { img, box, palm }: Hand, { dx, dy, zoom }: HandPose) {
-  ctx.save();
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.globalAlpha = 1;
-  ctx.lineCap = "round";
-  ctx.lineWidth = FOREARM.half * 2;
-  ctx.beginPath();
-  ctx.moveTo(FOREARM.from[0], FOREARM.from[1]);
-  ctx.lineTo(FOREARM.to[0], FOREARM.to[1]);
-  ctx.stroke();
-  ctx.translate(palm[0], palm[1]);
-  ctx.scale(zoom, zoom);
-  ctx.translate(dx - palm[0], dy - palm[1]);
-  ctx.drawImage(img, box[0], box[1], box[2], box[3]);
-  ctx.restore();
-}
-
 export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   let sprites: Sprites | null = null;
   let floor: ReturnType<typeof floorTextures> | null = null;
+  let rings: ReturnType<typeof ringTextures> | null = null;
   const paintFloor = floorPainter();
   let view = { left: 0, ox: 0, oy: 0, scale: 1, dpr: 1 };
   let hand: Hand | null = null;
@@ -286,7 +156,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const drawFront = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, pose: HandPose) => {
     const { power, flash, t, still } = state;
     begin(ctx);
-    armRings(ctx, s, state, false);
+    if (rings) armRings(ctx, rings, state, false);
     if (hand) cutArm(ctx, hand, pose);
     // 闲置时电弧每几秒噼啪一阵，蓄力起持续闪；闪烁按 70ms 一格取随机亮度。
     const win = Math.floor(t / 3.2);
@@ -302,8 +172,8 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
       ctx.drawImage(s.boltFine, BOLT_X, BOLT_Y, BOLT_W, BOLT_H);
     }
 
-    armRings(ctx, s, state, true);
-    glints(ctx, t, power);
+    if (rings) armRings(ctx, rings, state, true);
+    ringSparks(ctx, t, power);
 
     const r = 46 + 70 * power + 140 * flash;
     const g = ctx.createRadialGradient(ORB[0], ORB[1], 0, ORB[0], ORB[1], r);
@@ -340,13 +210,12 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const ready = Promise.all([
     loadImage(ASSET("band")),
     loadImage(ASSET("runes")),
-    loadImage(ASSET("ring")),
-    loadImage(ASSET("octa")),
     loadImage(ASSET("bolt")),
     loadImage(ASSET("bolt-fine")),
-  ]).then(([band, runes, ring, octa, bolt, boltFine]) => {
-    sprites = { band, runes, ring, octa, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
+  ]).then(([band, runes, bolt, boltFine]) => {
+    sprites = { band, runes, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
     floor = floorTextures(runes);
+    rings = ringTextures();
   })
     // 特效贴图缺一张时只是不画特效，立绘照常挂（aoko.ts 等这个 promise）。
     .catch(() => undefined);

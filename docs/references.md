@@ -186,8 +186,8 @@
   - 状态：采用。落在 `src/components/space-backdrop/aoko.ts#lidAt`。
 - **《魔法使之夜》里苍崎青子施法的那段演出**（TYPE-MOON，游戏内拆出的图层，不在仓库里）
   - 是什么：一组整帧镜头与透明图层：俯视的地面大法阵（img0607/0609）、伸掌时身后的竖直光环与电弧（img0627–0630）、平视远景里脚下的扁椭圆法阵（img0633）、环绕手臂的法阵（img0664/0667）、发射瞬间的星芒（img0660），以及拆开的法阵与电弧贴图。
-  - 取了什么：身后光环、手臂环与电弧直接用拆出的贴图；身后光环与电弧的位置和大小在 img0628 上量，按两眼中点和瞳距换算到立绘上；人物被法阵照亮的配色取 img0611 与 img0612 的对照。地面法阵照 img0609 的结构用代码画（八片宽刃、中心印章、偏心的粗亮月牙带、被照成紫色的砖地），按 img0633 那样近大远小投到脚下；大小按 lyjw 的要求比镜头里小。立绘伸出的是左手、前臂横过胸前，所以手臂环像 img0667 那样画成沿袖子排开、大小不一的竖向窄椭圆，靠手腕的半圈被袖子和手挡住；也照 img0667 做了碎环（缺口与错开的碎片）、沿环的电弧毛刺、四芒小星，以及环附近立绘的空气折射。
-  - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
+  - 取了什么：身后光环与电弧直接用拆出的贴图，位置和大小在 img0628 上量，按两眼中点和瞳距换算到立绘上；人物被法阵照亮的配色取 img0611 与 img0612 的对照。地面法阵照 img0609 的结构用代码画（八片宽刃、中心印章、偏心的粗亮月牙带、被照成紫色的砖地），按 img0633 那样近大远小投到脚下；大小按 lyjw 的要求比镜头里小。立绘伸出的是左手、前臂横过胸前，所以手臂环像 img0667 那样画成沿袖子排开、大小不一的竖向窄椭圆，靠手腕的半圈被袖子和手挡住；环本身照 img0667 用代码画成中空的宽亮光带（带里镂符文、被方口切段，外沿一圈电弧毛刺），断口随时间开合换位、断口处有空间波纹，环经过处的立绘被照亮并带空气折射，环间跳电、四周飘小星。
+  - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko-rings.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
   - 取了什么：彩铅的做法，一个主斜向的短排线、浅深两色叠层、形体边缘颜色加厚、暗部换方向交叉排线、断续出头的深色轮廓、灯旁的暖黄光晕；配色按原片关键帧取色。没装 skill，也没拷代码：排线改成按种子生成的图块，每帧拿它填形状。手写字用 [霞鹜漫黑](https://github.com/lxgw/LxgwMarkerGothic)（OFL），只取第 08 章用到的字。还取了原片把项目里的梗画成屋里摆设的做法，第 08 章每个机位的彩蛋照这个放。
