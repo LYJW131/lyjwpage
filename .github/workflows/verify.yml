@@ -190,7 +190,7 @@ jobs:
           retention-days: 90
 
   # A/B 对照的 B 组：同一份提示词交给 pi 验证员（scripts/verify-agent.ts），结果只进产物、不发回执，publish 不等它。
-  # 实验任务出错只标出来：pr-gate 按 scripts/pr-gate/checks.ts#ADVISORY_CHECKS 不计它，步骤再都 continue-on-error，免得 PR 的 Checks 页红一片
+  # 实验任务出错只标出来：pr-gate 按 scripts/pr-gate/checks.ts#ADVISORY_CHECKS 不挡合并、只在 notes 里提醒；步骤都 continue-on-error，好让产物照样上传
   verify-pi:
     needs: plan
     if: needs.plan.outputs.need != ''
@@ -311,6 +311,13 @@ jobs:
           path: ${{ runner.temp }}/verify-out/ab
           if-no-files-found: ignore
           retention-days: 90
+      # 前面各步都 continue-on-error，job 结论只看这一步：pi 没交结果就让 job 红，pr-gate 在 notes 里提醒（ADVISORY_CHECKS 不挡合并）
+      - if: always() && steps.pi.outcome != 'success'
+        run: |
+          echo "::error::pi 验证员没交结果（${OUTCOME:-skipped}）"
+          exit 1
+        env:
+          OUTCOME: ${{ steps.pi.outcome }}
 
   judge:
     needs: plan
