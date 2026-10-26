@@ -168,7 +168,7 @@ const guardedWrite = {
   ...write,
   description: `${write.description}\n只能写进 ${outDir ?? "（本角色不许写文件）"}。`,
   execute: (id: string, params: { path: string }, ...rest: unknown[]) => {
-    const target = path.resolve(cwd, params.path);
+    const target = piPaths.resolveToCwd(params.path, cwd);
     if (!outDir || !realInside(outDir, target)) throw new Error(`只许写进 ${outDir ?? "（不许写）"}：${target}`);
     return (write.execute as (...args: unknown[]) => unknown)(id, params, ...rest);
   },
