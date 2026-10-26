@@ -1,4 +1,4 @@
-import { aokoFx, BREATH_S, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { aokoFx, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
 import { smooth } from "./aoko-paint";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
 
@@ -68,8 +68,7 @@ void main(){
   vec2 u=P/S;
   vec3 w=texture2D(rig,clamp(u,0.,1.)).rgb*inside(u);
   vec2 d=vec2(0.);
-  // 呼吸曲线须与 aoko-fx.ts 的 breathAt 同步（身后光环跟着胀缩）。
-  float bph=fract(t/${BREATH_S.toFixed(1)});
+  float bph=fract(t/4.4);
   float br=(bph<.4?smoothstep(0.,.4,bph):1.-smoothstep(.42,.95,bph))*(.85+.15*sin(t*.37));
   float chest=smoothstep(640.,520.,P.y)*smoothstep(240.,330.,P.y);
   float lift=smoothstep(660.,330.,P.y);

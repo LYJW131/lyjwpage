@@ -46,6 +46,8 @@ export function konami(onStep: (count: number, total: number) => void, onMiss: (
     let n = typed.length;
     while (n > 0 && typed.slice(-n).some((key, i) => key !== SEQUENCE[i])) n--;
     typed = typed.slice(typed.length - n);
+    // 按过 ↑↑ 之后，序列里接着按的键不再滚动页面、不触发焦点上的元素；只按一两下 ↑ 还照常滚。
+    if (n > 2) e.preventDefault();
     if (n === SEQUENCE.length) {
       typed = [];
       onDone();
