@@ -1,8 +1,8 @@
 # collector
 
 采集 Worker：站点所有**定时的外部拉取**都在这里，Apple Music 的按需查询与「正在听」的补全也在这里（见下文「Apple Music」）。
-cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟到期的任务并行跑，一个失败不连累别的。
-同一次 cron 还调 core 的 `StateCore.cronRound(scheduledTime)`：core 不挂自己的 cron，由它把调用归进自己时刻表的一格、每格只跑一次（`src/core-round.ts`，失败只记 warn）。迟到的一轮（`src/registry.ts#isLateRound`，平台重投或晚投）采集任务整轮跳过，记一条 `collector-late-round` warn，免得旧 `scheduledTime` 把 LAG 的 `updatedAt` 改回去；core 那一轮改按收到的时刻照调（`src/core-round.ts#coreRoundTime`），否则晚投的那一格心跳就记成失败。
+cron 每分钟响一次，按登记表（`src/registry.ts`）挑出该跑的任务并行跑，一个失败不连累别的。每个任务按自己的周期分格（`src/schedule.ts#slotStart`，格从排定的那一分钟起），格内第一轮就跑，由 Durable Object `CronSlots`（`src/cron-slots.ts`，binding `CRON_SLOTS`）按任务认领、每格只跑一次：Cloudflare 晚投或漏投排定的那一分钟时，格内后面任一轮补上。认领不到（没绑定、调用失败）时退回只跑正好到期的任务，记一条 `collector-slot-claim` warn。
+同一次 cron 还调 core 的 `StateCore.cronRound(scheduledTime)`：core 不挂自己的 cron，由它把调用归进自己时刻表的一格、每格只跑一次（`src/core-round.ts`，失败只记 warn）。迟到的一轮（`src/registry.ts#isLateRound`，平台重投或晚投）记一条 `collector-late-round` warn，采集任务和 core 那一轮都改按收到的时刻跑（`src/registry.ts#roundTime`）：照旧 `scheduledTime` 跑会把 LAG 的 `updatedAt` 改回去，所以它只补得上到达时所在的格，重投的旧分钟早已认领过就不再重跑。
 
 结果分两个去向：
 
@@ -184,7 +184,7 @@ KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 
 ```sh
 curl -X POST 'localhost:8788/__dev/collector/run?job=provider-status'     # 立刻跑一个任务，返回结果
 curl 'localhost:8788/__dev/collector/refresh?jobs=github-chart,site-health'    # 经 Collector RPC 点名跑
-curl localhost:8788/cdn-cgi/local/scheduled                                  # 当作 cron 响了一次：跑这一分钟到期的任务
+curl localhost:8788/cdn-cgi/local/scheduled                                  # 当作 cron 响了一次：跑这一分钟到期的任务（本地不认领格）
 ```
 
 调试入口只在 `DEV_TRIGGERS=true` 时存在（只配在 `wrangler.test.toml`）。

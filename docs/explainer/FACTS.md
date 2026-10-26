@@ -78,7 +78,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### collector 的任务
 
-- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
+- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）；排定的那一分钟没投来时，这一格里后面的一轮补跑，每格只跑一次（`workers/collector/src/schedule.ts#slotStart`、`workers/collector/src/cron-slots.ts#CronSlots`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
 - GitHub、站点部署与访问量、Cloudflare、站点健康、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。在线探测 `uptime-probe` 每分钟只把成败记进 D1，站点健康 `site-health` 每 5 分钟第 4 分钟把它汇总进 `LAG`（§8）。第 01 章钟楼那一站的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - GitHub 头像：avatar-watch 每 5 分钟第 1 分钟比对头像的 sha256 与 main 上的 `.github/github-avatar.sha256`，不一致才触发 `.github/workflows/avatar-sync.yml` 提交新哈希、让站点重建；不写状态（`workers/collector/src/jobs/avatar-watch.ts#avatarWatchJob`）。

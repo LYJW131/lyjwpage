@@ -16,7 +16,7 @@ import { providerStatusJob } from "./jobs/provider-status";
 import { siteHealthJob } from "./jobs/site-health";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./jobs/site-status";
 import { uptimeProbeJob } from "./jobs/uptime-probe";
-import { isDue } from "./schedule";
+import { isDue, slotStart } from "./schedule";
 
 export const JOBS: readonly Job[] = [
   appleRecentJob,
@@ -62,21 +62,53 @@ function outcome(job: Job, status: CollectorJobOutcome["status"], detail: string
 
 export const HEAD_START_MS = 3_000;
 
-// 平台会把超时或被取消的一轮约 15 分钟后带着原来的 scheduledTime 重投；照跑会用旧时间覆盖 LAG 的 updatedAt，core 随即误报 stale。
-// 下一分钟的正常一轮会补上，所以迟到超过这个时长的整轮跳过。
+// 平台会把超时或被取消的一轮约 15 分钟后带着原来的 scheduledTime 重投，晚投时也会迟到几分钟到一小时。
+// 迟到超过这个时长的一轮改按收到的时刻跑：照旧 scheduledTime 跑会用旧时间覆盖 LAG 的 updatedAt，core 随即误报 stale。
 export const LATE_ROUND_MS = 2 * 60_000;
 
 export function isLateRound(scheduledTime: number, now = Date.now()): boolean {
   return now - scheduledTime > LATE_ROUND_MS;
 }
 
+export function roundTime(scheduledTime: number, now: number): number {
+  return isLateRound(scheduledTime, now) ? now : scheduledTime;
+}
+
+export type SlotClaimer = { claim(slots: Record<string, number>): Promise<string[]> };
+
+export const CLAIM_TIMEOUT_MS = 5_000;
+
+// 每个任务按自己的周期分格，格内第一轮就跑：Cloudflare 晚投或漏投排定的那一分钟时，格内后面任一轮补上。
+// 认领不到（没绑定、调用失败或超时）时退回只跑正好到期的任务，这一轮补不了格，但不会让到期的任务也停跑。
+export async function claimDueJobs(
+  time: number,
+  jobs: readonly Job[] = JOBS,
+  slots?: SlotClaimer,
+  timeoutMs = CLAIM_TIMEOUT_MS,
+): Promise<Job[]> {
+  if (!slots) return dueJobs(time, jobs);
+  const timer = new AbortController();
+  try {
+    const claimed = new Set(await Promise.race([
+      slots.claim(Object.fromEntries(jobs.map((job) => [job.name, slotStart(job, time)]))),
+      sleep(timeoutMs, undefined, { signal: timer.signal }).then(() => { throw new Error(`slot claim timed out after ${timeoutMs} ms`); }),
+    ]));
+    return jobs.filter((job) => claimed.has(job.name));
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "collector-slot-claim", detail: explain(error) }));
+    return dueJobs(time, jobs);
+  } finally {
+    timer.abort();
+  }
+}
+
 export async function runScheduled(
   env: Env,
-  scheduledTime: number,
-  options: { jobs?: readonly Job[]; headStartMs?: number } = {},
+  time: number,
+  options: { jobs?: readonly Job[]; headStartMs?: number; slots?: SlotClaimer } = {},
 ): Promise<CollectorJobOutcome[]> {
-  const run = (job: Job) => runJob(job, env, { now: scheduledTime, scheduled: true });
-  const due = dueJobs(scheduledTime, options.jobs);
+  const run = (job: Job) => runJob(job, env, { now: time, scheduled: true });
+  const due = await claimDueJobs(time, options.jobs, options.slots);
   const first = due.filter((job) => job.headStart).map(run);
   const rest = due.filter((job) => !job.headStart);
   if (first.length && rest.length) {

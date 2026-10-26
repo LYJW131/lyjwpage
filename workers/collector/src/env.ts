@@ -2,6 +2,8 @@ import type { DigestRpc } from "@shared/digest";
 import type { MusicKitTokenEnv } from "@shared/musickit-token";
 import type { StateCoreRpc } from "@shared/state-core";
 
+import type { CronSlots } from "./cron-slots";
+
 export interface Env extends MusicKitTokenEnv {
   COLLECTOR_KV: KVNamespace;
   LAG: KVNamespace;
@@ -11,6 +13,7 @@ export interface Env extends MusicKitTokenEnv {
   CORE: StateCoreRpc;
   DIGEST?: DigestRpc;
   HISTORY?: D1Database;
+  CRON_SLOTS?: DurableObjectNamespace<CronSlots>;
 
   STORAGE_PREFIX?: string;
   DEV_TRIGGERS?: string;
