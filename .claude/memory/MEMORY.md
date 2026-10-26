@@ -65,6 +65,7 @@
 - [[agent-automation-practices]], [[token-efficiency-review]].
 
 ## Decisions and state
+- **Aoko summon easter egg live** (#673 #690 #695, merge 55f94ba, 2026-10-27 01:20 SGT): dark mode, wide desktop, Konami code ↑↑↓↓←→←→BA Enter; code in `src/components/space-backdrop/aoko*`; assets `public/mascots/aoko*.webp` prefetched on first key. Source library on lyjw's T9 drive, Jev catalog `~/Desktop/mahoyo-catalog/`, export `scripts/aoko-fx-assets.ts`. Unverified: real-GPU fps, real no-WebGL device. Summon not persisted (localStorage needs lyjw's OK). Handoff: /mnt/user-data/uploads/hearth/478f8dff-1229-4c8a-8ea4-be5c17177dc1/478f8dff-1229-4c8a-8ea4-be5c17177dc1.md
 - Git history slimming parked: [[repo-history-slim]]. Chat tiers/consent/logs: [[chat-tiers]]. DO locations: [[do-physical-locations]].
 - Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn.
 - **Cron late delivery** (Cloudflare): core and collector claim slots (#675, #681): [[core-heartbeat-slot-claim]], [[core-cron-internal-error]].
