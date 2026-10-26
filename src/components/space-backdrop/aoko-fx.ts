@@ -332,7 +332,9 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   ]).then(([band, runes, floorRing, seal, octa, bolt, boltFine]) => {
     sprites = { band, runes, floor: floorRing, seal, octa, bolt, boltFine };
     floor = floorTexture(sprites);
-  });
+  })
+    // 特效贴图缺一张时只是不画特效，立绘照常挂（aoko.ts 等这个 promise）。
+    .catch(() => undefined);
 
   return {
     ready,
