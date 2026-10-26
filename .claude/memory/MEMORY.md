@@ -3,6 +3,7 @@
 - **Production domain is `https://lyjw.me`.** `lyjw.dev` is ONLY the branch-preview domain (`<branch>.preview.lyjw.dev`); bare lyjw.dev is not the site: [[prod-domain-lyjw-me]].
 
 ## How lyjw wants us to work (put the relevant ones in every brief)
+- **Thread effort: coordinator picks it per thread** (lyjw 2026-10-26 18:46 SGT): reading an article/link → `effort: low`; harder work → raise (high/xhigh). lyjw's default is Opus medium.
 - **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct chat address stays "你". (2026-10-14, #313)
 - **Times in SGT** (UTC+8, e.g. "18:07 (SGT)") in everything shown to lyjw.
 - **Read official docs before calling an API** (lyjw 2026-10-23 16:10 SGT「以后调用api先查官方文档」, after a thread probed Apple Music endpoints by trial).
@@ -28,7 +29,7 @@
 - **Post-merge prod checks:** every merge checks /api/version only. Real prod behavior test only for cache/Cache-Tag purge, first-screen SSR, fonts, or features needing prod secrets/bindings.
 - **Bulk record reading → Haiku or Sonnet worker, case by case, never Opus** (lyjw 2026-10-24): [[batch-reading-goes-to-haiku]].
 - **Verification → Haiku 5.5 high worker** per skill `lyjwpage-verify`; lead spot-checks one item: [[verification-haiku-worker]]. First-screen/font/cache/SSR changes also run `site-verify reload` (Chromium + WebKit): [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; animation frames are accepted by Haiku (#490).
-- **Verify in GitHub Actions** (#572 merged; receipt gaps only warn, never block; receipts posted as lyjw131[bot]): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block). Verifier effort A/B (#625) ended 2026-10-25 after 31 runs: high catches more real defects, verifier stays on high and the A/B job is removed (#659); 10-27 reminder superseded: [[verify-effort-ab-result]]. A passing receipt is reused when later pushes only touch docs or code comments (`notes-only`, #659), only on PRs opened by lyjw's accounts (lyjw picked「限制作者」2026-10-26 05:00 SGT, #670). Retro 2026-10-26 (keep; upkeep is the cost; freeze proposal pending): [[verify-actions-retro]].
+- **Verify in GitHub Actions** (#572 merged; receipt gaps only warn, never block; receipts posted as lyjw131[bot]): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block). Verifier effort A/B (#625) ended 2026-10-25 after 31 runs: high catches more real defects, verifier stays on high and the A/B job is removed (#659); 10-27 reminder superseded: [[verify-effort-ab-result]]. A passing receipt is reused when later pushes only touch docs or code comments (`notes-only`, #659), only on PRs opened by lyjw's accounts (lyjw picked「限制作者」2026-10-26 05:00 SGT, #670). Retro 2026-10-26 (keep; upkeep is the cost; freeze proposal pending): [[verify-actions-retro]]. Incremental re-verify (reuse prior receipt, recheck only failed/touched items) lyjw OK'd 2026-10-26, #677.
 - **Claude Actions stay on the subscription setup token** (lyjw 2026-10-24 05:53 SGT): WIF/API billing (#625, #628) removed in #637, Console federation revoked. lyjw's Console balance is Max-plan API credit, which by Anthropic docs doesn't cover Claude Code incl. the GitHub Action; never strip the action's entrypoint markers. API billing only with purchased credit; static API keys rejected: [[claude-actions-billing-wif]].
 - **Throwaway test PRs:** apply the `do-not-merge` label when opening (scripts read the label, never the title; lyjw 2026-10-23「还有之前那个测试pr不合并也是」); its check stays red, pr-gate and the merge hook block it (HUMAN.md).
 - **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog via Cloudflare Code Mode MCP's DO query API (workers/ai/README.md).
@@ -46,7 +47,7 @@
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
 - Egress-injected APIs (no keys in the container): OpenRouter (capped, Inception only: [[openrouter-egress]]), misaka.io (only `/v3/mc2/metrics/account-throughput`; strip email/name), Gemini ([[gemini-video-qa-result]]), Apple Music ([[apple-music-user-api]]), TypeSafe System One (Jev; also Workers AI `typesafe/jev`), Exa, Parallel, tokens.ci (`/api/submit`).
 - **tokens.ci cloud hook** (#626, #630; from lyjw's missuo/tokens PR #89): `tokens cloud submit` on Stop; moving to user-level settings via Setup script so threads report too (install once in Setup script, lyjw 2026-10-24). tokens.ci Network secret is on env <cloud env>.
-- **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex). Never use `*-site.lyjw.workers.dev`: [[preview-access-removed]].
+- **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex). Never use `*-site.lyjw.workers.dev`: [[preview-access-removed]]. Non-site Cloudflare preview comments are auto-minimized by lyjw131[bot] (#676, 2026-10-26).
 - Collector manual run: GitHub Actions "Run Collector Jobs".
 - Repo memory mirror at `.claude/memory/` via `pnpm memory:mirror`, daily 03:15 routine: [[repo-memory-mirror]].
 - lyjw's old Claude account project: all merged except #395's 500 ms click grace: [[old-account-project-import]].
@@ -67,13 +68,14 @@
 - Chat tiers, consent and log retention: [[chat-tiers]].
 - **DO locations** (2026-10-23): StateHub KIX, LivePushRoom NRT, ChatQuota NRT, AnthropicEgress jp-0 KIX, ChatLog SEA, BuildCoordinator DFW: [[do-physical-locations]].
 - **Workers Issues alert emails stay as-is** (lyjw 2026-10-23 23:50 SGT「不用了」): platform DO/D1 storage errors are not downgraded to warn.
+- **Cron late delivery (2026-10-26):** Cloudflare delays/misses collector's per-minute cron; core heartbeat red 5 days. Fix #675: core runs per 5-min slot on first call in slot. Collector stays 1-min (superfan advised against lowering).
 - Small settled site decisions (README live cards `v=`, Today Tokens in M, no LICENSE, type assertions, legacy R2 assets, digest pools, dial sizes, Claude limit card, HealthKit nulls, Issues alerts): [[site-small-decisions]]. README also has the personal-info card and Cloudflare outage banner (#633).
 - Desktop CLS fixed by `scrollbar-gutter: stable` (#534): [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy (AGENTS.md, #482).
 - iOS app paused: keep only its reporting endpoints working.
 - **File-size rule (soft, no gate):** touching a source file over ~20 KB → split one piece if natural: [[file-size-rule]].
 - README kept short (#331); long write-ups in docs/design-notes.md. Diagrams from `pnpm docs:diagrams`; redraw when Workers, bindings, sources, routines or merge gates change: [[readme-diagrams]].
-- Sentry removed: [[sentry-exit-done]]. api→core rename: [[api-rename-to-core]]; collector drives the cron round: [[core-cron-internal-error]]. Same-origin API notes: [[same-origin-api-traps]].
+- Sentry removed: [[sentry-exit-done]]. api→core rename: [[api-rename-to-core]]; collector drives the cron round: [[core-cron-internal-error]]. Core heartbeat red 10-22..26 = Cloudflare late cron delivery; slot claiming fix #675: [[core-heartbeat-slot-claim]]. Same-origin API notes: [[same-origin-api-traps]].
 - First screen: Workers Caching + Cache-Tag purge replaced ISR ([[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]]): [[first-screen-perf]].
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Devin CLI token usage via Devin's own OTel into `mac-otlp` / `agents-otlp` (#453, #456): [[pulse-tokens-lane-coverage]].
