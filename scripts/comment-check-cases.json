@@ -740,5 +740,439 @@
   "code": "    throw new Error(\"desktop.iconHash 必须是 SHA-256 十六进制字符串\");\n  }\n  // 校验 iconObjectKey\n  const iconObjectKey = text(row.iconObjectKey);\n  if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {\n    throw new Error(\"desktop.iconObjectKey 必须是 <sha256>.png 或 <sha256>.webp\");\n  }\n  if (iconObjectKey != null && iconHash == null) {\n    throw new Error(\"desktop.iconObjectKey 必须和 iconHash 一起上报\");\n  }\n",
   "delete": true,
   "source": "planted"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// 身后光环圆心落在掌心一带；亮环外缘半径 940，符文带外缘 740（镜头像素）。",
+  "code": "const SHOT_K = 85 / 196;\nconst shot = (x: number, y: number): [number, number] => [(x - 1153) * SHOT_K + 488.5, (y - 507) * SHOT_K + 186];\n// 身后光环圆心落在掌心一带；亮环外缘半径 940，符文带外缘 740（镜头像素）。\nconst [RING_X, RING_Y] = shot(936, 860);\nconst RING_R = 940 * SHOT_K;\nconst RUNE_R = 740 * SHOT_K;\n// 电弧贴图是 2400×1440 的整帧，与 2100×1260 的镜头同框，按镜头左上角整帧铺上。\nconst [BOLT_X, BOLT_Y] = shot(0, 0);\nconst BOLT_W = 2100 * SHOT_K;\nconst BOLT_H = 1260 * SHOT_K;\n",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// 闲置时电弧每几秒噼啪一阵，蓄力起持续闪；闪烁按 70ms 一格取随机亮度。",
+  "code": "    armRings(ctx, s, state, true);\n    if (hand) cutHand(ctx, hand, pose);\n    // 闲置时电弧每几秒噼啪一阵，蓄力起持续闪；闪烁按 70ms 一格取随机亮度。\n    const win = Math.floor(t / 3.2);\n    const burst = (t % 3.2) - hash(win) * 2.4;\n    const gate = still ? 0.7 : Math.max(burst > 0 && burst < 0.45 ? 1 : 0, smooth(0.15, 0.4, power));\n    if (gate > 0) {\n      const tick = Math.floor(t / 0.07);\n      const a = gate * (still ? 1 : hash(tick) > 0.25 ? 0.5 + 0.5 * hash(tick + 0.5) : 0.15);\n      const b = gate * (still ? 0.8 : hash(tick + 3) > 0.4 ? 0.6 + 0.4 * hash(tick + 9) : 0);\n      ctx.globalAlpha = a * (0.6 + 0.4 * power);",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-floor.ts",
+  "comment": "// 脚下的地面法阵照 img0609（俯视）的结构画：内盘八片宽刃、中心四枚印章、盘边的菱形符块，外面一条偏心的粗亮月牙带、\n// 带大印章的细亮环、符文带；底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。",
+  "code": "import { SCENE, circle, hash, tone } from \"./aoko-paint\";\n\n// 脚下的地面法阵照 img0609（俯视）的结构画：内盘八片宽刃、中心四枚印章、盘边的菱形符块，外面一条偏心的粗亮月牙带、\n// 带大印章的细亮环、符文带；底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。\nconst TEX = 1024;\n// 纹理半边长 = 法阵外圈半径 × EXTENT，多出来的一圈是砖地的余光。\nconst EXTENT = 1.3;\nconst R = TEX / 2 / EXTENT;\n// 透视按条带拼：每条按自己的深度缩放；条数少了近处会看出阶梯。\nconst STRIPS = 56;\n\ntype Glyph = (ctx: CanvasRenderingContext2D) => void;",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-floor.ts",
+  "comment": "// 外圈的八芒星弦线（{8/3} 星形）。",
+  "code": "  ring(c, R * 0.74, 5);\n  ring(c, R * 0.5, 3);\n  // 外圈的八芒星弦线（{8/3} 星形）。\n  c.lineWidth = 2;\n  c.globalAlpha = 0.5;\n  c.beginPath();\n  for (let i = 0; i <= 8; i++) {\n    const a = ((i * 3) / 8) * Math.PI * 2 + 0.2;\n    c[i ? \"lineTo\" : \"moveTo\"](Math.cos(a) * R * 0.98, Math.sin(a) * R * 0.98);\n  }\n  c.stroke();",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-floor.ts",
+  "comment": "// 偏心的粗亮月牙带：左下最粗、右上收细，两圆错开圆心做出来。",
+  "code": "  c.globalAlpha = 1;\n\n  // 偏心的粗亮月牙带：左下最粗、右上收细，两圆错开圆心做出来。\n  c.beginPath();\n  c.arc(-R * 0.015, R * 0.02, R * 0.665, 0, Math.PI * 2);\n  c.arc(R * 0.022, -R * 0.014, R * 0.585, 0, Math.PI * 2, true);\n  c.fill();\n\n  for (let i = 0; i < 16; i++) {\n    const a = (i / 16) * Math.PI * 2;\n    c.beginPath();",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-floor.ts",
+  "comment": "// img0609 的八片刃：内端尖、最宽处在六成半径附近、外端越过内盘边一点收尖。",
+  "code": "    c.stroke();\n  }\n  // img0609 的八片刃：内端尖、最宽处在六成半径附近、外端越过内盘边一点收尖。\n  c.shadowBlur = 22;\n  for (let i = 0; i < 8; i++) {\n    c.save();\n    c.rotate((i / 8) * Math.PI * 2);\n    c.beginPath();\n    c.moveTo(R * 0.05, 0);\n    c.lineTo(R * 0.37, R * 0.085);\n    c.lineTo(R * 0.57, 0);",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/rock-fx.ts",
+  "comment": "// 静止时也慢慢掉渣，动起来按速度加量；尾迹速度取陨石速度反向的一部分，看着是被甩在身后。",
+  "code": "\nconst MAX_DUST = 60;\n// 静止时也慢慢掉渣，动起来按速度加量；尾迹速度取陨石速度反向的一部分，看着是被甩在身后。\nconst DUST_IDLE_RATE = 2.5;\nconst DUST_PER_SPEED = 0.25;\nconst DUST_MAX_RATE = 30;\nconst SPARKLE_LIFE = 0.7;\nconst BURST = 10;\nconst SNORE_LIFE = 1.8;\nconst Z = [\"###\", \"..#\", \".#.\", \"#..\", \"###\"];\nconst BURST_GRAVITY = 90;",
+  "delete": true,
+  "source": "field #672"
+ },
+ {
+  "file": "src/components/space-backdrop/walker.ts",
+  "comment": "// 每个动作是一串按拍（walk.fps）排好的姿势，播完回到正面站姿。",
+  "code": "const hold = (p: Pose, ticks: number) => Array.from({ length: ticks }, () => p);\n\n// 每个动作是一串按拍（walk.fps）排好的姿势，播完回到正面站姿。\nconst ACTS: Record<Exclude<ActKind, \"idle\">, Pose[]> = {\n  walk: Array.from({ length: WALK_FRAMES - 1 }, (_, i) => pose(i + 1)),\n  hop: [\n    ...hold(pose(F.front, { lift: -1 }), 2),\n    ...Array.from({ length: 10 }, (_, a) => {\n      const u = (a + 0.5) / 10;\n      return pose(Math.abs(u - 0.5) < 0.15 ? F.squint : F.frontUp, { lift: Math.round(4 * HOP_H * u * (1 - u)) });\n    }),",
+  "delete": true,
+  "source": "field #672"
+ },
+ {
+  "file": "src/components/space-backdrop/walker.ts",
+  "comment": "// 点一下就地起跳；正在半空里的那次跳不打断。",
+  "code": "    h,\n    fx,\n    // 点一下就地起跳；正在半空里的那次跳不打断。\n    poke: () => {\n      if (act.kind !== \"hop\") poked = true;\n    },\n    frame: (t) => {\n      if (poked) {\n        poked = false;\n        act = startAct(\"hop\", t);\n      }",
+  "delete": true,
+  "source": "field #672"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// img0660 星芒的斜十字。",
+  "code": "  { x: 411, y: 366, r: 84, sprite: \"runes\", spin: 0.7, behind: true },\n] as const;\n// img0660 星芒的斜十字。\nconst FLARE_ANGLE = -0.5;\n// 地面法阵：圆心在两脚之间；纵横比取平视偏高的机位，比 img0633 的近地机位厚。\n// 半径是 lyjw 要的大小：左半边伸到卡片列背后被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。\nconst FLOOR_X = 490;\nconst FLOOR_Y = 1858;\nconst FLOOR_R = 1000;\nconst FLOOR_TILT = 0.21;\nconst FLOOR_TEX = 1024;",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// img0607/0609 地面法阵的八片刃：内端尖、外端在第二圈处收尖，最宽处靠外。",
+  "code": "    ctx.stroke();\n  }\n  // img0607/0609 地面法阵的八片刃：内端尖、外端在第二圈处收尖，最宽处靠外。\n  ctx.fillStyle = tone(SCENE.ice, 0.82);\n  for (let i = 0; i < 8; i++) {\n    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;\n    const reach = i % 2 ? 0.52 : 0.6;\n    ctx.save();\n    ctx.rotate(a);\n    ctx.beginPath();\n    ctx.moveTo(R * 0.1, 0);",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "scripts/verify-receipt.ts",
+  "comment": "// notes-only 沿用只给 lyjw 的账号开的 PR：别人的 PR 在回执之后只改了文档或注释也要重验",
+  "code": "export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);\n\n// notes-only 沿用只给 lyjw 的账号开的 PR：别人的 PR 在回执之后只改了文档或注释也要重验\nexport const notesOnlyFor = (authorId: number | undefined, notesOnly: NotesOnly | undefined) => (TRUSTED_AUTHOR_IDS.has(authorId ?? 0) ? notesOnly : undefined);\n\n// 回执和判定只认 lyjw131[bot]（GitHub App 的机器人账号）：由 .github/workflows/verify.yml 的 publish job 拿 App 令牌发；\n// github-actions[bot] 任何工作流都能冒充，线程用 lyjw 的账号发的同格式评论也不算。\n// verify、judge job 带着 Claude 的令牌从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）\nexport const RECEIPT_SIGNER_IDS = new Set([338272049]);\nconst REQUEST_TIMEOUT_MS = 30_000;\n",
+  "delete": true,
+  "source": "field #670"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// img0610/0663 那种从地面升起的细光丝。",
+  "code": "    ctx.restore();\n\n    // img0610/0663 那种从地面升起的细光丝。\n    for (let i = 0; i < 16; i++) {\n      const p = (t * (0.08 + hash(i) * 0.1) + hash(i + 40)) % 1;\n      const x = FLOOR_X + (hash(i + 7) * 2 - 1) * FLOOR_R * 0.8;\n      const y0 = FLOOR_Y + (hash(i + 13) - 0.5) * FLOOR_R * FLOOR_TILT - p * 900;\n      const h = 120 + hash(i + 21) * 360;\n      const a = Math.sin(Math.PI * p) * (0.18 + 0.3 * power);\n      const g = ctx.createLinearGradient(0, y0, 0, y0 - h);\n      g.addColorStop(0, tone(SCENE.thread, a));",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// img0602/0609 上方的散景光斑。",
+  "code": "    }\n\n    // img0602/0609 上方的散景光斑。\n    for (let i = 0; i < 10; i++) {\n      const x = -180 + hash(i + 3) * 1300;\n      const y = 900 - ((hash(i + 9) * 1500 + t * (6 + hash(i) * 8)) % 1500);\n      const r = 10 + hash(i + 5) * 26;\n      const a = (0.1 + 0.18 * hash(i + 11)) * (0.6 + 0.4 * Math.sin(t * 0.9 + i * 2.1));\n      const g = ctx.createRadialGradient(x, y, 0, x, y, r);\n      g.addColorStop(0, tone(BOKEH[i % 4], a));\n      g.addColorStop(0.7, tone(BOKEH[i % 4], a * 0.7));",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// img0627–0630 里穿过光环圆心的一横一竖两道细光线。",
+  "code": "    ctx.restore();\n\n    // img0627–0630 里穿过光环圆心的一横一竖两道细光线。\n    ctx.globalAlpha = 0.16 + 0.3 * power + 0.4 * flash;\n    ctx.fillStyle = tone(SCENE.white, 1);\n    ctx.fillRect(RING_X - 1, RING_Y - RING_R * 1.5, 2, RING_R * 3);\n    ctx.fillRect(RING_X - RING_R * 1.6, RING_Y - 1, RING_R * 3.2, 2);\n    ctx.globalAlpha = 1;\n  };\n\n  const drawFront = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, pose: HandPose) => {",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// img0660 发射瞬间的四芒星。",
+  "code": "    ctx.fillRect(ORB[0] - r, ORB[1] - r, 2 * r, 2 * r);\n\n    // img0660 发射瞬间的四芒星。\n    if (flash > 0.01) {\n      ctx.save();\n      ctx.translate(ORB[0], ORB[1]);\n      for (const [angle, len] of [[FLARE_ANGLE, 520], [FLARE_ANGLE + Math.PI / 2, 360]]) {\n        ctx.save();\n        ctx.rotate(angle);\n        const ray = ctx.createLinearGradient(-len, 0, len, 0);\n        ray.addColorStop(0, tone(SCENE.sky, 0));",
+  "delete": true,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/space-field.ts",
+  "comment": "// 移植自 claude.dev 页脚的 spaceField（progress 恒为 1，即完全展开）：点阵星云 + 左上月牙 + 右下带环行星，点击放流星。",
+  "code": "};\n\n// 移植自 claude.dev 页脚的 spaceField（progress 恒为 1，即完全展开）：点阵星云 + 左上月牙 + 右下带环行星，点击放流星。\nexport function spaceField(host: HTMLElement, options: SpaceFieldOptions = {}) {\n  const { avoidRef, clickHost = host, shouldShoot, spacing: h = 12, maxDensity = 0.34, grain = 0.7, mix = 0.5, reducedMotion = false } = options;\n  const canvas = document.createElement(\"canvas\");\n  canvas.setAttribute(\"aria-hidden\", \"true\");\n  canvas.style.cssText = \"display:block;width:100%;height:100%;\";\n  host.appendChild(canvas);\n  const ctx = canvas.getContext(\"2d\")!;\n  const seed = (0xffffffff * Math.random()) | 0;",
+  "delete": true,
+  "source": "field #656"
+ },
+ {
+  "file": "src/components/footer.tsx",
+  "comment": "/* 演示用：测试 PR 改一处页脚文案，让界面档验证截图 */",
+  "code": "          </a>\n        )}\n        {/* 演示用：测试 PR 改一处页脚文案，让界面档验证截图 */}\n        {buildTime && <span>Built at {buildTime}</span>}\n        <OnlineCount />\n      </div>\n      {EXTRA_TEXT ? (\n        <div className=\"px-4 pb-4 text-center text-2xs leading-relaxed text-muted-foreground\">\n          {EXTRA_HREF ? (\n            <a\n              href={EXTRA_HREF}",
+  "delete": true,
+  "source": "field #619"
+ },
+ {
+  "file": "scripts/aoko-fx-assets.ts",
+  "comment": "// 电弧是 img0627–0630 那组镜头的整帧图层（2400×1440，与 2100×1260 的镜头同框），保留整帧，aoko-fx.ts 按镜头取景换算位置。",
+  "code": "];\n\n// 电弧是 img0627–0630 那组镜头的整帧图层（2400×1440，与 2100×1260 的镜头同框），保留整帧，aoko-fx.ts 按镜头取景换算位置。\nconst BOLTS = [\n  { src: \"img0614\", out: \"bolt\" },\n  { src: \"img0615\", out: \"bolt-fine\" },\n];\nconst BOLT_SIZE = \"800x480!\";\n\nfunction sourceDir() {\n  try {",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko.ts",
+  "comment": "// 眨眼只有约 0.3 秒，这段按刷新率逐帧画，30fps 限帧下眼皮只剩两三帧会显得跳。",
+  "code": "    }\n    const closed = lidAt(t - blinkAt);\n    // 眨眼只有约 0.3 秒，这段按刷新率逐帧画，30fps 限帧下眼皮只剩两三帧会显得跳。\n    if (!closed && now - last < FRAME_MS) return;\n    last = now;\n    draw(t, closed);\n  };\n  const draw = (t: number, closed = 0) => {\n    const state = reducedMotion ? STILL : fxState(t);\n    render?.(t, closed, glowOf(state));\n    fx.render(state, handPose(t));",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、\n// 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）与发射瞬间的星芒（img0660）。\n// 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。",
+  "code": "// 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、\n// 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）与发射瞬间的星芒（img0660）。\n// 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。\nimport palette from \"./aoko-fx.json\";\n\nconst ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;\n// 场景配色取自参考帧（img0609 法阵高光、img0663 光丝、img0602 散景），是画里的颜色而不是界面色，和 Clawd 的精灵调色板一样放在旁边的 JSON 里。\nconst { scene: SCENE, bokeh: BOKEH } = palette;\nconst tone = (hex: string, a: number) => hex + Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, \"0\");\n// 法阵外圈半径 = 贴图半边长 × RIM，须与 scripts/aoko-fx-assets.ts 的 RIM 同步。\nconst RIM = 0.98;",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-floor.ts",
+  "comment": "// 纹理半边长 = 法阵外圈半径 × EXTENT，多出来的一圈是砖地的余光。",
+  "code": "// 带大印章的细亮环、符文带；底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。\nconst TEX = 1024;\n// 纹理半边长 = 法阵外圈半径 × EXTENT，多出来的一圈是砖地的余光。\nconst EXTENT = 1.3;\nconst R = TEX / 2 / EXTENT;\n// 透视按条带拼：每条按自己的深度缩放；条数少了近处会看出阶梯。\nconst STRIPS = 56;\n\ntype Glyph = (ctx: CanvasRenderingContext2D) => void;\n// 印章与符块里的大字形，只求和 img0609 里那几笔的走势像：钩、弯、折。\nconst GLYPHS: Glyph[] = [",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// 地面法阵：圆心在两脚之间；压扁比取平视偏高的机位，比 img0633 的近地机位厚；depth 是近大远小的程度（近端比圆心放大 1/(1-depth)）。\n// 半径是 lyjw 要的大小：左半边伸到卡片列背后被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。",
+  "code": "] as const;\nconst FLARE_ANGLE = -0.5;\n// 地面法阵：圆心在两脚之间；压扁比取平视偏高的机位，比 img0633 的近地机位厚；depth 是近大远小的程度（近端比圆心放大 1/(1-depth)）。\n// 半径是 lyjw 要的大小：左半边伸到卡片列背后被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。\nconst FLOOR = { x: 490, y: 1858, r: 1000, tilt: 0.21, depth: 0.22 };\n\n// 一轮演出：闲置时法阵慢转、电弧偶尔噼啪；CHARGE 起蓄力，FIRE 时星芒一闪，之后回落。\nconst CYCLE = 20;\nconst CHARGE = 13;\nconst FIRE = 16;\nconst SETTLE = 18.5;\n",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko-fx.ts",
+  "comment": "// 擦掉手层与袖子覆盖的地方，环在手腕那一侧的半圈就落在手和袖子后面、身体前面；手层的摆动按 aoko.ts 的 handPose 跟上。",
+  "code": "type Hand = { img: HTMLImageElement; box: readonly number[]; palm: readonly number[] };\n\n// 擦掉手层与袖子覆盖的地方，环在手腕那一侧的半圈就落在手和袖子后面、身体前面；手层的摆动按 aoko.ts 的 handPose 跟上。\nfunction cutArm(ctx: CanvasRenderingContext2D, { img, box, palm }: Hand, { dx, dy, zoom }: HandPose) {\n  ctx.save();\n  ctx.globalCompositeOperation = \"destination-out\";\n  ctx.globalAlpha = 1;\n  ctx.lineCap = \"round\";\n  ctx.lineWidth = FOREARM.half * 2;\n  ctx.beginPath();\n  ctx.moveTo(FOREARM.from[0], FOREARM.from[1]);",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "scripts/verify-action/prompts.ts",
+  "comment": "// 修一个小问题后整份清单重验要多花几分钟：有上一份回执可当底时，只复验没过的、改动碰得到的项，其余带上次的证据沿用",
+  "code": "}\n\n// 修一个小问题后整份清单重验要多花几分钟：有上一份回执可当底时，只复验没过的、改动碰得到的项，其余带上次的证据沿用\nfunction againSection({ sha, level, text, changed }: Previous, ui: boolean) {\n  const short = sha.slice(0, 7);\n  return `上一轮：这个 PR 在 ${short} 上已有一份回执（${level}），清单没变。之后 PR 自己改了这些文件（\\`git diff ${sha} HEAD -- <文件>\\` 看改了什么）：\n${fileList(changed)}\n\n这轮只复验受影响的项，其余沿用：\n- 上次 FAIL、SKIPPED 的行，和检查内容碰得到上面这些文件（含它们的调用方、测试、构建产物）的行，照常重验、写新证据。\n- 上次 PASS、这次改动影响不到的行，result 写 PASS，evidence 写「沿用 ${short}：」加上次的证据，不重跑。拿不准影响不影响就重验。",
+  "delete": false,
+  "source": "field #677"
+ },
+ {
+  "file": "src/components/space-backdrop/casts.ts",
+  "comment": "// 精灵前 LAUNCH 帧是起飞，之后 [LAUNCH, LOOP) 循环漂浮；背景里常驻，直接从漂浮段开始（claude.dev 页脚同样 skipIntro）。",
+  "code": "import type { ClawdCast } from \"./clawd-actor\";\n\n// 精灵前 LAUNCH 帧是起飞，之后 [LAUNCH, LOOP) 循环漂浮；背景里常驻，直接从漂浮段开始（claude.dev 页脚同样 skipIntro）。\nconst LAUNCH = 30;\nconst LOOP = 98;\n\nexport function astronautCast(): ClawdCast {\n  const frame = frameCanvases(astronaut);\n  return { w: astronaut.w, h: astronaut.h, frame: (t) => frame(LAUNCH + (Math.floor(t * astronaut.fps) % (LOOP - LAUNCH))) };\n}\n",
+  "delete": false,
+  "source": "field #672"
+ },
+ {
+  "file": "src/components/space-backdrop/rock-fx.ts",
+  "comment": "// 透明度和尺寸都按台阶变，不做连续渐变，保持像素感。",
+  "code": "        d.y += d.vy * dt;\n        const k = d.age / d.life;\n        // 透明度和尺寸都按台阶变，不做连续渐变，保持像素感。\n        ctx.globalAlpha = k < 1 / 3 ? 1 : k < 2 / 3 ? 0.6 : 0.3;\n        ctx.fillStyle = d.color;\n        const size = k < 0.5 ? block : px;\n        ctx.fillRect(snap(d.x - size / 2), snap(d.y - size / 2), size, size);\n      }\n      ctx.globalAlpha = 1;\n    },\n    back(ctx, t) {",
+  "delete": false,
+  "source": "field #672"
+ },
+ {
+  "file": "src/components/space-backdrop/walker.ts",
+  "comment": "// 陨石按 2×2 像素一格画，和踱步精灵的块面粗细一致；光从左上来，右下压暗。颜色和闪光、Z 的颜色跟精灵一起放在 clawd-walk.json：闪光取宇航员精灵里星星的黄，Z 取头盔的灰。",
+  "code": "const PACE_REACH = 4;\n\n// 陨石按 2×2 像素一格画，和踱步精灵的块面粗细一致；光从左上来，右下压暗。颜色和闪光、Z 的颜色跟精灵一起放在 clawd-walk.json：闪光取宇航员精灵里星星的黄，Z 取头盔的灰。\nconst ROCK = [\n  \"...hhhhhhhhh....\",\n  \".hhbbbbbbbbbhh..\",\n  \"hbbbsdbbbbbbbbs.\",\n  \"hbbbddbbbbbsdbss\",\n  \".bbbbbbbbbbddssd\",\n  \"..ssbbbbbbsssdd.\",\n  \"....sssbbssddd..\",",
+  "delete": false,
+  "source": "field #672"
+ },
+ {
+  "file": ".pi/extensions/lyjwpage.ts",
+  "comment": "// 仓库不装 pi，类型检查拿不到 @earendil-works/pi-coding-agent 的 ExtensionAPI，这里只描述用到的那部分。",
+  "code": "type Rule = { file: string; globs: string[] };\n\n// 仓库不装 pi，类型检查拿不到 @earendil-works/pi-coding-agent 的 ExtensionAPI，这里只描述用到的那部分。\ntype ToolEvent = { toolName: string; toolCallId: string; input: Record<string, unknown> };\ntype PiEvents = {\n  session_start: unknown;\n  session_compact: unknown;\n  before_agent_start: { systemPromptOptions: { sections: Record<string, string> } };\n  tool_call: ToolEvent;\n  tool_result: ToolEvent & { isError: boolean; content: unknown[] };\n};",
+  "delete": false,
+  "source": "field #667"
+ },
+ {
+  "file": "src/components/live/vibecoding/limits.ts",
+  "comment": "// session 形：这条是周限额，剩下的 5 小时窗口全部用满也补不到的那段画成死区。",
+  "code": "}\n\n// session 形：这条是周限额，剩下的 5 小时窗口全部用满也补不到的那段画成死区。\nexport type WeeklyCap =\n  | { weekly: VibeCodingLimit; sharePercent: number; note: string }\n  | { session: VibeCodingLimit; sharePercent: number; note: string };\n\n// 条拉满对应周限额的百分比。Fable 是 50%；5 小时窗口按 lyjw 的经验值：Pro 与 Max 5x 一周约 7 个窗口，Max 20x 的 5 小时是 20 倍、周限额只有 10 倍，所以翻倍。没见过的套餐不画。\nconst FABLE_WEEKLY_SHARE_PERCENT = 50;\nconst SESSION_WEEKLY_SHARE_PERCENT: Readonly<Record<string, number>> = {\n  \"Pro\": 100 / 7,",
+  "delete": false,
+  "source": "field #662"
+ },
+ {
+  "file": "scripts/verify-receipt.ts",
+  "comment": "// 测试只注入 patchId 时也别真去跑 git",
+  "code": "  const fetchImpl: FetchLike = deps.fetch ?? fetch;\n  const patchId = deps.patchId ?? gitPatchId;\n  // 测试只注入 patchId 时也别真去跑 git\n  const notesOnly = deps.notesOnly ?? (deps.patchId ? undefined : gitNotesOnly);\n  const pull = (await github(`pulls/${pr}`, fetchImpl)) as { head: { sha: string }; body?: string | null };\n  const head = pull.head.sha;\n  const comments: Comment[] = [];\n  for (let page = 1; ; page += 1) {\n    const batch = (await github(`issues/${pr}/comments?per_page=100&page=${page}`, fetchImpl)) as Comment[];\n    comments.push(...batch);\n    if (batch.length < 100) break;",
+  "delete": false,
+  "source": "field #659"
+ },
+ {
+  "file": "src/components/space-backdrop/space-field.ts",
+  "comment": "// 返回 2 大点 / 1 小点 / 0 留空 / -1 交给星云。",
+  "code": "    const planetRim = Math.max(0.1 * planetR, 0.9 * h);\n\n    // 返回 2 大点 / 1 小点 / 0 留空 / -1 交给星云。\n    const body = (x: number, y: number, col: number, row: number): number => {\n      const mdx = x - moonX;\n      const mdy = y - moonY;\n      const md2 = mdx * mdx + mdy * mdy;\n      if (md2 < moonR * moonR) {\n        const bx = x - biteX;\n        const by = y - moonY;\n        const bd2 = bx * bx + by * by;",
+  "delete": false,
+  "source": "field #656"
+ },
+ {
+  "file": "src/components/space-backdrop/scene.ts",
+  "comment": "// 换侧不让 Clawd 从卡片后面横穿过去：淡出、挪到另一侧留白的对应位置、再淡入。",
+  "code": "// 背景整层出现是 lyjw 要的慢速渐显，有意长于 DESIGN.md「Motion」的常规时长。Clawd 和星空同时渐显：星空给 Clawd 让出的空洞随星空出现，Clawd 晚到就会先露出一块空白。\nconst FADE_MS = 2000;\n// 换侧不让 Clawd 从卡片后面横穿过去：淡出、挪到另一侧留白的对应位置、再淡入。\nconst SWAP_OUT_MS = 240;\nconst SWAP_IN_MS = 480;\n\ntype Side = \"left\" | \"right\";\n\nfunction columnRect(): { left: number; right: number } {\n  const column = document.querySelector(\".max-w-5xl\");\n  const rect = column?.getBoundingClientRect();",
+  "delete": false,
+  "source": "field #656"
+ },
+ {
+  "file": "scripts/guard-merge-method.ts",
+  "comment": "// Jev 的注释建议不挡 ready，pr-gate 只放在 notes 里，合并时容易被跳过；合并前再提醒一次。读不到也要说。",
+  "code": "}\n\n// Jev 的注释建议不挡 ready，pr-gate 只放在 notes 里，合并时容易被跳过；合并前再提醒一次。读不到也要说。\nexport async function commentReason(pr: number, deps: { fetch?: FetchLike } = {}): Promise<string | null> {\n  try {\n    const gh = client(deps.fetch ?? fetch);\n    const pull = await gh.get<Pull>(`pulls/${pr}`);\n    const [files, runs] = await Promise.all([gh.all<PrFile>(`pulls/${pr}/files`), gh.get<{ check_runs?: CheckRun[] }>(`commits/${pull.head.sha}/check-runs?per_page=100`)]);\n    return commentAdvice(runs.check_runs ?? [], changedPaths(files));\n  } catch (error) {\n    return `读不到 #${pr} head 上的 Comment check (Jev)（${(error as Error).message}）：去 PR 评论里看 Jev 列出的新注释再合并。`;",
+  "delete": false,
+  "source": "field #656"
+ },
+ {
+  "file": "scripts/pr-gate/checks.ts",
+  "comment": "// 检查没出现、还在跑或没跑成都要说出来，不当成「没有建议」；PR 没改 JS / TS 时工作流本来不跑。",
+  "code": "export const COMMENT_CHECK_PATH = /\\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;\n\n// 检查没出现、还在跑或没跑成都要说出来，不当成「没有建议」；PR 没改 JS / TS 时工作流本来不跑。\nexport function commentAdvice(runs: CheckRun[], paths: string[]) {\n  const run = newestByName(runs).get(COMMENT_CHECK);\n  if (!run) return paths.some((path) => COMMENT_CHECK_PATH.test(path)) ? `${COMMENT_CHECK} 没出现在 head 上（PR 改了 JS / TS，应该跑）：看 Comment Check 工作流有没有触发，补跑后再判断注释。` : null;\n  if (run.status !== \"completed\") return `${COMMENT_CHECK} 还在跑（${run.status}），注释建议还没出来：等它跑完再合。`;\n  if (run.conclusion === \"neutral\") return `${COMMENT_CHECK}：${run.output?.title ?? \"有新注释可能该删\"}（建议，不挡合并）。逐条对照 AGENTS.md「文档与注释」判断删还是留：${run.html_url ?? \"\"}`;\n  if (run.conclusion === \"success\" || run.conclusion === \"skipped\") return null;\n  return `${COMMENT_CHECK} 没跑成（${run.conclusion ?? \"unknown\"}），注释没人看过：重跑后再判断，或自己逐条对照 AGENTS.md「文档与注释」：${run.html_url ?? \"\"}`;\n}",
+  "delete": false,
+  "source": "field #656"
+ },
+ {
+  "file": "scripts/pr-gate/tier.ts",
+  "comment": "// public 下的 .txt / .md 是给机器读的纯文本（llms.txt），不改界面。",
+  "code": "const UI_PATHS = [/^src\\/components\\//, /^src\\/app\\/(?!api\\/)/, /\\.css$/, /^public\\/(?!.*\\.(?:txt|md)$)/, /^docs\\/explainer\\/v2\\//];\n// public 下的 .txt / .md 是给机器读的纯文本（llms.txt），不改界面。\nconst DOC_PATHS = [/\\.md$/i, /^\\.claude\\//, /^docs\\//, /^public\\/.*\\.txt$/];\n// 会话或服务端照着执行、或决定哪些命令与响应头生效的文件：落在 .claude、docs、public 下也按逻辑档收门槛。\nconst EXEC_PATHS = [\n  /^\\.claude\\/settings[^/]*\\.json$/,\n  /^\\.claude\\/launch\\.json$/,\n  /^\\.claude\\/hooks\\//,\n  /^\\.claude\\/skills\\/[^/]+\\/feature-map\\.json$/,\n  /^\\.claude\\/.*\\.(?:[cm]?[jt]sx?|py|sh)$/,",
+  "delete": false,
+  "source": "field #653"
+ },
+ {
+  "file": "src/app/cards/route.tsx",
+  "comment": "// 与 CloudflareOutageRow 的显示条件一致：快照过期或没有起点时横幅不画，改用夹具。",
+  "code": "      const { value, sample } = orSample(\n        live,\n        // 与 CloudflareOutageRow 的显示条件一致：快照过期或没有起点时横幅不画，改用夹具。\n        (data) =>\n          now - data.fetchedAt <= AGENT_STATUS_STALE_MS &&\n          data.agents.some((agent) => agent.id === \"cloudflare\" && agent.indicator === \"major_outage\" && !agent.stale && agent.outageSince != null),\n        { ok: true, data: cloudflareOutageFixture },\n        now,\n      );\n      return { element: <CloudflareOutageRow fallback={value as StatusResponse<AgentStatusPayload>} />, sample };\n    },",
+  "delete": false,
+  "source": "field #633"
+ },
+ {
+  "file": "scripts/verify-action/machine.ts",
+  "comment": "// 默认命令（node --test 加别名）在仓库根跑得动的测试：Worker 的测试命令与它同形，只差工作目录；上报器各有工具链，脚本不替它们证明",
+  "code": "import { isTestFile, prove, type Proof } from \"../revert-proof.ts\";\n\n// 默认命令（node --test 加别名）在仓库根跑得动的测试：Worker 的测试命令与它同形，只差工作目录；上报器各有工具链，脚本不替它们证明\nconst PROOF_TEST = /^(scripts|src|shared|workers\\/[\\w-]+)\\/.+\\.test\\.m?[jt]s$/;\nconst PROOF_TIMEOUT_MS = 240_000;\n\nexport const PROOF_VERDICTS: Record<string, string> = {\n  proved: \"撤回改动后新测试报红、HEAD 上转绿\",\n  \"not-red\": \"撤回改动后新测试仍通过（不是修 bug 的 PR 就正常）\",\n  \"red-not-assertion\": \"撤回改动后红了，但不是断言失败\",\n  \"not-green\": \"HEAD 上新测试没通过\",",
+  "delete": false,
+  "source": "field #623"
+ },
+ {
+  "file": "scripts/revert-proof.ts",
+  "comment": "// 临时克隆里没有依赖：把主检出里各包的 node_modules 链过去，跑测试与主检出用同一份依赖。",
+  "code": "}\n\n// 临时克隆里没有依赖：把主检出里各包的 node_modules 链过去，跑测试与主检出用同一份依赖。\nfunction linkNodeModules(root: string, tree: string) {\n  const dirs = [\".\", ...[\"workers\", \"reporters\", \"packages\", \"apps\"].flatMap((group) =>\n    existsSync(path.join(root, group)) ? readdirSync(path.join(root, group)).map((name) => path.join(group, name)) : [])];\n  for (const dir of dirs) {\n    const source = path.join(root, dir, \"node_modules\");\n    const target = path.join(tree, dir, \"node_modules\");\n    if (existsSync(source) && existsSync(path.join(tree, dir)) && !existsSync(target)) symlinkSync(source, target, \"dir\");\n  }",
+  "delete": false,
+  "source": "field #617"
+ },
+ {
+  "file": "scripts/comment-check.ts",
+  "comment": "// 官方建议 noul 起步阈值：≥0.7 当是，≤0.3 当否，中间算拿不准",
+  "code": "export const JEV_MODEL = \"jev-1.14.0\";\nconst ENDPOINT = \"https://api.typesafe.ai/v1/systemone\";\n// 官方建议 noul 起步阈值：≥0.7 当是，≤0.3 当否，中间算拿不准\nexport const YES = 0.7;\nexport const NO = 0.3;\n// 一次问的条数多了，相邻注释互相串味、误报明显变多；改它先用 scripts/comment-check-calibrate.ts 在标注集上比一遍\nconst QUESTIONS_PER_CALL = 10;\nconst MAX_COMMENTS = 200;\nconst CONTEXT_BEFORE = 2;\nconst CONTEXT_AFTER = 8;\nconst SKIP = [/(^|\\/)node_modules\\//, /\\.d\\.ts$/, /\\.min\\.js$/];",
+  "delete": false,
+  "source": "field #610"
+ },
+ {
+  "file": "scripts/comment-check.ts",
+  "comment": "// 连续几行的 // 是同一段话，合成一条再问，免得 Jev 只看见半句",
+  "code": "    .filter((range) => !isTsDirective(range.text, kind))\n    .map((range) => ({ ...range, first: lineOf(range.start), last: lineOf(Math.max(range.start, range.end - 1)) }));\n  // 连续几行的 // 是同一段话，合成一条再问，免得 Jev 只看见半句\n  const blocks: (typeof ranges)[] = [];\n  for (const range of ranges) {\n    const prev = blocks.at(-1)?.at(-1);\n    const ownLine = !lines[range.first - 1]?.slice(0, sf.getLineAndCharacterOfPosition(range.start).character).trim();\n    if (prev && ownLine && range.text.startsWith(\"//\") && prev.text.startsWith(\"//\") && range.first === prev.last + 1) blocks.at(-1)?.push(range);\n    else blocks.push([range]);\n  }\n  return blocks",
+  "delete": false,
+  "source": "field #610"
+ },
+ {
+  "file": "scripts/comment-check.ts",
+  "comment": "// 这次没问到注释就不新开评论，已有的那条照样改成这次的结论，免得留着上一次的建议",
+  "code": "    }\n  }\n  // 这次没问到注释就不新开评论，已有的那条照样改成这次的结论，免得留着上一次的建议\n  if (values.pr) {\n    try {\n      await upsertComment(Number(values.pr), commentBody(values[\"check-run\"] || git([\"rev-parse\", values.head]).trim(), text), { create: found.length > 0 }, fetchImpl);\n    } catch (caught) {\n      console.error((caught as Error).message);\n    }\n  }\n  return 0;",
+  "delete": false,
+  "source": "field #610"
+ },
+ {
+  "file": "scripts/verify-action/machine.ts",
+  "comment": "// 两项都来自跑过 PR 代码的 job：只认表里的值，路径只收安全字符，其余一律不显示",
+  "code": "const SAFE_PATH = /^[\\w./-]+$/;\n\n// 两项都来自跑过 PR 代码的 job：只认表里的值，路径只收安全字符，其余一律不显示\nexport function machineLine({ ci, proof }: { ci?: string | null; proof?: ProofSummary | null }) {\n  const parts: string[] = [];\n  if (ci && Object.hasOwn(CI_STATES, ci)) parts.push(`CI check ${CI_STATES[ci]}`);\n  if (proof && Object.hasOwn(PROOF_VERDICTS, proof.verdict)) {\n    const tests = Array.isArray(proof.tests) ? proof.tests.filter((file) => typeof file === \"string\" && SAFE_PATH.test(file)) : [];\n    parts.push(`撤回证明：${PROOF_VERDICTS[proof.verdict]}${tests.length && proof.verdict !== \"no-tests\" ? `（${tests.map((file) => `\\`${file}\\``).join(\"、\")}）` : \"\"}`);\n  }\n  return parts.length ? `脚本：${parts.join(\"；\")}` : null;",
+  "delete": false,
+  "source": "field #617"
+ },
+ {
+  "file": "scripts/verify-agent/tools.ts",
+  "comment": "// git 也要经沙箱跑：bash 能写 .git/config，diff.external、textconv、hooks 这类配置会让 git 替它执行命令",
+  "code": "type Run = (command: string, timeoutMs: number, dir?: string) => Promise<{ code: string | number; output: string }>;\nexport type Claim = { id: string; claim: string; check: string };\n// git 也要经沙箱跑：bash 能写 .git/config，diff.external、textconv、hooks 这类配置会让 git 替它执行命令\nexport type Git = (args: string[], dir?: string) => string;\nexport type ToolContext = { cwd: string; base: string; tmpDir: string; run: Run; git: Git; workLog: (name: string, text: string) => string | null };\n\nconst text = (body: string) => ({ content: [{ type: \"text\" as const, text: body }], details: undefined });\nconst tail = (body: string, lines: number) => body.split(\"\\n\").slice(-lines).join(\"\\n\");\n\n// AGENTS.md「文档与注释」点名的同步范围：改了符号、常量、规则，这些地方的旧说法要同一提交改掉\nconst DOC_SCOPES = [\":(glob)**/*.md\", \":(glob)**/README*\", \"public/llms.txt\", \":(glob).claude/**\"];",
+  "delete": false,
+  "source": "field #665"
+ },
+ {
+  "file": "src/app/cards/inline-images.ts",
+  "comment": "// 封面原图常比显示尺寸大几倍：光栅图按显示宽度取 2 倍，PlayStation 图床自带缩放参数，其余走图片变体，取不到（不在白名单）再原样内嵌。",
+  "code": "    widths.set(src, Math.max(widths.get(src) ?? 0, Number(/\\swidth=\"(\\d+)\"/.exec(tag)?.[1] ?? 0)));\n  }\n  // 封面原图常比显示尺寸大几倍：光栅图按显示宽度取 2 倍，PlayStation 图床自带缩放参数，其余走图片变体，取不到（不在白名单）再原样内嵌。\n  const inlined = await Promise.all(\n    [...widths].map(async ([src, shown]) => {\n      const [url, width] = originalSource(unescapeAttribute(src), shown);\n      const sized = width > 0 ? playstationImage(url, width * 2) : url;\n      const resized =\n        width > 0 && sized === url && !/\\.svg(\\?|$)/.test(url)\n          ? await site.image(url, imageWidthBucket(width * 2), \"scale-down\")\n          : null;",
+  "delete": false,
+  "source": "field #633"
+ },
+ {
+  "file": "scripts/verify-agent.ts",
+  "comment": "// 末尾的 process.exit 不等写流落盘：不等 end 的回调，收尾那几条事件会丢",
+  "code": "const stats = session.getSessionStats();\nsession.dispose();\n// 末尾的 process.exit 不等写流落盘：不等 end 的回调，收尾那几条事件会丢\nif (transcript) await new Promise<void>((resolve) => transcript.end(resolve));\nfs.rmSync(tmpDir, { recursive: true, force: true });\n\nconst usage = {\n  model: `${provider}/${modelId}`,\n  thinking: values.thinking,\n  minutes: Math.round((Date.now() - started) / 600) / 100,\n  toolCalls: stats.toolCalls,",
+  "delete": false,
+  "source": "field #665"
+ },
+ {
+  "file": ".pi/extensions/lyjwpage.ts",
+  "comment": "// lyjw 在输入框用 `!` 跑的命令走 user_bash，不经这里：禁区的手动部署例外靠的就是它。",
+  "code": "  });\n\n  // lyjw 在输入框用 `!` 跑的命令走 user_bash，不经这里：禁区的手动部署例外靠的就是它。\n  pi.on(\"tool_call\", async (event, ctx) => {\n    if (event.toolName !== \"bash\") return undefined;\n    const command = (event.input as { command?: unknown }).command;\n    if (typeof command !== \"string\") return undefined;\n\n    const forbidden = await runHook(ctx.cwd, FORBIDDEN_GUARD, { command }, 15_000);\n    if (forbidden.code !== 0) {\n      return { block: true, reason: forbidden.stderr.trim() || `守卫脚本 ${FORBIDDEN_GUARD} 没跑完（退出码 ${forbidden.code}），按拦下处理。` };",
+  "delete": false,
+  "source": "field #667"
+ },
+ {
+  "file": "scripts/pr-gate/checks.ts",
+  "comment": "// 须与 .github/workflows/comment-check.yml 的 paths 同步，由 comment-check.test.ts 对照。",
+  "code": "export const EXPERIMENT_CHECKS = new Set([\"verify-ab\"]);\n\n// 须与 .github/workflows/comment-check.yml 的 paths 同步，由 comment-check.test.ts 对照。\nexport const COMMENT_CHECK_PATH = /\\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;\n\n// 检查没出现、还在跑或没跑成都要说出来，不当成「没有建议」；PR 没改 JS / TS 时工作流本来不跑。\nexport function commentAdvice(runs: CheckRun[], paths: string[]) {\n  const run = newestByName(runs).get(COMMENT_CHECK);\n  if (!run) return paths.some((path) => COMMENT_CHECK_PATH.test(path)) ? `${COMMENT_CHECK} 没出现在 head 上（PR 改了 JS / TS，应该跑）：看 Comment Check 工作流有没有触发，补跑后再判断注释。` : null;\n  if (run.status !== \"completed\") return `${COMMENT_CHECK} 还在跑（${run.status}），注释建议还没出来：等它跑完再合。`;\n  if (run.conclusion === \"neutral\") return `${COMMENT_CHECK}：${run.output?.title ?? \"有新注释可能该删\"}（建议，不挡合并）。逐条对照 AGENTS.md「文档与注释」判断删还是留：${run.html_url ?? \"\"}`;",
+  "delete": false,
+  "source": "field #656"
+ },
+ {
+  "file": "scripts/verify-action.ts",
+  "comment": "// 上次通过的回执（与要判定时的判定）还盖得住 head，就不再跑验证员：常见于评审后只改了措辞或注释\n// 只给新推送沿用：改目标分支、贴标签这些事件的回执没记目标分支，照常重验",
+  "code": "}\n\n// 上次通过的回执（与要判定时的判定）还盖得住 head，就不再跑验证员：常见于评审后只改了措辞或注释\n// 只给新推送沿用：改目标分支、贴标签这些事件的回执没记目标分支，照常重验\nexport function carryOver(plan: ReturnType<typeof planOf>, reuse: Evaluation, event: string | undefined) {\n  if (event !== \"synchronize\" || plan.base !== \"main\" || plan.need === \"\" || !reuse.pass || !reuse.receipt) return { plan, note: null };\n  const from = reuse.receipt.sha.slice(0, 7);\n  return { plan: { ...plan, need: \"\", judge: false, ui: false }, note: `沿用 ${from} 的回执（${reuse.receipt.coverage}）：之后只改了文档或代码注释，这次不跑验证员` };\n}\n\nasync function plan(gh: Client, pr: number) {\n  const { pull, tier } = await load(gh, pr);",
+  "delete": false,
+  "source": "field #659"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko.ts",
+  "comment": "// 特效画布从卡片列右缘往左多铺 FX_OVERHANG 到视口右缘：地面法阵的左半边伸进卡片背后，在画布左缘渐隐，卡片间隙里不露硬边。",
+  "code": "    return c;\n  };\n  // 特效画布从卡片列右缘往左多铺 FX_OVERHANG 到视口右缘：地面法阵的左半边伸进卡片背后，在画布左缘渐隐，卡片间隙里不露硬边。\n  const fade = \"top:0;mask-image:linear-gradient(to right,transparent,#000 120px);\";\n  const back = layer(fade);\n  const canvas = layer(\"filter:drop-shadow(0 12px 24px var(--paper-shadow));\");\n  const front = layer(fade);\n  parent.appendChild(root);\n  const fx = aokoFx(back, front);\n\n  let render: ((t: number, closed: number, light: number) => void) | null = null;",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "scripts/verify-agent/guard.ts",
+  "comment": "// bash 能在仓库与产物目录里建符号链接（比如指向 /proc/self/environ），守卫一律按解开链接后的真实路径判",
+  "code": "const FORBIDDEN_READ = [/^\\/proc(\\/|$)/, /^\\/sys(\\/|$)/, /\\/\\.config\\/gh(\\/|$)/, /\\/\\.git-credentials$/, /\\/\\.env(\\.[^/]*)?$/, /\\/\\.dev\\.vars$/];\n\n// bash 能在仓库与产物目录里建符号链接（比如指向 /proc/self/environ），守卫一律按解开链接后的真实路径判\nexport function realPath(target: string, depth = 0): string {\n  try {\n    return fs.realpathSync(target);\n  } catch {\n    if (depth > 40) return target;\n    const link = fs.lstatSync(target, { throwIfNoEntry: false });\n    if (link?.isSymbolicLink()) return realPath(path.resolve(path.dirname(target), fs.readlinkSync(target)), depth + 1);\n    const parent = path.dirname(target);",
+  "delete": false,
+  "source": "field #665"
+ },
+ {
+  "file": "scripts/comment-check.ts",
+  "comment": "// 一次问的条数多了，相邻注释互相串味、误报明显变多；改它先用 scripts/comment-check-calibrate.ts 在标注集上比一遍",
+  "code": "export const YES = 0.7;\nexport const NO = 0.3;\n// 一次问的条数多了，相邻注释互相串味、误报明显变多；改它先用 scripts/comment-check-calibrate.ts 在标注集上比一遍\nconst QUESTIONS_PER_CALL = 10;\nconst MAX_COMMENTS = 200;\nconst CONTEXT_BEFORE = 2;\nconst CONTEXT_AFTER = 8;\nconst SKIP = [/(^|\\/)node_modules\\//, /\\.d\\.ts$/, /\\.min\\.js$/];\n\nconst RULE = `Comments are deleted by default; good names speak for themselves. Only three kinds may stay, and the test is \"would deleting it make someone break the code\":\n1. Surprising behavior: a bug being worked around, a browser or runtime quirk, a race, a library pitfall.",
+  "delete": false,
+  "source": "field #610"
+ },
+ {
+  "file": "scripts/verify-receipt.ts",
+  "comment": "// 契约：回执与判定评论里机器只读第二行的这行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；第一行的中文只给人看。\n// 只认第二行：同一个 lyjw131[bot] 发的评论正文里会带验证员证据、Jev 意见这类 PR 能左右的文字，别处的戳行一律不算",
+  "code": "const VERDICTS = [\"PASS\", \"FAIL\"];\n\n// 契约：回执与判定评论里机器只读第二行的这行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；第一行的中文只给人看。\n// 只认第二行：同一个 lyjw131[bot] 发的评论正文里会带验证员证据、Jev 意见这类 PR 能左右的文字，别处的戳行一律不算\nconst STAMP_LINE = /^<!-- verify-stamp (\\{.*\\}) -->$/;\nexport type Stamp = { sha: string; level?: string; verdict?: string; body: string };\nexport const stampLine = (stamp: Stamp) => `<!-- verify-stamp ${JSON.stringify(stamp)} -->`;\nexport const stampTitle = ({ sha, level, verdict }: Omit<Stamp, \"body\">) => (level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`);\n\nfunction readStamp(text: string): Stamp | null {\n  const match = STAMP_LINE.exec(text.split(\"\\n\")[1] ?? \"\");\n  if (!match) return null;",
+  "delete": false,
+  "source": "field #613"
+ },
+ {
+  "file": "workers/ai/src/digest/situation.ts",
+  "comment": "// 一格自己的得分，权重须与 familyScores 同步；锻炼时长没有格子可放，fitness 只算步数。",
+  "code": "}\n\n// 一格自己的得分，权重须与 familyScores 同步；锻炼时长没有格子可放，fitness 只算步数。\nfunction topicWeight(option: DigestHighlight): number {\n  switch (option.topic) {\n    case \"coding\":\n    case \"agents\":\n      return hours(option);\n    case \"music\":\n      return hours(option) * 0.5;\n    case \"watching\":",
+  "delete": false,
+  "source": "field #663"
+ },
+ {
+  "file": "src/components/space-backdrop/aoko.ts",
+  "comment": "// 手层在手掌一带（wg=1）的位移，须与 FRAG 里的 dh 同步：平移 d，再以掌心为中心放大 zoom。",
+  "code": "};\n\n// 手层在手掌一带（wg=1）的位移，须与 FRAG 里的 dh 同步：平移 d，再以掌心为中心放大 zoom。\nfunction handPose(t: number): HandPose {\n  const a = 5 * Math.sin(t * 0.8 + 0.4);\n  const b = 2 * Math.sin(t * 1.9);\n  return { dx: -0.5 * a + 0.4 * b, dy: -a - 0.3 * b, zoom: 1 / (1 - 0.014 * (0.5 + 0.5 * Math.sin(t * 2.4 - 0.8))) };\n}\n\n// 闲置时也带一层蓝紫重打光：人站在亮着的法阵里，对照 img0611（原色）与 img0612（被法阵照亮）。\nconst glowOf = ({ power, flash }: FxState) => 0.32 + 0.55 * power + 0.25 * flash;",
+  "delete": false,
+  "source": "field #690"
+ },
+ {
+  "file": "scripts/rules-check.ts",
+  "comment": "// Verify Action 里 claude-code-action 把 .mcp.json 换成字符设备，读它会 EACCES：只收普通文件",
+  "code": "}\n\n// Verify Action 里 claude-code-action 把 .mcp.json 换成字符设备，读它会 EACCES：只收普通文件\nconst isRegularFile = (file: string) => statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;\n\nfunction trackedSources(root: string) {\n  return execFileSync(\"git\", [\"ls-files\", \"-z\", \"--cached\", \"--others\", \"--exclude-standard\"], { cwd: root, encoding: \"utf8\" })\n    .split(\"\\0\")\n    .filter((file, index, all) => {\n      if (!file || all.indexOf(file) !== index) return false;\n      if (!CODE_EXTS.has(extOf(file))) return false;",
+  "delete": false,
+  "source": "field #617"
+ },
+ {
+  "file": "scripts/memory-mirror.ts",
+  "comment": "// `wrkspc_01…`、`cmsg_01…` 这类带类型前缀的资源 ID 不是凭据；句末句号不算进长度",
+  "code": "  [\"secret assignment\", /[A-Za-z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY|PRIVATE[_-]?KEY|NPSSO)[A-Za-z0-9_]*\\s*[:=]\\s*(?:([\"'`])(?![$<])[^\"'`\\n]{8,}\\1|[\"'`]?(?![$<\"'`-])[^\\s\"'`\\u0080-￿]{8,})/i],\n  [\"hex secret\", /(?<![\\w/.-])[a-f0-9]{64}(?![\\w/.-])/],\n  // `wrkspc_01…`、`cmsg_01…` 这类带类型前缀的资源 ID 不是凭据；句末句号不算进长度\n  [\"opaque token\", /(?<![\\w/.-])(?![a-z]+_01[A-Za-z0-9]+(?![\\w/-]|\\.[\\w/.-]))(?=[A-Za-z0-9_.-]*[A-Z])(?=[A-Za-z0-9_.-]*[a-z])(?=[A-Za-z0-9_.-]*\\d)[A-Za-z0-9_.-]{31,}[A-Za-z0-9_-](?![\\w/-]|\\.[\\w/.-])/],\n];\n\nexport function sanitize(text: string) {\n  const redacted = REDACTIONS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text);\n  return CLOUD_ENV_NAMES.reduce((out, name) => out.replaceAll(name, \"<cloud env>\"), redacted);\n}\n",
+  "delete": false,
+  "source": "field #629"
+ },
+ {
+  "file": "scripts/verify-action/body.ts",
+  "comment": "// 两块机器写的注释不算描述改动：Devin 徽章，以及 verify-dispatch 用来触发 pull_request edited 的重跑标记。\n// 别的 HTML 注释不删：正则认不全 Markdown 的代码与注释，删错会吞掉看得见的清单；不删只会让注释里的改动也作废回执、注释里的条目也照验，两头都偏保守",
+  "code": "const ITEM = /^\\s*[-*]\\s*(V\\d+)\\s*[：:.、]\\s*(.+?)\\s*$/;\n\n// 两块机器写的注释不算描述改动：Devin 徽章，以及 verify-dispatch 用来触发 pull_request edited 的重跑标记。\n// 别的 HTML 注释不删：正则认不全 Markdown 的代码与注释，删错会吞掉看得见的清单；不删只会让注释里的改动也作废回执、注释里的条目也照验，两头都偏保守\nconst BADGE = /<!-- devin-review-badge-begin -->[\\s\\S]*?<!-- devin-review-badge-end -->/g;\nconst RERUN = /<!-- verify-rerun-begin -->[\\s\\S]*?<!-- verify-rerun-end -->/g;\nconst RERUN_ID = /^\\d+-\\d+$/;\n\n// 删到不再变，免得两块机器注释交错拼出一块新的\nfunction dropMachineNotes(text: string) {\n  for (let prev = \"\"; prev !== text; ) {\n    prev = text;",
+  "delete": false,
+  "source": "field #644"
+ },
+ {
+  "file": "src/components/live/vibecoding/limits.ts",
+  "comment": "// 乐观估计：当前窗口剩下的，加上它重置后到周重置前每个新窗口（最后一个哪怕只剩几分钟也算满）都用满。",
+  "code": "}\n\n// 乐观估计：当前窗口剩下的，加上它重置后到周重置前每个新窗口（最后一个哪怕只剩几分钟也算满）都用满。\nfunction weeklyUnreachableShare(session: VibeCodingLimit, sharePercent: number, weekly: Pick<VibeCodingLimit, \"resetsAt\">, weeklyUsedPercent: number, now: number) {\n  if (weekly.resetsAt == null) return 0;\n  const weeklyResetMs = weekly.resetsAt * 1000;\n  if (weeklyResetMs <= now) return 0;\n  const sessionLive = session.resetsAt != null && session.resetsAt * 1000 > now;\n  const sessionLeft = sessionLive ? 100 - session.usedPercent : 100;\n  const windowMs = session.windowMinutes != null && session.windowMinutes > 0 ? session.windowMinutes * 60_000 : SESSION_WINDOW_MS;\n  const nextWindowAt = sessionLive ? session.resetsAt! * 1000 : now + windowMs;",
+  "delete": false,
+  "source": "field #662"
+ },
+ {
+  "file": "scripts/verify-agent/guard.ts",
+  "comment": "// 黑名单只判 path 参数时，grep 从允许的根往下递归仍会搜进 .env* 这类文件：结果里来自它们的行一律去掉",
+  "code": "}\n\n// 黑名单只判 path 参数时，grep 从允许的根往下递归仍会搜进 .env* 这类文件：结果里来自它们的行一律去掉\nexport function filterGrepOutput(text: string, searchDir: string): { text: string; dropped: number } {\n  let dropped = 0;\n  const kept = text.split(\"\\n\").filter((line) => {\n    const match = /^(.+?)[:-]\\d+[:-]/.exec(line);\n    if (!match || !forbiddenRead(path.resolve(searchDir, match[1]))) return true;\n    dropped++;\n    return false;\n  });",
+  "delete": false,
+  "source": "field #665"
+ },
+ {
+  "file": "scripts/verify-dispatch.ts",
+  "comment": "// 读完整段再写回：和人同时改描述会盖掉对方那一版。手动重跑本身就是一次编辑，接受这个窗口。",
+  "code": "  if (pull.state !== \"open\") throw new Error(`PR #${pr} 不是打开的（${pull.state ?? \"unknown\"}），不触发验证`);\n  if (pull.draft === true) throw new Error(`PR #${pr} 是草稿，不跑验证；转为待审会自动跑`);\n  // 读完整段再写回：和人同时改描述会盖掉对方那一版。手动重跑本身就是一次编辑，接受这个窗口。\n  const next = stampRerun(pull.body, id);\n  if (next === (pull.body ?? \"\")) throw new Error(`PR #${pr} 的重跑标记已是这次运行，pull_request edited 不会再触发`);\n  await request(fetchImpl, `pulls/${pr}`, { method: \"PATCH\", body: { body: next } });\n  console.log(`已更新 PR #${pr} 的重跑标记，verify.yml 会因描述编辑启动`);\n  return 0;\n}\n\nif (import.meta.url === pathToFileURL(process.argv[1] ?? \"\").href) {",
+  "delete": false,
+  "source": "field #644"
+ },
+ {
+  "file": ".pi/extensions/lyjwpage.ts",
+  "comment": "// 压缩后先前附上的规则正文可能已被摘要掉，要允许重新附上。",
+  "code": "  const mergeNotices = new Map<string, string>();\n\n  // 压缩后先前附上的规则正文可能已被摘要掉，要允许重新附上。\n  const reset = (cwd: string) => {\n    rules = loadRules(cwd);\n    loaded.clear();\n  };\n  pi.on(\"session_start\", (_event, ctx) => reset(ctx.cwd));\n  pi.on(\"session_compact\", (_event, ctx) => reset(ctx.cwd));\n\n  pi.on(\"before_agent_start\", (event) => {",
+  "delete": false,
+  "source": "field #667"
  }
 ]

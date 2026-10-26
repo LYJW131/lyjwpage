@@ -3,10 +3,10 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-import { ask, buildRequests, type Found } from "./comment-check.ts";
+import { YES, ask, buildRequests, type Found } from "./comment-check.ts";
 
 const USAGE = `用法：NODE_USE_ENV_PROXY=1 node scripts/comment-check-calibrate.ts [--cases <文件>] [--runs <次数>]
-拿标注过的注释集（默认 scripts/comment-check-cases.json，delete 为该删）问 Jev，按几个阈值给出精确率、召回率，列出 0.7 下判错的条目。
+拿标注过的注释集（默认 scripts/comment-check-cases.json，delete 为该删）问 Jev，按几个阈值给出精确率、召回率，列出按 YES 阈值判错的条目。
 改 scripts/comment-check.ts 的 RULE、CRITERIA 或阈值前后各跑一遍对比。`;
 
 const THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9];
@@ -49,7 +49,7 @@ async function main(argv: string[]) {
     console.log(`\n第 ${run} 次：${cases.length} 条，该删 ${cases.filter((item) => item.delete).length}`);
     for (const row of THRESHOLDS.map((t) => score(cases, p, t))) console.log(`  ≥${row.threshold}  精确率 ${row.precision.toFixed(2)}  召回率 ${row.recall.toFixed(2)}  （对 ${row.tp}，误报 ${row.fp}，漏 ${row.fn}）`);
     cases.forEach((item, i) => {
-      const flagged = (p[i] ?? 0) >= 0.7;
+      const flagged = (p[i] ?? 0) >= YES;
       if (flagged !== item.delete) console.log(`  ${flagged ? "误报" : "漏"} ${(p[i] ?? NaN).toFixed(2)} ${item.source} ${item.file}  ${item.comment.split("\n")[0]?.slice(0, 80)}`);
     });
   }
