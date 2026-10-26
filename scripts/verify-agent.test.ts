@@ -172,3 +172,13 @@ test("docs_sync：git grep 没命中（退出 1）记 0 处，别的失败记搜
   assert.match(broken, /「OLD_LIMIT」：搜索失败/);
   assert.doesNotMatch(broken, /0 处/);
 });
+
+test("工作流里拿钥匙的 verify-agent action 只从先清空、再检出默认分支的 .verify-agent-main 载入", () => {
+  const dir = path.join(import.meta.dirname, "..", ".github", "workflows");
+  const files = fs.readdirSync(dir).filter((name) => name.endsWith(".yml"));
+  const uses = files.flatMap((name) => [...fs.readFileSync(path.join(dir, name), "utf8").matchAll(/uses: (\S*verify-agent\S*)/g)].map((match) => match[1]));
+  assert.deepEqual([...new Set(uses)], ["./.verify-agent-main/.github/actions/verify-agent"]);
+  const workflow = fs.readFileSync(path.join(dir, "verify.yml"), "utf8");
+  assert.match(workflow, /run: rm -rf \.verify-agent-main\n\s+- uses: actions\/checkout@v5\n\s+id: trusted\n\s+if: steps\.clean\.outcome == 'success'\n[\s\S]*?ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n\s+path: \.verify-agent-main\n/);
+  assert.match(workflow, /uses: \.\/\.verify-agent-main\/\.github\/actions\/verify-agent\n\s+id: pi\n\s+if: steps\.trusted\.outcome == 'success'\n/);
+});
