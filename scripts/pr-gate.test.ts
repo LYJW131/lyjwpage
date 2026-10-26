@@ -53,6 +53,17 @@ test("分档：只改 md 与 .claude 是 docs，界面与逻辑按路径分，�
   assert.match(both.hint, /lyjw 看图点头/);
 });
 
+test("分档：证明只改了注释的文件按文档档算，作者不是 lyjw 的账号时不算", () => {
+  const files = ["src/components/walker.ts", "scripts/a.ts", "docs/a.md"];
+  const proven = tierOf(files, { ...trusted, commentOnly: ["src/components/walker.ts", "scripts/a.ts"] });
+  assert.deepEqual([proven.name, proven.need, proven.ui, proven.logic], ["docs", null, [], []]);
+  const partly = tierOf(files, { ...trusted, commentOnly: ["src/components/walker.ts"] });
+  assert.deepEqual([partly.name, partly.ui, partly.logic], ["logic", [], ["scripts/a.ts"]]);
+  assert.equal(tierOf([".claude/hooks/run.ts"], { ...trusted, commentOnly: [".claude/hooks/run.ts"] }).name, "logic");
+  const visitor = tierOf(files, { trustedAuthor: false, commentOnly: files });
+  assert.deepEqual([visitor.name, visitor.ui.length > 0], ["ui+logic", true]);
+});
+
 test("分档：改会话执行什么命令的 .claude 配置与 hooks 按逻辑档，不论扩展名", () => {
   for (const file of [".claude/settings.json", ".claude/settings.local.json", ".claude/launch.json", ".claude/hooks/run.bash", ".claude/hooks/run", ".claude/skills/x/feature-map.json"]) {
     const tier = tierOf([file], trusted);

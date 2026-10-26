@@ -6,11 +6,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { buildCoverage } from "./pr-gate/checks.ts";
-import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type FetchLike, type PrFile, type Pull } from "./pr-gate/github.ts";
-import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
+import { changedPaths, client, type CheckRun, type Client, type FetchLike, type PrFile, type Pull } from "./pr-gate/github.ts";
+import { tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 import { evaluate, gitPatchId, notesOnlyFor, parseComments, signStamp, type Comment, type Evaluation } from "./verify-receipt.ts";
-import { gitNotesOnly, gitRulesChanged } from "./verify-receipt/notes-only.ts";
+import { gitNotesOnly, gitRulesChanged, prTier } from "./verify-receipt/notes-only.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { machineLine, runProof, type ProofSummary } from "./verify-action/machine.ts";
 import { gitHistory, previousReceipt, type Previous } from "./verify-action/previous.ts";
@@ -66,7 +66,7 @@ function setOutput(name: string, value: string) {
 async function load(gh: Client, pr: number) {
   const pull = await gh.get<FullPull>(`pulls/${pr}`);
   const files = changedPaths(await gh.all<PrFile>(`pulls/${pr}/files`));
-  return { pull, files, tier: tierOf(files, { trustedAuthor: isTrustedAuthor(pull), judgeAsked: judgeAsked(pull) }) };
+  return { pull, files, tier: prTier(pull, files) };
 }
 
 export function planOf(pull: FullPull, tier: ReturnType<typeof tierOf>) {

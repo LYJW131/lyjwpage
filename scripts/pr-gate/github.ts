@@ -18,7 +18,7 @@ export type Pull = {
   mergeable: boolean | null;
   mergeable_state?: string;
   head: { sha: string };
-  base?: { ref: string };
+  base?: { ref: string; sha?: string };
   labels?: { name: string }[];
   user?: User;
 };

@@ -86,7 +86,7 @@
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - 改了 JS / TS 的 PR 上有一项 `Comment check (Jev)`：Jev 逐条看新增注释，可能该删的列在检查详情里，有该删的或没问全时结论是 neutral，不挡合并；Jev 看过注释时还会以 `lyjw131[bot]` 在 PR 上发一条评论写结论，之后每次推送原地更新同一条（发评论的 job 只跑 main 上的脚本，PR 的代码碰不到 App 私钥）。Claude 自己判断删还是留。
-- PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动路径现算，不读这个标签。改了验证员、门槛、合并钩子、这个贴标签的代码，或判定员照读的根 `AGENTS.md`、`REVIEW.md` 的 PR 另贴红色 `verifier-changed`：这种 PR 的验证与判定跑的是被改过的那份（签发回执的一步只跑 main 上的脚本），你定了不堵，只标出来，合并前你看一眼。
+- PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动现算，不读这个标签；你的账号开的 PR 里只改了注释的 JS / TS 文件门槛按文档算（不截图），标签仍只看路径。改了验证员、门槛、合并钩子、这个贴标签的代码，或判定员照读的根 `AGENTS.md`、`REVIEW.md` 的 PR 另贴红色 `verifier-changed`：这种 PR 的验证与判定跑的是被改过的那份（签发回执的一步只跑 main 上的脚本），你定了不堵，只标出来，合并前你看一眼。
 - 只为试一下、不打算合的测试 PR，Claude 开的时候就贴上黑色的 `do-not-merge` 标签：`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。脚本只认标签，不读标题。你手动贴上也一样拦；真要合，摘掉标签。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
 - 上面「文档、skill 和小改动」的轻门槛只给你的账号开的 PR：别人开的 PR，或碰到 `.claude/` 的 settings、launch、hooks、`feature-map.json`、`docs/` 下的脚本与依赖清单、`public/` 下的 js、html、svg、xml、`_headers`，`pr-gate.ts` 一律按逻辑档算，要 `unit-test-verified` 回执；判定员和机器评审，别人开的 PR 都要，你的账号开的只在 Claude 判为大改、贴了 `needs-judge` 时要。

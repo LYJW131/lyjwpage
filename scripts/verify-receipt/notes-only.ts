@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 
 import { checkFiles, loadTypeScript } from "../comment-only-check.ts";
-import { tierOf, verifierFiles } from "../pr-gate/tier.ts";
+import { TS_EXTENSIONS } from "../comment-only/typescript.ts";
+import { isTrustedAuthor, type Pull } from "../pr-gate/github.ts";
+import { judgeAsked, tierOf, verifierFiles } from "../pr-gate/tier.ts";
 import { isRulePath } from "../rule-drift.ts";
 
 export type NotesOnly = (from: string, to: string) => string[] | null;
@@ -36,7 +39,7 @@ function ensureCommits(...shas: string[]) {
     try {
       execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" });
     } catch {
-      execFileSync("git", ["fetch", "-q", "origin", sha], { stdio: "ignore" });
+      execFileSync("git", ["fetch", "-q", "origin", sha], { stdio: "ignore", timeout: 30_000 });
     }
   }
 }
@@ -54,3 +57,26 @@ export const gitNotesOnly: NotesOnly = (from, to) => {
   if (changes.some((change) => change.modeChanged)) return null;
   return notesOnlyFiles(changes.map((change) => change.file), (code) => checkFiles({ repo, base: from, to, files: code, ts: loadTypeScript(repo) }));
 };
+
+// 读不到提交或解析失败时返回空：证明不了就照路径分档。
+export function gitCommentOnlyFiles(base: string, head: string, paths: string[]): string[] {
+  const files = paths.filter((file) => TS_EXTENSIONS.has(path.extname(file).toLowerCase()));
+  if (files.length === 0) return [];
+  try {
+    ensureCommits(base, head);
+    const from = execFileSync("git", ["merge-base", base, head], { encoding: "utf8" }).trim();
+    const repo = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+    const modeChanged = new Map(parseRawDiff(execFileSync("git", ["diff", "--raw", "--no-renames", "--no-abbrev", from, head, "--", ...files], { encoding: "utf8" })).map((change) => [change.file, change.modeChanged]));
+    return checkFiles({ repo, base: from, to: head, files, ts: loadTypeScript(repo) })
+      .filter((result) => result.status === "comment-only" && modeChanged.get(result.file) === false)
+      .map((result) => result.file);
+  } catch {
+    return [];
+  }
+}
+
+export function prTier(pull: Pull, paths: string[], commentOnly: typeof gitCommentOnlyFiles = gitCommentOnlyFiles) {
+  const trustedAuthor = isTrustedAuthor(pull);
+  const proven = trustedAuthor && pull.base?.sha ? commentOnly(pull.base.sha, pull.head.sha, paths) : [];
+  return tierOf(paths, { trustedAuthor, judgeAsked: judgeAsked(pull), commentOnly: proven });
+}

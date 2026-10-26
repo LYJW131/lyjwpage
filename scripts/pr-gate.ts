@@ -7,9 +7,10 @@ import { decide } from "./pr-gate/decide.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
-import { judgeAsked, tierOf, verifierFiles } from "./pr-gate/tier.ts";
+import { verifierFiles } from "./pr-gate/tier.ts";
 import { ruleDrift } from "./rule-drift.ts";
 import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
+import { prTier, type gitCommentOnlyFiles } from "./verify-receipt/notes-only.ts";
 
 export { buildCoverage } from "./pr-gate/checks.ts";
 export { REQUIRED_CHECKS } from "./pr-gate/decide.ts";
@@ -27,7 +28,7 @@ ready 只管机器核得了的门槛；分档提示写着要 lyjw 看图点头�
 JSON 里有：
   head、draft、mergeable、labels / baselineException
   author        PR 作者的 login、数字 id、是不是 lyjw 的账号（trusted）；不是的整个 PR 按逻辑档走回执与判定，--need、--no-judge 不放行
-  tier          按改动路径分档：docs（只改 md 与 .claude/ 下的非可执行文件）、ui（界面）、logic（逻辑，含 .claude 的 settings、launch、hooks、feature-map，
+  tier          按改动路径分档（lyjw 的账号开的 PR 里只改了注释的 JS / TS 文件按 docs 算）：docs（只改 md 与 .claude/ 下的非可执行文件）、ui（界面）、logic（逻辑，含 .claude 的 settings、launch、hooks、feature-map，
                 docs/ 下的脚本与依赖清单，public/ 下的 js、html、svg、xml、_headers）、ui+logic；
                 决定默认的 --need 与 --judge，hint 写这一档的合并门槛
   checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列；
@@ -58,7 +59,7 @@ JSON 里有：
 
 export async function gate(
   { pr, need, judge }: { pr: number; need?: string | null; judge?: boolean },
-  deps: { fetch?: FetchLike; patchId?: PatchId } = {},
+  deps: { fetch?: FetchLike; patchId?: PatchId; commentOnly?: typeof gitCommentOnlyFiles } = {},
 ) {
   const fetchImpl: FetchLike = deps.fetch ?? fetch;
   const gh = client(fetchImpl);
@@ -76,7 +77,7 @@ export async function gate(
   ]);
   const paths = changedPaths(files);
   const trustedAuthor = isTrustedAuthor(pull);
-  const tier = tierOf(paths, { trustedAuthor, judgeAsked: judgeAsked(pull) });
+  const tier = prTier(pull, paths, deps.commentOnly);
   const wantNeed = trustedAuthor && need !== undefined ? need : tier.need;
   const wantJudge = trustedAuthor ? (judge ?? tier.judge) : true;
   const [builds, receipt, rules] = await Promise.all([
