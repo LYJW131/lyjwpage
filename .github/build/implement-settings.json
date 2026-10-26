@@ -54,7 +54,9 @@
         "blobstore.apple.com",
         "*.blobstore.apple.com",
         "mzstatic.com",
-        "*.mzstatic.com"
+        "*.mzstatic.com",
+        "image.api.playstation.com",
+        "psnobj.prod.dl.playstation.net"
       ]
     },
     "filesystem": {
