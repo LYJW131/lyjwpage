@@ -11,7 +11,7 @@ import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
-用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员，代替 claude-code-action。模型走 Anthropic API，
+用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员（Verify Action 里是和 claude-code-action 对照的 B 组）。模型走 Anthropic API，
 钥匙经 --api-key-file 传（本地可用 ANTHROPIC_API_KEY）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
 用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
 

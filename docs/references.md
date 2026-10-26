@@ -10,7 +10,7 @@
 
 - **[Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)**、**[Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)**、**[Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)**、**[Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)**（Anthropic）、**[pi 文档：Extensions、Skills](https://github.com/earendil-works/pi)**（pi coding agent）
   - 是什么：agent 循环里「核对产出」最好用明确规则给反馈、说清哪条没过；工具少而贴合工作流、报错写清怎么改；系统提示取中间高度、用少量典型例子代替长规则单、细节按需取；评测从真实失败建题、每题多跑、读 transcript、留出没见过的题。pi 的扩展事件（`tool_call`、`before_provider_request`）与按需加载的 skill。
-  - 取了什么：Verify Action 的验证员改跑自搭的 pi runner，加三个贴着验证流程的工具（声明台账、目标分支对照、文档同步）、判定做法用三个通用例子写进系统提示、探针写法做成 skill；用历史缺陷、注入缺陷和干净样本做 A/B，例子避开测试样本，另留设计时没见过的样本单独统计。
+  - 取了什么：自搭 pi runner 当验证员，在 Verify Action 里和 Claude Code 验证员并行作 A/B 的 B 组，加三个贴着验证流程的工具（声明台账、目标分支对照、文档同步）、判定做法用三个通用例子写进系统提示、探针写法做成 skill；用历史缺陷、注入缺陷和干净样本做 A/B，例子避开测试样本，另留设计时没见过的样本单独统计。
   - 状态：部分采用。落在 [verify-agent.ts](../scripts/verify-agent.ts)、[verify-agent/](../scripts/verify-agent/)（`tools.ts`、`playbook.ts#PLAYBOOK`、`skills/verify-probes`）与 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「Verify Action」。不采用交结果时按规则复核、不过就退回重交：A/B 里 Haiku 被退回后结论档位从没变过，只多一轮对话；去掉它的一组命中持平、干净样本上的误报更少。
 
 - **[Building effective agent automations](https://claude.dev/blog/building-effective-agent-automations/)**（claude.dev）
