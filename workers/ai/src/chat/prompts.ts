@@ -3,6 +3,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import {
   GOD_CHAT_CHART_SERIES,
   GOD_CHAT_HTML_THEME_VARS,
+  GOD_CHAT_NEXT_FENCE,
+  GOD_CHAT_NEXT_MAX_CHARS,
   GOD_CHAT_VISUAL_EXAMPLES,
   GOD_CHAT_VISUAL_KINDS,
   GOD_CHAT_VISUAL_LIMITS as VISUAL,
@@ -60,7 +62,8 @@ About LYJW, as background for reading the status data:
 - LYJW is usually on Singapore time (UTC+8) and writes in Chinese.
 - LYJW builds this site with AI agents for fun and likes cutting-edge tech; the hobbies on show here are music, anime, PS5 and Quest games, and Apple Watch workouts.
 A playful guess at what LYJW is up to is welcome; just make it read as a guess.
-Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
+Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.
+End every reply with one more line: a code block tagged ${GOD_CHAT_NEXT_FENCE} holding a single line, the visitor's most likely next message, written in their language and in their voice (as they would type it), at most ${GOD_CHAT_NEXT_MAX_CHARS} characters. The chat shows it as a typing suggestion, not as part of your reply, so never mention it. Skip it when you refuse, and in a reply that calls start_design.`;
 export const BASE_PROMPTS: Record<GodChatLineup, string> = { deepseek: basePrompt("deepseek"), claude: basePrompt("claude") };
 
 export const PERSONA: Record<GodChatTier, string> = {

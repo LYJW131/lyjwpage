@@ -49,3 +49,9 @@ test("漏写末尾括号、补齐后画得出的图示单独记成 repaired", ()
   const reply = ["```stats", '{"items":[{"label":"a","value":"b"}]', "", "```", "```timeline", JSON.stringify(GOD_CHAT_VISUAL_EXAMPLES.timeline), "```"].join("\n");
   assert.deepEqual(checkVisuals(replyFences(reply)), { invalid: [], repaired: ["stats"] });
 });
+
+test("回复末尾的 next 预测块不算图示，不记成无效", () => {
+  const fences = replyFences(["答案。", "```next", "那 TA 今天听了什么？", "```"].join("\n"));
+  assert.deepEqual(fences.map((fence) => fence.language), ["next"]);
+  assert.deepEqual(checkVisuals(fences), { invalid: [], repaired: [] });
+});

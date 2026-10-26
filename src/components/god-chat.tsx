@@ -21,6 +21,7 @@ import { GOD_CHAT_LIMITS, GOD_CHAT_PATH, GOD_CHAT_PRESETS, type GodChatEvent, ty
 import type { GodChatLineup, GodChatUsage } from "@shared/god-chat-tiers";
 import { type Reply, PlannerActivity, DesignStatus, DesignEndNotice, ReplyBody, LineupSwitch, RankLabel, RouteStatus } from "@/components/god-chat/message-parts";
 import { USAGE_URL, type FetchedUsage, UsagePanel } from "@/components/god-chat/usage";
+import { CompletionField, useCompletion } from "@/components/god-chat/completion";
 import { CONSENT_COPY, DesignConsentPrompt, ConsentPrompt, type VendorPending, VendorConsentPrompt } from "@/components/god-chat/consent";
 
 type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; keep: ChatBubble[]; handoff: boolean };
@@ -67,6 +68,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -352,6 +354,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const commands = COMMANDS.filter((c) => c.name !== "/exit" || design);
   const matches = paletteOpen ? commands.filter((c) => commandNames(c).some((n) => n.startsWith(query))) : [];
   const active = matches.length ? Math.min(selected, matches.length - 1) : 0;
+  const completion = useCompletion({ inputRef, draft, setDraft, messages, sessions: archive.sessions, blocked: streaming || paletteOpen || human.state === "interactive" || human.state === "checking" });
 
   function runCommand(name: string) {
     setDraft("");
@@ -702,47 +705,52 @@ function Conversation({ className, archive, session: conversation }: { className
               )}
             </div>
           )}
-          <textarea
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setSelected(0);
-            }}
-            onKeyDown={(event) => {
-              if (paletteOpen && matches.length) {
-                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          <CompletionField completion={completion} draft={draft}>
+            <textarea
+              ref={inputRef}
+              {...completion.inputProps}
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setSelected(0);
+              }}
+              onKeyDown={(event) => {
+                if (paletteOpen && matches.length) {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const step = event.key === "ArrowDown" ? 1 : -1;
+                    setSelected((active + step + matches.length) % matches.length);
+                    return;
+                  }
+                  if (event.key === "Tab") {
+                    event.preventDefault();
+                    setDraft(matches[active].name);
+                    return;
+                  }
+                }
+                if (completion.keyDown(event)) return;
+                if (!paletteOpen && usage && event.key === "Escape") {
                   event.preventDefault();
-                  const step = event.key === "ArrowDown" ? 1 : -1;
-                  setSelected((active + step + matches.length) % matches.length);
+                  setUsage(null);
                   return;
                 }
-                if (event.key === "Tab") {
+                if (paletteOpen && event.key === "Escape") {
                   event.preventDefault();
-                  setDraft(matches[active].name);
+                  setDraft("");
                   return;
                 }
-              }
-              if (!paletteOpen && usage && event.key === "Escape") {
-                event.preventDefault();
-                setUsage(null);
-                return;
-              }
-              if (paletteOpen && event.key === "Escape") {
-                event.preventDefault();
-                setDraft("");
-                return;
-              }
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                submit(draft);
-              }
-            }}
-            maxLength={GOD_CHAT_LIMITS.maxMessageChars}
-            rows={1}
-            placeholder={human.state === "interactive" ? "Tick the box above to continue…" : human.state === "checking" ? "Verifying you are human…" : "Speak, mortal… (type /)"}
-            aria-label="Message"
-            className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
-          />
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  submit(draft);
+                }
+              }}
+              maxLength={GOD_CHAT_LIMITS.maxMessageChars}
+              rows={1}
+              placeholder={completion.predicted ? "" : human.state === "interactive" ? "Tick the box above to continue…" : human.state === "checking" ? "Verifying you are human…" : "Speak, mortal… (type /)"}
+              aria-label="Message"
+              className="scrollbar-none max-h-32 min-h-10 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
+            />
+          </CompletionField>
           {/* 两个按钮各带 key：同类型同位置的元素会被 React 复用，发送按钮会从停止按钮的不透明度过渡到禁用态，结束时闪一下。 */}
           {streaming ? (
             <button
