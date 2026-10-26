@@ -1,11 +1,11 @@
 ---
 name: lyjwpage-swe-loop
-description: lyjwpage 里开 PR 前（或开了之后）让 Devin 的 swe-2-max 循环审一个改动、直到双方都认可时用：只读审查，默认 3 轮，发现分 blocker / should / nit，Claude 逐条核实、按最小改动修或带证据驳回。lyjw 说「swe loop」「让 swe-2-max 审一下」时用。
+description: lyjwpage 里开 PR 前（或开了之后）让 Devin 的 swe-2-max 循环审一个改动、直到双方都认可时用：只读审查，默认 3 轮，发现分 blocker / should / nit，Claude 逐条核实、按最小改动修或带证据驳回。线程判为大改动（开 PR 后要贴 `needs-judge` 的那种）时开 PR 前自己跑，不等 lyjw 开口；lyjw 说「swe loop」「让 swe-2-max 审一下」时也用。
 ---
 
 # swe-loop
 
-照 Theo 的 [tstack `sol-loop`](https://github.com/t3dotgg/tstack/blob/main/skills/sol-loop/SKILL.md) 改的：审查员从 GPT Sol 换成容器里 Devin CLI 的 `swe-2-max`（免费档，不扣 Devin 限额）。目的是开 PR 前多一双不同模型的眼睛，不是替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
+照 Theo 的 [tstack `sol-loop`](https://github.com/t3dotgg/tstack/blob/main/skills/sol-loop/SKILL.md) 改的：审查员从 GPT Sol 换成容器里 Devin CLI 的 `swe-2-max`（免费档，不扣 Devin 限额）。目的是开 PR 前多一双不同模型的眼睛，什么时候跑和叫不叫 Opus 判定员是同一个判断：线程判为大改动就跑，小改动、文档与 skill 不跑。它不替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
 
 为了让审查员满意只做最小的改动。防范范围蔓延，该驳回就驳回。
 
@@ -29,7 +29,7 @@ description: lyjwpage 里开 PR 前（或开了之后）让 Devin 的 swe-2-max 
 
 - **只读工作区**：`git worktree add --detach <scratchpad>/wt/swe-<task> <head>`，在里面 `pnpm install --frozen-lockfile --prefer-offline` 和 `pnpm typecheck`（沙箱里没网、要生成类型）。未提交的改动先提交成 WIP 再建，审查员看不到主检出。
 - **不自动批写入**：`dv start swe-<task> --cwd <worktree> --brief r1.md --model swe-2-max --no-auto-approve --nice 10`。`wait` 返回 4 且是写入菜单时 `dv deny swe-<task> 'Review only. Put it in your reply.'`。
-- `dv wait swe-<task> --timeout 1800` 放进 Bash `run_in_background`。审查进行时不改送审的文件，不轮询，不起第二个审查员。超时、报错、没回话都不算通过：`dv stop`，确认退出，带着账本重起。
+- `dv wait swe-<task> --timeout 1800` 放进 Bash `run_in_background`。审查进行时不改送审的文件，不轮询，不起第二个审查员。超时、报错、没回话都不算通过：`dv stop`，确认退出，带着账本重起一次；还是不成（Devin 起不来、限流重置超过 `--timeout`），汇报里记一句「swe-loop 没跑成」，照常开 PR，不挡合并。
 - 用 swe-2-max，不换 Fusion：要的是另一种模型的视角。免费档限流时 `wait` 自己等到重置（见 dv-dispatch「免费档限流」）。
 
 第 1 轮任务书（英文，Devin 看不到对话）：
