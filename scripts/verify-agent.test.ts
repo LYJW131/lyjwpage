@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { childEnv, filterGrepOutput, forbiddenRead, inside, readAllowed, realInside, sandboxed } from "./verify-agent/guard.ts";
-import { removedIdentifiers } from "./verify-agent/tools.ts";
+import { docsSyncTool, removedIdentifiers } from "./verify-agent/tools.ts";
 
 test("childEnv：凭据与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
   const env = childEnv(
@@ -90,4 +91,22 @@ test("filterGrepOutput：递归搜到 .env*、.dev.vars 里的行去掉（路径
   const { text, dropped } = filterGrepOutput(out, "/repo");
   assert.equal(dropped, 4);
   assert.equal(text, ["src/a.ts:3: MARK", "README.md-4- context", "无法解析的一行"].join("\n"));
+});
+
+test("docs_sync：搜 HEAD 里的文字，工作区的 .claude/ 被换回目标分支的版本也不影响", async (t) => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "docs-sync-"));
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd: repo });
+  git("init", "-q");
+  fs.mkdirSync(path.join(repo, ".claude"));
+  fs.writeFileSync(path.join(repo, ".claude/skill.md"), "用 OLD_LIMIT 判断\n");
+  git("add", "-A");
+  git("commit", "-qm", "base");
+  fs.writeFileSync(path.join(repo, ".claude/skill.md"), "用 NEW_LIMIT 判断\n");
+  git("commit", "-qam", "head");
+  fs.writeFileSync(path.join(repo, ".claude/skill.md"), "用 OLD_LIMIT 判断\n");
+  const tool = docsSyncTool({ cwd: repo, base: "HEAD~1", tmpDir: repo, run: async () => ({ code: 0, output: "" }), workLog: () => null });
+  const out = (await tool.execute("1", { keywords: ["OLD_LIMIT", "NEW_LIMIT"], auto: false })).content[0].text;
+  assert.match(out, /「OLD_LIMIT」：文档里 0 处/);
+  assert.match(out, /「NEW_LIMIT」：1 处\n {2}\.claude\/skill\.md（这次改了）：1:用 NEW_LIMIT 判断/);
 });

@@ -82,14 +82,18 @@ export function docsSyncTool(ctx: ToolContext) {
       if (!keywords.length) return text("没有可搜的关键词：给 keywords。");
       const lines: string[] = [];
       for (const keyword of keywords) {
+        // 搜 HEAD 的树、不搜工作区：verify-agent action 已把工作区的 .claude/ 换成默认分支的版本
         const out = (() => {
           try {
-            return git(ctx.cwd, ["grep", "-n", "-I", "-F", "--no-color", "-e", keyword, "--", ...DOC_SCOPES]);
+            return git(ctx.cwd, ["grep", "-n", "-I", "-F", "--no-color", "-e", keyword, "HEAD", "--", ...DOC_SCOPES]);
           } catch {
             return "";
           }
         })();
-        const hits = out.split("\n").filter(Boolean);
+        const hits = out
+          .split("\n")
+          .filter(Boolean)
+          .map((hit) => hit.replace(/^HEAD:/, ""));
         if (!hits.length) {
           lines.push(`「${keyword}」：文档里 0 处`);
           continue;
