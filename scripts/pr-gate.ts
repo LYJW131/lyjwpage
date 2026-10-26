@@ -28,7 +28,7 @@ ready 只管机器核得了的门槛；分档提示写着要 lyjw 看图点头�
 JSON 里有：
   head、draft、mergeable、labels / baselineException
   author        PR 作者的 login、数字 id、是不是 lyjw 的账号（trusted）；不是的整个 PR 按逻辑档走回执与判定，--need、--no-judge 不放行
-  tier          按改动路径分档：docs（只改 md 与 .claude/ 下的非可执行文件）、ui（界面）、logic（逻辑，含 .claude 的 settings、launch、hooks、feature-map，
+  tier          按改动路径分档（lyjw 的账号开的 PR 里只改了注释的 JS / TS 文件按 docs 算）：docs（只改 md 与 .claude/ 下的非可执行文件）、ui（界面）、logic（逻辑，含 .claude 的 settings、launch、hooks、feature-map，
                 docs/ 下的脚本与依赖清单，public/ 下的 js、html、svg、xml、_headers）、ui+logic；
                 决定默认的 --need 与 --judge，hint 写这一档的合并门槛
   checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列；

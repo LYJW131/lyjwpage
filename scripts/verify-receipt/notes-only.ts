@@ -39,7 +39,7 @@ function ensureCommits(...shas: string[]) {
     try {
       execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" });
     } catch {
-      execFileSync("git", ["fetch", "-q", "origin", sha], { stdio: "ignore" });
+      execFileSync("git", ["fetch", "-q", "origin", sha], { stdio: "ignore", timeout: 30_000 });
     }
   }
 }
