@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { coreRoundTime, driveCoreRound } from "./core-round.ts";
+import { driveCoreRound } from "./core-round.ts";
 
 test("每分钟把采集 cron 的 scheduledTime 原样交给 core 的 cronRound", async () => {
   const calls: number[] = [];
@@ -14,11 +14,4 @@ test("core 这一轮抛错或还没有 cronRound 时只记 warn，不让采集�
   await driveCoreRound({ cronRound: async () => { throw new Error("The RPC receiver does not implement the method \"cronRound\"."); } }, 0);
   assert.equal(warn.mock.callCount(), 1);
   assert.match(String(warn.mock.calls[0]?.arguments[1]), /cronRound/);
-});
-
-test("投递迟到时 core 那一轮改按收到的时刻跑，按时的照旧带 scheduledTime", () => {
-  const scheduled = Date.parse("2026-10-26T00:37:29.861Z");
-  assert.equal(coreRoundTime(scheduled, scheduled + 1_500), scheduled);
-  const arrived = Date.parse("2026-10-26T01:23:17Z");
-  assert.equal(coreRoundTime(scheduled, arrived), arrived);
 });

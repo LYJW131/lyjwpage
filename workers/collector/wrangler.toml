@@ -56,6 +56,14 @@ id = "c24d1670d97b4649ab5aa4c0944dfbfc"
 binding = "APPLE_CACHE"
 id = "da83c6ece9694300b707cb87c915610c"
 
+[[durable_objects.bindings]]
+name = "CRON_SLOTS"
+class_name = "CronSlots"
+
+[[migrations]]
+tag = "v1-cron-slots"
+new_sqlite_classes = ["CronSlots"]
+
 [[d1_databases]]
 binding = "HISTORY"
 database_name = "lyjwpage-history"
