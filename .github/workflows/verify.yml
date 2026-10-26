@@ -183,7 +183,7 @@ jobs:
           retention-days: 90
 
   # A/B 对照的 B 组：同一份提示词交给 pi 验证员（scripts/verify-agent.ts），结果只进产物、不发回执，publish 不等它。
-  # 实验任务出错只标出来：pr-gate 把任何没成功的检查都算没过，所以每个会失败的步骤都 continue-on-error，job 本身总是绿的
+  # 实验任务出错只标出来：pr-gate 按 scripts/pr-gate/checks.ts#ADVISORY_CHECKS 不计它，步骤再都 continue-on-error，免得 PR 的 Checks 页红一片
   verify-pi:
     needs: plan
     if: needs.plan.outputs.need != ''
@@ -196,6 +196,7 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v5
+        continue-on-error: true
         with:
           ref: ${{ needs.plan.outputs.head }}
           fetch-depth: 0

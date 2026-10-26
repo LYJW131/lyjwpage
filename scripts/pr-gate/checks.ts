@@ -28,6 +28,9 @@ export function newestByName(runs: CheckRun[]) {
   return newest;
 }
 
+// 实验任务按 scripts/AGENTS.md 不挡合并：跑着、没成功都只列在 items 里，不进 pending / failing
+export const ADVISORY_CHECKS = ["verify-pi"];
+
 const passed = (run: CheckRun) => run.status === "completed" && ["success", "neutral", "skipped"].includes(run.conclusion ?? "");
 const built = (run: CheckRun) => run.status === "completed" && run.conclusion === "success";
 
@@ -50,8 +53,8 @@ export function summarizeChecks(runs: CheckRun[], statuses: Status[]) {
   ];
   return {
     items: items.map(({ name, result }) => ({ name, result })),
-    pending: items.filter((item) => !item.done).map((item) => item.name),
-    failing: items.filter((item) => item.done && !item.ok).map(({ name, result, url }) => ({ name, result, url })),
+    pending: items.filter((item) => !item.done && !ADVISORY_CHECKS.includes(item.name)).map((item) => item.name),
+    failing: items.filter((item) => item.done && !item.ok && !ADVISORY_CHECKS.includes(item.name)).map(({ name, result, url }) => ({ name, result, url })),
   };
 }
 

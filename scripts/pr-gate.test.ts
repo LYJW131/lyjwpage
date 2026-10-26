@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  ADVISORY_CHECKS,
   buildCoverage,
   buildThreads,
   CODEX_MAX_ROUNDS,
@@ -307,6 +308,25 @@ test("head 上还没有 CI 的 check 时不 ready", async () => {
 test("REQUIRED_CHECKS 都是 CI 工作流里的 job", () => {
   const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   for (const name of REQUIRED_CHECKS) assert.match(workflow, new RegExp(`^  ${name}:$`, "m"));
+});
+
+test("实验任务的检查跑着或失败都不挡 ready，只列在 items 里", async () => {
+  for (const run of [
+    { name: "verify-pi", status: "in_progress", conclusion: null },
+    { name: "verify-pi", status: "completed", conclusion: "cancelled" },
+  ]) {
+    const routes = pullRoutes({ [`commits/${HEAD}/check-runs`]: { check_runs: [{ name: "check", status: "completed", conclusion: "success" }, run] } });
+    const result = await gate({ pr: 7 }, { fetch: fakeFetch(routes), patchId: () => null });
+    assert.deepEqual(result.checks.pending, []);
+    assert.deepEqual(result.checks.failing, []);
+    assert.ok(result.checks.items.some((item) => item.name === "verify-pi"));
+    assert.equal(result.ready, true);
+  }
+});
+
+test("ADVISORY_CHECKS 都是 Verify 工作流里的 job", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
+  for (const name of ADVISORY_CHECKS) assert.match(workflow, new RegExp(`^  ${name}:$`, "m"));
 });
 
 test("要判定时 Claude review 与 Devin 都得审过一次，盖没盖住 head 不管", async () => {

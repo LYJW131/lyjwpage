@@ -13,6 +13,7 @@ import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
 
 export { buildCoverage } from "./pr-gate/checks.ts";
 export { REQUIRED_CHECKS } from "./pr-gate/decide.ts";
+export { ADVISORY_CHECKS } from "./pr-gate/checks.ts";
 export type { CheckRun } from "./pr-gate/github.ts";
 export { CODEX_MAX_ROUNDS, reviewerSummary, type Reviewer } from "./pr-gate/reviewers.ts";
 export { buildThreads, severityOf, type Level } from "./pr-gate/threads.ts";
@@ -30,6 +31,7 @@ JSON 里有：
                 docs/ 下的脚本与依赖清单，public/ 下的 js、html、svg、xml、_headers）、ui+logic；
                 决定默认的 --need 与 --judge，hint 写这一档的合并门槛
   checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列；
+                ADVISORY_CHECKS 里的实验任务只列在 items 里，不进 pending 与 failing；
                 REQUIRED_CHECKS 里的检查 head 上还没出现时不算 ready
   workersBuilds expected 是按 PR 改动与分支 Preview 的监视路径（scripts/build-watch-paths.ts）算出该有的构建，结论要是 success；
                 head 上没有、但更早的提交上构建成功且之后的改动没碰到它的路径，记 carried；afterMerge 是合进 main 后会重建的 Worker
