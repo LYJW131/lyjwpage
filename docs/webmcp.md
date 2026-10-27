@@ -29,4 +29,13 @@ API 只在 Chrome 149 及以上可用，需打开开关或站点加入 origin tr
 5. 让 agent 调：Chrome 网上应用店的 Model Context Tool Inspector 扩展（填 Gemini API key），或 [chrome-devtools-mcp](https://developer.chrome.com/docs/devtools/agents/webmcp-debugging) 加 `--categoryExperimentalWebmcp` 后用 `list_webmcp_tools`、`execute_webmcp_tool`。
 6. 本地或 Playwright 自带的 Chromium：启动参数加 `--enable-features=WebMCPTesting`，页面需是安全上下文（`https` 或 `localhost`）。
 
+7. Lighthouse 的 Agentic Browsing 类别有三项 WebMCP 检查（已注册工具、schema 有效、表单覆盖）。PageSpeed Insights 的浏览器没开 WebMCP，本站又没有 origin trial 令牌，三项都是「不适用」；要看结果就在本地跑，打开同一个开关：
+
+   ```sh
+   npx lighthouse@latest <页面地址> --only-categories=agentic-browsing \
+     --chrome-flags="--headless=new --enable-features=WebMCPTesting"
+   ```
+
+   表单覆盖一项会列出首页对话的输入框没有声明式标注：它会调模型、要过人机验证，有意不注册成工具。
+
 注册失败只在控制台打一条 `WebMCP registration failed`，不上报。
