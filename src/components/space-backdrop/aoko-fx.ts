@@ -1,7 +1,7 @@
 // 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、
 // 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）；掌心的蓄力与发射在 aoko-cannon.ts。
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
-import { palmCannon, palmPose } from "./aoko-cannon";
+import { palmCannon } from "./aoko-cannon";
 import { floorPainter, floorTextures } from "./aoko-floor";
 import { BOKEH, type FxState, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 import { type Hand, type HandPose, armRings, cutArm, glints } from "./aoko-rings";
@@ -187,7 +187,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     const { power, t, still } = state;
     begin(ctx);
     armRings(ctx, s, state, false);
-    if (hand) cutArm(ctx, hand, pose, palmPose(cannonSince(state)));
+    if (hand) cutArm(ctx, hand, pose);
     // 闲置时电弧每几秒噼啪一阵，蓄力起持续闪；闪烁按 70ms 一格取随机亮度。
     const win = Math.floor(t / 3.2);
     const burst = (t % 3.2) - hash(win) * 2.4;

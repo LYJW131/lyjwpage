@@ -1,4 +1,4 @@
-import { HAND_BOX, HANDS, PALM_LIT_GLSL, palmLight, palmPose } from "./aoko-cannon";
+import { PALM_LIT_GLSL, palmLight } from "./aoko-cannon";
 import { aokoFx, cannonSince, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
 import { smooth } from "./aoko-paint";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
@@ -57,7 +57,7 @@ const REFRACT = ARM_RING_SHAPES.rings
 const VERT = `attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `precision mediump float;
-uniform sampler2D img,rig,faces,arm,fill,armN,hands;uniform float t,lid,glow,flash,appear,shutTile,cannon,pose;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
+uniform sampler2D img,rig,faces,arm,fill,armN;uniform float t,lid,glow,flash,appear,shutTile,cannon;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
 const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
@@ -129,10 +129,7 @@ ${REFRACT}
   vec2 palm=vec2(${PALM[0]}.,${PALM[1]}.);
   vec2 dh=wg*(vec2(-.5,-1.)*5.*sin(t*.8+.4)+vec2(.4,-.3)*2.*sin(t*1.9)+(Q0-palm)*.014*(.5+.5*sin(t*2.4-.8)));
   vec2 au=(Q0-dh-AB)/AS;
-  vec2 pu=(Q0-dh-vec2(${HAND_BOX[0]}.,${HAND_BOX[1]}.))/${HAND_BOX[2]}.;
-  vec2 pt=(vec2(pose-1.,0.)+clamp(pu,0.,1.))*.5;
-  vec4 ar;
-  if(pose>.5){vec4 hp=texture2D(hands,pt)*inside(pu);ar=vec4(hp.rgb*hp.a,hp.a);}else ar=texture2D(arm,clamp(au,0.,1.))*inside(au);
+  vec4 ar=texture2D(arm,clamp(au,0.,1.))*inside(au);
   c=ar+c*(1.-ar.a);
   const vec3 GLOW=vec3(.45,.9,1.);
   float pulse=.5+.5*sin(t*2.4);
@@ -144,7 +141,7 @@ ${REFRACT}
   float near=texture2D(img,s+vec2(px.x,0.)).a+texture2D(img,s-vec2(px.x,0.)).a+texture2D(img,s+vec2(0.,px.y)).a+texture2D(img,s-vec2(0.,px.y)).a;
   float rim=clamp((c.a-near*.25)*2.,0.,1.);
   base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
-  if(cannon>0.){vec4 nm;if(pose>.5)nm=texture2D(hands,pt+vec2(0.,.5))*inside(pu);else nm=texture2D(armN,clamp(au,0.,1.))*inside(au);base=palmLit(base,nm,ar.a,Q0-dh,P,cannon);}
+  if(cannon>0.){vec4 nm=texture2D(armN,clamp(au,0.,1.))*inside(au);base=palmLit(base,nm,ar.a,Q0-dh,P,cannon);}
   c.rgb=base*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
   c.rgb+=smoothstep(170.,20.,length(P-ORB))*(.05+.09*pulse)*GLOW*c.a;
@@ -169,7 +166,7 @@ type AokoOptions = {
   summon?: boolean;
 };
 
-export const preloadAoko = () => [...[SRC, RIG, FACE_ATLAS, ARM, FILL, ARM_NORMAL, HANDS].map(loadImage), ...preloadFx()];
+export const preloadAoko = () => [...[SRC, RIG, FACE_ATLAS, ARM, FILL, ARM_NORMAL].map(loadImage), ...preloadFx()];
 
 // 手层在手掌一带（wg=1）的位移，须与 FRAG 里的 dh 同步：平移 d，再以掌心为中心放大 zoom。
 function handPose(t: number): HandPose {
@@ -181,7 +178,7 @@ function handPose(t: number): HandPose {
 // 闲置时也带一层蓝紫重打光：人站在亮着的法阵里，对照 img0611（原色）与 img0612（被法阵照亮）。
 const glowOf = ({ power, flash }: FxState) => 0.32 + 0.55 * power + 0.25 * flash;
 
-function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTMLImageElement, faces: HTMLImageElement, arm: HTMLImageElement, fill: HTMLImageElement, armNormal: TexImageSource, hands: TexImageSource) {
+function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTMLImageElement, faces: HTMLImageElement, arm: HTMLImageElement, fill: HTMLImageElement, armNormal: TexImageSource) {
   const gl = canvas.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
   if (!gl) return null;
   const shader = (type: number, source: string) => {
@@ -219,15 +216,12 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   texture(3, arm, true);
   texture(4, fill, true);
   texture(5, armNormal, false);
-  // 图集下行是法线，不能预乘，颜色那行在着色器里自己乘 alpha。
-  texture(6, hands, false);
   gl.uniform1i(gl.getUniformLocation(program, "img"), 0);
   gl.uniform1i(gl.getUniformLocation(program, "rig"), 1);
   gl.uniform1i(gl.getUniformLocation(program, "faces"), 2);
   gl.uniform1i(gl.getUniformLocation(program, "arm"), 3);
   gl.uniform1i(gl.getUniformLocation(program, "fill"), 4);
   gl.uniform1i(gl.getUniformLocation(program, "armN"), 5);
-  gl.uniform1i(gl.getUniformLocation(program, "hands"), 6);
   const time = gl.getUniformLocation(program, "t");
   const lid = gl.getUniformLocation(program, "lid");
   const faceAt = gl.getUniformLocation(program, "face");
@@ -236,11 +230,10 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
   const burst = gl.getUniformLocation(program, "flash");
   const appearAt = gl.getUniformLocation(program, "appear");
   const cannonAt = gl.getUniformLocation(program, "cannon");
-  const poseAt = gl.getUniformLocation(program, "pose");
   const riftAt = gl.getUniformLocation(program, "rift");
   const riftData = new Float32Array(RIFTS * 3);
 
-  return (t: number, closed: number, face: Face, light: number, flash: number, appear: number, cannon: number, pose: number) => {
+  return (t: number, closed: number, face: Face, light: number, flash: number, appear: number, cannon: number) => {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -252,7 +245,6 @@ function rigRenderer(canvas: HTMLCanvasElement, art: HTMLImageElement, rig: HTML
     gl.uniform1f(burst, flash);
     gl.uniform1f(appearAt, appear);
     gl.uniform1f(cannonAt, cannon);
-    gl.uniform1f(poseAt, pose);
     gl.uniform3fv(riftAt, rifts(t, riftData));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
@@ -275,8 +267,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   parent.appendChild(root);
   const fx = aokoFx(back, front);
 
-  let render: ((t: number, closed: number, face: Face, light: number, flash: number, appear: number, cannon: number, pose: number) => void) | null = null;
-  let posed = false;
+  let render: ((t: number, closed: number, face: Face, light: number, flash: number, appear: number, cannon: number) => void) | null = null;
   const faces = faceDirector();
   let stopped = false;
   let raf = 0;
@@ -307,7 +298,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   const draw = (t: number, closed = 0) => {
     const state = still ? STILL : fxState(t);
     const p = revealAt === null ? 1 : (t - revealAt) / REVEAL_S;
-    render?.(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), palmLight(cannonSince(state)), posed ? palmPose(cannonSince(state)) : 0);
+    render?.(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), palmLight(cannonSince(state)));
     if (revealAt === null) return fx.render(state, handPose(t));
     front.style.opacity = String(smooth(0.7, 1, p));
     fx.render(state, handPose(t), { floor: smooth(0, 0.25, p), ring: smooth(0.55, 0.85, p) });
@@ -339,15 +330,14 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   };
   layout();
 
-  // 法线与手势图集只给光炮用，缺了立绘照常挂：顶替的 1×1 透明图让着色器读到 alpha 0，缺法线时手按朝前的法线照样打光（没有手指侧面的明暗），缺图集时不换手势。
+  // 法线图只给光炮打光用，缺了立绘照常挂：顶替的 1×1 透明图让着色器读到 alpha 0，手按朝前的法线照样打光（没有手指侧面的明暗）。
   const optional = (src: string) => loadImage(src).catch(() => null);
-  void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(FACE_ATLAS), loadImage(ARM), loadImage(FILL), optional(ARM_NORMAL), optional(HANDS), fx.ready]).then(([art, rig, faces, arm, fill, armNormal, hands]) => {
+  void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(FACE_ATLAS), loadImage(ARM), loadImage(FILL), optional(ARM_NORMAL), fx.ready]).then(([art, rig, faces, arm, fill, armNormal]) => {
     if (stopped) return;
     const blank = document.createElement("canvas");
     blank.width = blank.height = 1;
-    posed = hands !== null;
-    fx.setHand({ img: arm, box: ARM_BOX, palm: PALM, ...(hands && { poses: { img: hands, box: HAND_BOX, count: 2 } }) });
-    render = rigRenderer(canvas, art, rig, faces, arm, fill, armNormal ?? blank, hands ?? blank);
+    fx.setHand({ img: arm, box: ARM_BOX, palm: PALM });
+    render = rigRenderer(canvas, art, rig, faces, arm, fill, armNormal ?? blank);
     if (!render) {
       // 回退也做成 render：layout 重设画布尺寸会清空位图，要能重画，不然调整窗口后人物就没了。
       // 着色器编译或链接失败时画布已经绑了 WebGL 上下文，再要 2D 上下文只会拿到 null，所以换一张新画布。

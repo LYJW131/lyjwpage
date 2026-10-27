@@ -152,11 +152,10 @@ export function glints(ctx: CanvasRenderingContext2D, t: number, power: number) 
 }
 
 export type HandPose = { dx: number; dy: number; zoom: number };
-// poses 是光炮换的手势图集（aoko-cannon.ts 的 HANDS），上行按格号排；which 为 0 时用立绘原来的手 img。
-export type Hand = { img: HTMLImageElement; box: readonly number[]; palm: readonly number[]; poses?: { img: HTMLImageElement; box: readonly number[]; count: number } };
+export type Hand = { img: HTMLImageElement; box: readonly number[]; palm: readonly number[] };
 
 // 擦掉手层与袖子覆盖的地方，环在手腕那一侧的半圈就落在手和袖子后面、身体前面；手层的摆动按 aoko.ts 的 handPose 跟上。
-export function cutArm(ctx: CanvasRenderingContext2D, { img, box, palm, poses }: Hand, { dx, dy, zoom }: HandPose, which = 0) {
+export function cutArm(ctx: CanvasRenderingContext2D, { img, box, palm }: Hand, { dx, dy, zoom }: HandPose) {
   ctx.save();
   ctx.globalCompositeOperation = "destination-out";
   ctx.globalAlpha = 1;
@@ -169,9 +168,6 @@ export function cutArm(ctx: CanvasRenderingContext2D, { img, box, palm, poses }:
   ctx.translate(palm[0], palm[1]);
   ctx.scale(zoom, zoom);
   ctx.translate(dx - palm[0], dy - palm[1]);
-  if (which > 0 && poses) {
-    const w = poses.img.naturalWidth / poses.count;
-    ctx.drawImage(poses.img, (which - 1) * w, 0, w, w, poses.box[0], poses.box[1], poses.box[2], poses.box[3]);
-  } else ctx.drawImage(img, box[0], box[1], box[2], box[3]);
+  ctx.drawImage(img, box[0], box[1], box[2], box[3]);
   ctx.restore();
 }

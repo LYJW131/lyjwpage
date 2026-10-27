@@ -2,12 +2,9 @@
 """
 给青子伸出的手算法线图，供 aoko.ts 着色器按掌前光球打光。立绘是平面插画，没有几何：
 把手的不透明区域按勾线切开（手指、掌心各成一块），每块按到边缘的距离鼓起来，边缘朝外、中间朝前。
-法线图 RGB = 法线 xyz 映射到 0–1，A = 手的 alpha。
+输出与输入同尺寸，RGB = 法线 xyz 映射到 0–1，A = 手的 alpha。
 
-  # 单张：输出与输入同尺寸的法线图（闲置手层 public/mascots/aoko-arm.webp → aoko-arm-normal.webp）
-  uv run -q --with numpy --with scipy --with pillow python -I scripts/aoko-hand-normals.py <手.png|webp> <输出.webp>
-  # 图集：输入是横排 N 格的手势（每格覆盖 aoko-cannon.ts 的 HAND_BOX），输出两行，上行原样、下行对应的法线（→ public/mascots/aoko-hands.webp）
-  uv run -q --with numpy --with scipy --with pillow python -I scripts/aoko-hand-normals.py <横排.png> <输出.webp> --tiles N
+  uv run -q --with numpy --with scipy --with pillow python -I scripts/aoko-hand-normals.py public/mascots/aoko-arm.webp public/mascots/aoko-arm-normal.webp
 """
 import argparse
 import sys
@@ -39,23 +36,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("src")
     ap.add_argument("out")
-    ap.add_argument("--tiles", type=int)
     try:
         a = ap.parse_args()
     except SystemExit:
         sys.exit(2)
-    if a.tiles is not None and a.tiles < 1:
-        print(f"--tiles 要是正整数，收到 {a.tiles}", file=sys.stderr)
-        sys.exit(2)
     rgba = np.asarray(Image.open(a.src).convert("RGBA")).astype(np.float32) / 255
-    if a.tiles:
-        w = rgba.shape[1] // a.tiles
-        if w * a.tiles != rgba.shape[1]:
-            print(f"宽 {rgba.shape[1]} 不能整分成 {a.tiles} 格", file=sys.stderr)
-            sys.exit(2)
-        out = np.vstack([rgba, np.hstack([normals(rgba[:, i * w : (i + 1) * w]) for i in range(a.tiles)])])
-    else:
-        out = normals(rgba)
+    out = normals(rgba)
     # 有损 90 与无损肉眼无差、着色器分档的边也不抖，体积约三分之一；透明通道质量 50 同 scripts/aoko-fx-assets.ts。
     Image.fromarray((out * 255).round().clip(0, 255).astype(np.uint8), "RGBA").save(a.out, quality=90, alpha_quality=50)
 
