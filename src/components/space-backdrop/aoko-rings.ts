@@ -78,7 +78,6 @@ export function jags(k: number, r: number, t: number) {
   });
 }
 
-// 环上一闪一闪的星点：8 颗轮流挂在三圈环上，每颗 0.9 秒亮灭一次、换个位置。
 export function glints(t: number) {
   return Array.from({ length: 8 }, (_, i) => {
     const ring = ARM_SPOTS[i % ARM_SPOTS.length];

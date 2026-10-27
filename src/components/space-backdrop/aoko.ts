@@ -49,7 +49,6 @@ const loadAll = <K extends string>(srcs: Record<K, string>) =>
   Promise.all(Object.values<string>(srcs).map(loadImage)).then((imgs) => Object.fromEntries(Object.keys(srcs).map((k, i) => [k, imgs[i]])) as Record<K, HTMLImageElement>);
 
 export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false, summon = false }: AokoOptions) {
-  // 一张画布画整个场景：地面、身后光环、立绘、手臂环、电弧都在同一个 three 场景里按次序合成。
   let canvas = document.createElement("canvas");
   canvas.style.cssText = "position:absolute;top:0;";
   root.appendChild(canvas);

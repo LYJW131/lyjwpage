@@ -9,11 +9,8 @@ import { floor } from "./aoko-floor";
 // 顺序照原来 2D 背景画布：地面先画（source-over），其余都是叠加光。
 
 const THREAD = `${COLORS}void main(){gl_FragColor=vec4(THREAD,1.)*q.x*(1.-v.y);}`;
-// 散景：0.7 半径内从 a 降到 0.7a，往外落到 0。
 const BOKEH_FRAG = `void main(){float r=length(v*2.-1.);float a=r<.7?mix(1.,.7,r/.7):mix(.7,0.,clamp((r-.7)/.3,0.,1.));gl_FragColor=vec4(q.rgb,1.)*q.a*a;}`;
-// 光环外侧那圈蓝晕：半径 0.8R 到 1.18R 之间先亮后暗。
 const HALO = `${COLORS}uniform float a;varying vec2 v;void main(){float r=length(v*2.-1.)*1.2;float k=clamp((r-.8)/.38,0.,1.);gl_FragColor=vec4(SKY,1.)*a*(1.-abs(k*2.-1.))*step(.8,r)*step(r,1.18);}`;
-// 穿过圆心的一横一竖两道细线：往两头淡掉。
 const LINE = `${COLORS}uniform float a;varying vec2 v;void main(){gl_FragColor=vec4(WHITE,1.)*a*(1.-abs(v.x*2.-1.));}`;
 
 const BOKEH_RGB = BOKEH.map(channels);
@@ -27,7 +24,6 @@ export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInne
   const bokeh = quads(10, BOKEH_FRAG, {}, 2);
   group.add(threads.mesh, bokeh.mesh);
 
-  // 光环整组随胀缩一起缩放，横竖两道细线也在组里。
   const ring = new Group();
   ring.position.set(RING_X, RING_Y, 0);
   group.add(ring);

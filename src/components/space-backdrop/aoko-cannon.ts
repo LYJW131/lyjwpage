@@ -23,7 +23,6 @@ const SPIN_EASE_S = 0.35;
 const RING_AT = 0.14;
 // 减少动态效果时停在长满手掌那一刻，不留半截点亮。
 const STILL_SINCE = -0.3;
-// 云团轮廓的控制点数。
 const LOBES = 9;
 
 export const cannonSince = ({ t, still }: FxState) => (still ? STILL_SINCE : (t % CYCLE) - FIRE);
@@ -35,7 +34,7 @@ export function palmLight(at: number) {
   return (1 - smooth(0, 0.5, at)) * (1 + 0.5 * Math.exp(-at * 10));
 }
 
-// 云团一样的鼓包轮廓：一圈随机角度、随机半径的控制点，按角度平滑插值出边界半径，横向拉长 1.25、纵向压到 0.85。
+// 云团一样的鼓包轮廓：参考帧里光团边缘是圆鼓的，不是尖刺。
 function lobes(seed: number, rough: number, out: Float32Array) {
   for (let i = 0; i < LOBES; i++) {
     out[i * 2] = ((i + hash(seed * 13 + i) * 0.5) / LOBES) * TAU;
@@ -50,7 +49,7 @@ const BILLOW = `float billow(vec2 p,float r,vec2 l[${LOBES}]){
   if(a>=a0){float s=(a-a0)/max(l[0].x+${TAU.toFixed(6)}-a0,.001);k=mix(k0,l[0].y,s*s*(3.-2.*s));}
   return smoothstep(1.5,-1.5,length(q)-r*k);
 }`;
-// 光团（各部分叠加光）：外围一圈淡紫蓝的晕、云团状的本体（白芯到淡紫蓝边，边上仍够亮，鼓包轮廓才看得出）、中间一块更白的小云团、一道横向的细亮痕。size 是本体半径，quad 半边 3·size。
+// 光团本体边上仍要够亮，鼓包轮廓才看得出。size 是本体半径，四边形半边 3·size。
 const BLOB = `${COLORS}uniform float size,e;uniform vec2 outer[${LOBES}],inner[${LOBES}];varying vec2 v;
 ${BILLOW}
 void main(){
@@ -65,9 +64,7 @@ void main(){
   float streak=step(abs(p.y),1.)*step(abs(p.x),size*1.7)*(1.-abs(p.x)/(size*1.7))*.6*e;
   gl_FragColor=c+vec4(WHITE,1.)*streak;
 }`;
-// 径向光：中心 a，到 0.3 处 0.7a，边上 0。
 const GLOW = `${COLORS}uniform float a;varying vec2 v;void main(){float r=length(v*2.-1.);gl_FragColor=(r<.3?mix(vec4(WHITE,1.)*a,vec4(WHITE,1.)*.7*a,r/.3):mix(vec4(WHITE,1.)*.7*a,vec4(CORE,1.)*0.,clamp((r-.3)/.7,0.,1.)));}`;
-// 细长光线：从根部到尖收成一点，颜色沿长度从 q.rgb·q.a 淡到 0。
 const RAY = `void main(){float w=1.-v.x;float m=smoothstep(w+.08,w-.08,abs(v.y*2.-1.));float a=v.x<.5?mix(1.,.7,v.x*2.):mix(.7,0.,v.x*2.-1.);gl_FragColor=vec4(q.rgb,1.)*q.a*a*m;}`;
 // 扩散环：宽 18 的蓝晕叠宽 3 的白线；r 和宽度单位都是原图像素。
 const RING = `${COLORS}uniform float r,a,span;varying vec2 v;void main(){float d=abs(length((v*2.-1.)*span)-r);gl_FragColor=(vec4(SKY,1.)*.4*smoothstep(9.,7.,d)+vec4(WHITE,1.)*.9*smoothstep(1.5,.5,d))*a;}`;

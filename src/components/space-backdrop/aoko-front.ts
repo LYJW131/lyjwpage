@@ -50,7 +50,6 @@ float line=max(step(abs(p.y),.5),step(abs(p.x),.5))*.8;gl_FragColor=(dot*step(r,
 // 电弧贴图是镜头整帧，电弧在帧边被截断；搬到立绘旁边后帧边会露成一条直线，所以四边渐隐。
 const BOLT = `uniform sampler2D map;uniform float alpha;varying vec2 v;
 void main(){vec2 e=vec2(min(v.x/.12,1.)*min((1.-v.x)/.12,1.),min(v.y/.12,1.)*min((1.-v.y)/.12,1.));gl_FragColor=texture2D(map,v)*alpha*e.x*e.y;}`;
-// 径向光：中心 c0，到 m 处 c1，边上 0。
 const ORB_FRAG = `${COLORS}uniform float a0,a1;varying vec2 v;void main(){float r=length(v*2.-1.);vec4 c=r<.35?mix(vec4(WHITE,1.)*a0,vec4(CORE,1.)*a1,r/.35):mix(vec4(CORE,1.)*a1,vec4(0.),clamp((r-.35)/.65,0.,1.));gl_FragColor=c;}`;
 
 // 炮口跟着手层摆：与立绘着色器里的 dh、上面的手挡板同一个变换。
