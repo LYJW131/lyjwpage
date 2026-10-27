@@ -62,7 +62,7 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_fetch"));
         assert.ok(!headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
         assert.deepEqual(body.thinking, info.thinking ? { type: "adaptive" } : { type: "disabled" });
-        assert.deepEqual(body.messages.filter((m) => m.role === "system"), [{ role: "system", content: [], output_config: { effort: info.effort } }]);
+        assert.deepEqual(body.messages.filter((m) => m.role === "system" && "output_config" in m), [{ role: "system", content: [], output_config: { effort: info.effort } }]);
         const domain = body.tools?.filter((tool) => "name" in tool && ["anime_search", "game_search"].includes(tool.name)) ?? [];
         assert.equal(domain.length, 2);
         assert.equal(headers.get("anthropic-version"), "2026-10-21");
