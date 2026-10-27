@@ -63,6 +63,10 @@ node .claude/skills/lyjwpage-ui-design/ui-audit.mjs --dark --only=digest # 深�
 
 修完把这次纠正写成 `DESIGN.md` 里一条能被人或脚本核对的句子（「组间距等于 inset」，而不是「更透气」）；能机检的，同时加进 `ui-audit.mjs`（看渲染结果）或 `scripts/design-scale-check.ts`（看源码里的类名）。改规则，不只手调这一张卡。
 
+## 要凭眼调的参数用调参页
+
+动效时长、缓动或弹簧参数、特效强度这类要 lyjw 看着定的值，不来回发截图问，做一页 HTML Artifact：真实组件或同样的动画，每个参数一个滑块，旁边实时显示当前值和一键重放；值存进 `localStorage`（读写包 try/catch），重发页面时不丢。lyjw 调好后回一句数值或截图，再写回代码。
+
 ## 外部设计 skill 怎么用
 
 这个 skill 的清单吸收了下面几个的要点，项目里不另装：
