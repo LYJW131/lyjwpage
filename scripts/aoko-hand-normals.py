@@ -2,10 +2,9 @@
 """
 给青子伸出的手算法线图，供 aoko-figure.ts 着色器按掌前光炮打光。立绘是平面插画，没有几何：
 把手的不透明区域按勾线切开（手指、掌心各成一块），每块按到边缘的距离鼓起来，边缘朝外、中间朝前。
-法线图 RGB = 法线 xyz 映射到 0–1，A = 手的 alpha。
+输出与输入同尺寸，RGB = 法线 xyz 映射到 0–1，A = 手的 alpha。
 
-  # 输出与输入同尺寸的法线图（手层 public/mascots/aoko-arm.webp → aoko-arm-normal.webp）
-  uv run -q --with numpy --with scipy --with pillow python -I scripts/aoko-hand-normals.py <手.png|webp> <输出.webp>
+  uv run -q --with numpy --with scipy --with pillow python -I scripts/aoko-hand-normals.py public/mascots/aoko-arm.webp public/mascots/aoko-arm-normal.webp
 """
 import argparse
 import sys
