@@ -20,6 +20,7 @@ import NotFound from "@/app/not-found";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { RestReady } from "@/components/rest-ready";
 import { SiteAnalytics } from "@/components/site-analytics";
+import { SiteWebMcp } from "@/components/site-webmcp";
 import { SpaceBackdrop } from "@/components/space-backdrop";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -130,6 +131,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <PwaRegistration />
         <RestReady />
         <SiteAnalytics />
+        <SiteWebMcp />
         <ScrollRestoration />
         <Scripts />
       </body>
