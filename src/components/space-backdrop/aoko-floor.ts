@@ -255,7 +255,8 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
 
   s.globalCompositeOperation = "lighter";
   const spark = ease(SPARK, u);
-  const fade = 1 - smooth(SPARK[0] + 0.04, SPARK[1], u);
+  // 进度 0 是还没开始（召唤白闪里、平时熄灭的暗场），光团要等进度动了才亮。
+  const fade = smooth(0, 0.02, u) * (1 - smooth(SPARK[0] + 0.04, SPARK[1], u));
   if (fade > 0) {
     s.globalAlpha = 1;
     const core = INNER_R * (0.2 + 0.4 * spark);
