@@ -5,17 +5,26 @@ base="https://raw.githubusercontent.com/LYJW131/lyjwpage/${LYJW_SETUP_REF:-main}
 dir="$(mktemp -d)"
 parts=(signing.sh browser-trust.sh devin.sh claude-user.sh)
 
+declare -A pid
 for f in "${parts[@]}"; do
-  curl -fsSL --retry 2 --max-time 30 "$base/$f" -o "$dir/$f" &
+  curl -fsSL --retry 2 --max-time 30 "$base/$f" -o "$dir/$f.part" &
+  pid[$f]=$!
 done
-wait
+for f in "${parts[@]}"; do
+  # A failed curl can leave a non-empty truncated file; only a clean exit promotes it.
+  if wait "${pid[$f]}"; then mv "$dir/$f.part" "$dir/$f"; fi
+done
 
+# Each part sees only the secrets it needs.
 run() {
-  [ -s "$dir/$1" ] || { echo "setup: failed to fetch $1" >&2; return 1; }
-  bash "$dir/$1"
+  local f="$1"; shift
+  local unset_args=()
+  for v in "$@"; do unset_args+=(-u "$v"); done
+  [ -s "$dir/$f" ] || { echo "setup: failed to fetch $f" >&2; return 1; }
+  timeout 1500 env "${unset_args[@]}" bash "$dir/$f"
 }
 
-run signing.sh || exit 1
-run browser-trust.sh || exit 1
-run devin.sh || echo "WARNING: devin.sh failed (see above); the rest of the setup continues" >&2
-run claude-user.sh || true
+run signing.sh DEVIN_SESSION_TOKEN || exit 1
+run browser-trust.sh AAPAY_SIGN_KEY_B64 DEVIN_SESSION_TOKEN || exit 1
+run devin.sh AAPAY_SIGN_KEY_B64 || echo "WARNING: devin.sh failed (see above); the rest of the setup continues" >&2
+run claude-user.sh AAPAY_SIGN_KEY_B64 DEVIN_SESSION_TOKEN || true

@@ -9,8 +9,8 @@ export PATH="$bin:$PATH"
 if ! command -v devin >/dev/null 2>&1; then
   # The installer ends with an interactive `devin setup`: give it empty stdin, then check.
   inst="$(mktemp)"
-  curl -fsSL https://cli.devin.ai/install.sh -o "$inst" || { echo "devin: cannot reach cli.devin.ai" >&2; exit 1; }
-  bash "$inst" </dev/null >/dev/null 2>&1 || true
+  curl -fsSL --max-time 60 https://cli.devin.ai/install.sh -o "$inst" || { echo "devin: cannot reach cli.devin.ai" >&2; exit 1; }
+  env -u AAPAY_SIGN_KEY_B64 -u DEVIN_SESSION_TOKEN timeout 300 bash "$inst" </dev/null >/dev/null 2>&1 || true
   rm -f "$inst"
   command -v devin >/dev/null 2>&1 || { echo "devin: install failed (allow cli.devin.ai and static.devin.ai)" >&2; exit 1; }
 fi
@@ -67,6 +67,7 @@ PY
 # Runs Devin in the OS sandbox (--sandbox = autonomous mode: no prompts, child processes may
 # write only the workspace, the current repo's .git minus hooks/config, and granted Write scopes).
 # Claude still calls plain `devin ...` or dv.py.
+rm -f "$bin/devin"
 cat > "$bin/devin" <<'WRAP'
 #!/usr/bin/env bash
 # DEVIN_WRAPPER (sandboxed) - written by the lyjwMain setup script.
