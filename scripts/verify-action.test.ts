@@ -109,7 +109,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   assert.deepEqual(lines.slice(0, 2), [`验证回执 ${HEAD}：verifier-blocked`, stampLine(stamp)]);
   assert.ok(lines.includes("| V1 | a\\|b<br>c | PASS | x<br>y |"));
   assert.match(receipt, /验证员自报 live-ui-verified，按清单对照改记 verifier-blocked/);
-  assert.match(receipt, /<img src="https:\/\/example.test\/home-375.png"/);
+  assert.match(receipt, /<details>\n<summary>截图（1 张）<\/summary>\n\n<img src="https:\/\/example.test\/home-375.png"/);
   const judge = judgeComment({
     stamp: { sha: HEAD, verdict: "FAIL", body: digest },
     report: { model: "claude-opus", verdict: "FAIL", asks: [{ ask: "换位置", met: false, evidence: "没改" }], regressions: [], fixes: ["换位置"] },

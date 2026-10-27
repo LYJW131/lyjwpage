@@ -2,7 +2,7 @@ import { LEVELS, PASSING_RANK, stampLine, stampTitle, type Stamp } from "../veri
 import type { ChecklistItem } from "./body.ts";
 
 export const RESULTS = ["PASS", "FAIL", "SKIPPED"] as const;
-const MAX_SHOTS = 12;
+const MAX_SHOTS = 4;
 const MAX_NOT_VERIFIED = 3;
 const BRIEF_CHARS = 160;
 
@@ -144,10 +144,8 @@ export function receiptComment({
   if (checklist.length === 0) lines.push("", "PR 描述里没有「验证清单」，验证员按 diff 自己挑的检查。");
   if (problems.length > 0) lines.push("", `问题：${problems.join("；")}。`);
   if (stamp.level !== claimed) lines.push("", `验证员自报 ${claimed}，按清单对照改记 ${stamp.level}。`);
-  if (shots.length > 0) {
-    lines.push("");
-    for (const shot of shots.slice(0, MAX_SHOTS)) lines.push(`<img src="${shot.url}" alt="${shot.name}" width="360">`);
-  }
+  // 截图默认折叠：lyjw 不逐张看，要看时展开
+  if (shots.length > 0) lines.push("", ...details(`截图（${Math.min(shots.length, MAX_SHOTS)} 张）`, shots.slice(0, MAX_SHOTS).map((shot) => `<img src="${shot.url}" alt="${shot.name}" width="360">`)));
   const table = ["| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |", ...report.rows.map((row) => `| ${cell(row.id)} | ${cell(row.check)} | ${cell(row.result)} | ${cell(row.evidence)} |`)];
   if (report.notVerified.length > MAX_NOT_VERIFIED || report.notVerified.some((item) => brief(item) !== item)) table.push("", "没验到（全部）：", ...report.notVerified.map((item) => `- ${item}`));
   lines.push("", ...details(`明细（${report.rows.length} 项）`, table));

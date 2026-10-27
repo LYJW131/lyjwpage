@@ -39,7 +39,7 @@ ${site}
 
 工作方法照 \`.claude/skills/lyjwpage-verify/SKILL.md\` 的「检查清单」与「回执」两节。里面写给主线程、会话 scratchpad、/mnt/project-files 的地方，在这里一律换成下面的目录。
 
-环境：依赖已装好；要跑 \`scripts/verify-action.ts\` 时前面加 \`GITHUB_OUTPUT=\`，不然它会写进这一步的输出文件；${ui ? "Playwright 的 Chromium 与 WebKit 已装，" : "Playwright 的 Chromium 已装（WebKit 的系统依赖只在界面档装），"}\`node scripts/site-verify.ts doctor --url <地址>\` 可自检。改了工作流用 \`actionlint\` 查（已在 PATH 上）。要给 lyjw 看的截图存到 ${outDir}/shots/（PNG，至多 12 张，文件名写清宽度、主题、引擎），其余产物放 ${outDir}/work/。
+环境：依赖已装好；要跑 \`scripts/verify-action.ts\` 时前面加 \`GITHUB_OUTPUT=\`，不然它会写进这一步的输出文件；${ui ? "Playwright 的 Chromium 与 WebKit 已装，" : "Playwright 的 Chromium 已装（WebKit 的系统依赖只在界面档装），"}\`node scripts/site-verify.ts doctor --url <地址>\` 可自检。改了工作流用 \`actionlint\` 查（已在 PATH 上）。${outDir}/shots/ 只放能一眼看出改动对不对的截图（PNG，通常一两张、至多 4 张，文件名写清宽度、主题、引擎）；过程截图、没变化的页面、重复的宽度与主题放 ${outDir}/work/，和其余产物一起。
 
 ${items}${again}
 
