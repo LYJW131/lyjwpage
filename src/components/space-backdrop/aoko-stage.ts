@@ -49,7 +49,7 @@ export function stage(canvas: HTMLCanvasElement) {
     return { scene, root };
   };
   // 两层：底层（地面、身后光环、立绘）直接画到画布；前景（手臂环、电弧、光球）先在离屏缓冲里叠加，再整张按 source-over 盖上去。
-  // 这和原来前景单独一张 2D 画布的合成一样：光叠得越亮，底下的立绘被压得越多，而不是直接加亮。
+  // 这样光叠得越亮，底下的立绘被压得越多，而不是直接加亮。
   const base = flipped();
   const fore = flipped();
   const layer = new WebGLRenderTarget(1, 1, { samples: 4 });

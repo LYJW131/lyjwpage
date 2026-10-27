@@ -190,7 +190,7 @@ export function figure(images: Images) {
   mesh.position.set(SRC_W / 2, SRC_H / 2, 0);
   mesh.renderOrder = 50;
 
-  // 影子的糊半径按 CSS 像素给（和原来的 drop-shadow 一样），换算成原图像素要知道当前缩放，所以布局变了重画。
+  // 影子照 CSS drop-shadow 的算法，糊半径按 CSS 像素给，换算成原图像素要知道当前缩放，所以布局变了重画。
   const silhouette = document.createElement("canvas");
   const shadowTex: Texture = texture(silhouette);
   const shadowMat = new ShaderMaterial({

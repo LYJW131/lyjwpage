@@ -6,7 +6,7 @@ import { BOKEH, RIM, hash } from "./aoko-paint";
 import { floor } from "./aoko-floor";
 
 // 立绘身后的一层：地面法阵、往上飘的光丝、散景、竖直的大光环（img0628）。
-// 顺序照原来 2D 背景画布：地面先画（source-over），其余都是叠加光。
+// 地面先画（source-over），其余都是叠加光。
 
 const THREAD = `${COLORS}void main(){gl_FragColor=vec4(THREAD,1.)*q.x*(1.-v.y);}`;
 const BOKEH_FRAG = `void main(){float r=length(v*2.-1.);float a=r<.7?mix(1.,.7,r/.7):mix(.7,0.,clamp((r-.7)/.3,0.,1.));gl_FragColor=vec4(q.rgb,1.)*q.a*a;}`;
