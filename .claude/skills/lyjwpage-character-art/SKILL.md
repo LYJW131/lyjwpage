@@ -67,6 +67,7 @@ description: 改站点深色模式里的青子动态立绘，或给站点做新�
 
 ## 交付
 
+- 开 PR 就贴 `skip-verify` 标签：立绘改动不派验证员（lyjw 定的），合并前自己照 [pipeline.md](pipeline.md) 第 6 节跑一遍，结果写进 PR 描述。
 - 有外观变化就先给 lyjw 看图，点头再合（根 `AGENTS.md`「界面设计」）。
 - 提交前 `rg -n "__aoko" src` 应为空：截图用的临时钩子不进仓库。
 - lyjw 要制作过程海报时照 `HUMAN.md`「7. Claude 怎么向你汇报」。

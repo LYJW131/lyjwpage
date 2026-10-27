@@ -99,7 +99,8 @@ const advance = async (ms) => {
 };
 const prepare = async () => {
   // install 之后假时钟仍跟着真实时间走，截图、写文件的耗时也会推进动画：停住后只在 runFor 时前进，逐帧间隔才准。停住的状态跨整页重载保留。
-  if (!a.video) await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
+  // 取时间和暂停之间假时钟还在走，只领先 1 ms 会被追上（报「Cannot fast-forward to the past」），所以留 1 秒。
+  if (!a.video) await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.addStyleTag({ content: HIDE_DEV_UI });
   await page.clock.runFor(4000);
   await page.waitForTimeout(1500);
