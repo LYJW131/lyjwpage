@@ -8,6 +8,7 @@ import { ChatMarkdown } from "@/components/lazy-chat-markdown";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import type { ChatBubble, ChatDesign, ChatShownCard, DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
+import { splitNextSuggestion } from "@shared/god-chat-next";
 import { GOD_CHAT_TIER_INFO, lineupTiers, modelLabel, type GodChatLineup, type GodChatServedTier } from "@shared/god-chat-tiers";
 
 export type Reply = Omit<ChatBubble, "role" | "content">;
@@ -132,9 +133,9 @@ function DesignDivider() {
 }
 
 export function ReplyBody({
-  content,
+  content: reply,
   cards = [],
-  designAt,
+  designAt: replyDesignAt,
   live,
   awaiting,
   handoff,
@@ -150,6 +151,8 @@ export function ReplyBody({
   designConsentNode?: ReactNode;
   showDesignContent?: boolean;
 }) {
+  const content = splitNextSuggestion(reply).body;
+  const designAt = replyDesignAt === undefined ? undefined : Math.min(replyDesignAt, content.length);
   const parts: ReactNode[] = [];
   let from = 0;
   // 分隔线本身带确认框，恒显示；线后的文字、卡片和交接都属于设计内容，由 showDesignContent 统一把守。
@@ -167,7 +170,7 @@ export function ReplyBody({
         ),
       };
   const marks = [
-    ...cards.map(({ card, at, game }) => ({ at, design: true, node: <ChatCard key={game ? `${card}:${game}` : card} card={card} game={game} entering={live} /> })),
+    ...cards.map(({ card, at, game }) => ({ at: Math.min(at, content.length), design: true, node: <ChatCard key={game ? `${card}:${game}` : card} card={card} game={game} entering={live} /> })),
     ...(dividerMark ? [dividerMark] : []),
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {
