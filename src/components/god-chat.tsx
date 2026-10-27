@@ -671,7 +671,7 @@ function Conversation({ className, archive, session: conversation }: { className
           className="relative flex items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            answerAgentSubmit(event.nativeEvent, "The visitor sent the message to the homepage chat; the reply streams in on the page.");
+            answerAgentSubmit(event.nativeEvent, "The visitor submitted the message. A first-time visitor must accept the privacy notice before it is sent; the reply then appears in the chat on the page.");
             submit(draft);
           }}
         >
@@ -745,7 +745,7 @@ function Conversation({ className, archive, session: conversation }: { className
                 }
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
-                  submit(draft);
+                  event.currentTarget.form?.requestSubmit();
                 }
               }}
               maxLength={GOD_CHAT_LIMITS.maxMessageChars}
