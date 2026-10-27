@@ -13,7 +13,10 @@ const USAGE = `立绘截图：无头浏览器打开站点（深色模式），�
     [--frames 40 --step 16.7 --from 3]  从第 3 秒起每 16.7ms 一帧，共 40 帧（眨眼、头发逐帧）
     [--clip figure|face|viewport]       只截立绘画布、只截 FACE_BOX 那块脸，或整个视口
     [--face calm,grin --lid 0,1]        逐个强制表情与眼皮（先在代码里临时加 __aokoFace / __aokoLid，见 pipeline.md 第 3 节）
-    [--engine webkit] [--width 1920 --height 1080 --dpr 2] [--reduced-motion] [--video]
+    [--engine webkit] [--width 1920 --height 1080 --dpr 2] [--reduced-motion]
+    [--video]                           录一段真实时间的视频；加了它假时钟不停，--step 的间隔就不准了
+
+假时钟装好就停住，只在脚本推进时前进，所以 --step 是精确的帧间隔。
 
 截图写进 --out；最后一行打印 JSON：mounted 是否挂上了立绘（左侧留白太窄时本来就不挂），reloads 中途整页重载了几次（重载后已自动从头再按），
 失败的 /mascots/ 请求（非 2xx 的响应和根本没拿到响应的都算），页面错误（已滤掉本地连不上后端这类环境噪音）。
@@ -59,6 +62,7 @@ const num = (file, re) => {
 };
 const [SRC_W] = num("src/components/space-backdrop/aoko.ts", /const SRC_W = (\d+);/);
 const [PAD] = num("src/components/space-backdrop/aoko.ts", /const PAD = (\d+);/);
+const [REVEAL_S] = num("src/components/space-backdrop/aoko.ts", /const REVEAL_S = ([\d.]+);/);
 const FACE_BOX = num("src/components/space-backdrop/aoko-face.ts", /FACE_BOX = \[(\d+), (\d+), (\d+)\]/);
 
 const pw = (await resolvePlaywright())?.api;
@@ -94,6 +98,8 @@ const advance = async (ms) => {
   for (let left = ms; left > 0; left -= 250) await page.clock.runFor(Math.min(250, left));
 };
 const prepare = async () => {
+  // install 之后假时钟仍跟着真实时间走，截图、写文件的耗时也会推进动画：停住后只在 runFor 时前进，逐帧间隔才准。停住的状态跨整页重载保留。
+  if (!a.video) await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
   await page.addStyleTag({ content: HIDE_DEV_UI });
   await page.clock.runFor(4000);
   await page.waitForTimeout(1500);
@@ -165,6 +171,8 @@ if (+a.frames > 0) {
 }
 const faces = a.face.split(",").filter(Boolean);
 const lids = a.lid.split(",").filter(Boolean).map(Number);
+// 显形从脚往上，脸最后出来：没走完就截，强制的表情盖在还没显出的脸上。
+if (faces.length) await goTo(REVEAL_S);
 for (const face of faces) {
   for (const lid of lids.length ? lids : [0]) {
     await page.evaluate(([f, l]) => Object.assign(window, { __aokoFace: f, __aokoLid: l }), [face, lid]);

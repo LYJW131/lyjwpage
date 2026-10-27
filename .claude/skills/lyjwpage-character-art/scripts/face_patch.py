@@ -16,6 +16,7 @@ import argparse
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -143,9 +144,11 @@ def atlas(args):
     sheet = Image.new("RGBA", (cols * TILE_PX, rows * TILE_PX))
     for i in sorted(used):
         sheet.paste(Image.open(tiles / f"{names[i]}.png").convert("RGBA").resize((TILE_PX, TILE_PX), Image.LANCZOS), ((i % cols) * TILE_PX, (i // cols) * TILE_PX))
-    png = Path(args.out).with_suffix(".png")
-    sheet.save(png)
-    subprocess.run(["magick", str(png), "-define", "webp:alpha-quality=100", "-quality", "92", args.out], check=True)
+    # 中间 PNG 放临时目录：输出常是 public/mascots/，留在旁边会被当成新贴图提交上线。
+    with tempfile.TemporaryDirectory() as tmp:
+        png = Path(tmp) / "atlas.png"
+        sheet.save(png)
+        subprocess.run(["magick", str(png), "-define", "webp:alpha-quality=100", "-quality", "92", args.out], check=True)
     print(f"{args.out}: {len(used)} 格 → " + " ".join(f"{i}:{names[i]}" for i in sorted(used)))
 
 
