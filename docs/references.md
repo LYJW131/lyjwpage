@@ -203,7 +203,7 @@
   - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko-rings.ts`、`src/components/space-backdrop/aoko-summon.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[《魔法使之夜》剧场版官方账号的「魔法陣体験」视频](https://x.com/mahoyo_movie/status/2110295214434775288)**（@mahoyo_movie，マチ★アソビ vol.31 的地面投影装置）
   - 是什么：人蹲下触地后，地面投影的法阵从触地点展开：先亮一团光、溅出火星，长出一圈转着的弧形旋臂，旋臂冲出去拉直成铺满地面的长辐条，中心冒出几枚小圆印，宽刃由内往外填满，最后补上外环与印框；中段整面糊在泛光里，泛光退下去才露出符文与细线。
-  - 取了什么：各层出现的先后与节奏，压到 2.6 秒，落到站上地面法阵的贴图上：火星 → 内盘 img1627 的螺旋细线转着从中心长出去，同时伸出盘外成一圈弯辐条、边冲边拉直 → 四枚印依次弹出 → 宽刃由内往外填 → 内盘外环描一圈 → 外圈 img0640 由内到外三层（内环一组描圈、弦线一带擦出、符文带描圈）→ 泛光退去。内盘的宽块与细线靠一张开运算做出的遮罩拆开（`scripts/aoko-fx-assets.ts` 导出 floor-inner-fill）。透视不变。召唤时播一次，平时约四成的轮次里熄掉再展开一遍（这一条是 lyjw 加的，原视频没有）。
+  - 取了什么：各层出现的先后，以及按原片地面亮度曲线排的节奏（冲开、停一拍、再上一个台阶、泛光亮着微微起伏、暗一下再亮回清晰版），共 7 秒，每层出现时透明度从半透明升满；落到站上地面法阵的贴图上：火星 → 内盘 img1627 的螺旋细线转着从中心长出去，同时伸出盘外成一圈弯辐条、边冲边拉直 → 四枚印依次弹出 → 宽刃由内往外填 → 内盘外环描一圈 → 外圈 img0640 由内到外三层（内环一组描圈、弦线一带擦出、符文带描圈）→ 泛光退去、暗一下再亮回。内盘的宽块与细线靠一张开运算做出的遮罩拆开（`scripts/aoko-fx-assets.ts` 导出 floor-inner-fill）。透视不变。召唤时播一次，平时约四成的轮次里熄掉再展开一遍（这一条是 lyjw 加的，原视频没有）。
   - 状态：采用。落在 `src/components/space-backdrop/aoko-floor.ts#floorPainter` 与 `src/components/space-backdrop/aoko-fx.ts#FLOOR_UNFOLD_S`。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。

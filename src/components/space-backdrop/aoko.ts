@@ -296,7 +296,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     // 法阵等召唤那一下的白闪退了才展开，不然前半段全被盖住。
     const unfold = (p * REVEAL_S - SUMMON_FLASH_S) / FLOOR_UNFOLD_S;
     fx.render(state, handPose(t), { floor: Math.max(0, Math.min(1, unfold)), ring: smooth(0.55, 0.85, p) });
-    if (p >= 1) revealAt = null;
+    if (p >= 1 && unfold >= 1) revealAt = null;
   };
 
   const layout = () => {

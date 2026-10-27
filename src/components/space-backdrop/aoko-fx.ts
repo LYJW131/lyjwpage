@@ -1,7 +1,9 @@
 // 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、
 // 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）与发射瞬间的星芒（img0660）。
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
-import { floorPainter, floorTextures } from "./aoko-floor";
+import { FLOOR_UNFOLD_S, floorPainter, floorTextures } from "./aoko-floor";
+
+export { FLOOR_UNFOLD_S } from "./aoko-floor";
 import { BOKEH, type FxState, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 import { type Hand, type HandPose, armRings, cutArm, glints } from "./aoko-rings";
 
@@ -42,8 +44,6 @@ export function fxState(t: number): FxState {
 
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
-// 地面法阵从一点长到完整的时长，召唤时与平时重新点亮共用。
-export const FLOOR_UNFOLD_S = 2.6;
 // 平时法阵不定期熄灭再重新展开：约四成的轮次里，在蓄力之前的空档随机挑一刻淡出，暗一会儿再从中心长出来。
 // 第一轮不熄，召唤时刚展开过。
 const RELIGHT_CHANCE = 0.4;

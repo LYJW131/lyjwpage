@@ -18,25 +18,40 @@ const CIRCLE_SPAN = 1 / (EXTENT * RIM);
 const GLOW_TEX = 200;
 const TAU = Math.PI * 2;
 
-// 展开的层次与先后取自剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md）：触地点先亮、溅出火星；
-// 内盘的螺旋细线转着从中心长出去、伸出盘外成一圈冲到外缘的长辐条，四枚印依次弹出，宽刃由内往外填满，内盘外环描一圈；
-// 外圈再由内到外一层层出来：内环一组描圈、弦线一带擦出、符文带描圈。中段整面糊在泛光里，最后退下去露出细节。
-// 各段是展开进度 0–1 上的区间。
+// 展开从触地到定格的时长。
+export const FLOOR_UNFOLD_S = 7;
+
+// 展开的层次与节奏取自剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md），按原片的地面亮度曲线排：
+// 触地先亮一团光、溅出火星；旋臂猛地冲开（内盘的螺旋细线转着长出，伸出盘外成一圈冲到外缘的长辐条），然后停住一拍、辐条慢慢拉直；
+// 再上一个台阶：四枚印依次弹出，宽刃由内往外填满，内盘外环描一圈，外圈由内到外一层层出来（内环描圈、弦线擦出、符文带描圈）；
+// 之后整面糊在泛光里亮着、微微起伏，最后暗下去一下，清晰的细节再亮回来。每层出现时透明度也跟着从半透明升满。
+// 区间用秒写，换算成展开进度 0–1。
 type Span = [number, number];
-const SPARK: Span = [0, 0.14];
-const RAYS: Span = [0.1, 0.36];
-const RAYS_STRAIGHTEN: Span = [0.2, 0.55];
-const RAYS_OUT: Span = [0.55, 0.78];
-const SPIRAL: Span = [0.03, 0.3];
-const GROW: Span = [0.03, 0.4];
-const SEALS: Span = [0.16, 0.4];
-const WEDGES: Span = [0.3, 0.55];
-const DISC_RIM: Span = [0.45, 0.62];
-const RINGS: Span = [0.55, 0.72];
-const CHORDS: Span = [0.62, 0.8];
-const RUNES: Span = [0.72, 0.92];
-const BLOOM_IN: Span = [0.25, 0.5];
-const BLOOM_OUT: Span = [0.6, 1];
+const sec = (a: number, b: number): Span => [a / FLOOR_UNFOLD_S, b / FLOOR_UNFOLD_S];
+const SPARK = sec(0, 0.7);
+const SPIRAL = sec(0.3, 1.4);
+const GROW = sec(0.3, 1.6);
+const RAYS = sec(0.5, 1.5);
+const RAYS_STRAIGHTEN = sec(1.0, 2.8);
+const SEALS = sec(1.9, 2.9);
+const WEDGES = sec(2.3, 3.3);
+const DISC_RIM = sec(2.9, 3.7);
+const RINGS = sec(3.3, 4.2);
+const CHORDS = sec(3.8, 4.6);
+const RUNES = sec(4.2, 5.1);
+const RAYS_OUT = sec(3.6, 4.8);
+const BLOOM_IN = sec(1.0, 3.2);
+const BLOOM_OUT = sec(5.4, 6.2);
+const DIM = sec(5.4, 6.0);
+const RELIT = sec(6.0, 7.0);
+// 泛光那几秒的起伏：周期与幅度。
+const BREATH_S = 1.6;
+const BREATH = 0.15;
+// 每层刚露出时的透明度，随后在该层的区间再往后延这么多秒里升满。
+const FADE_FROM = 0.3;
+const FADE_TAIL_S = 0.5;
+// 暗下去那一下压到的亮度。
+const DIM_TO = 0.45;
 // 内盘长开时多转的角度，随长开减速归零。
 const SWIRL = 2.4;
 // img1627 内盘里量的位置（以内盘外缘半径为 1、纹理坐标 y 朝下）：四枚印的圆心半径、方位（按弹出先后）与印的半径，
@@ -99,6 +114,8 @@ export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, 
 
 const easeOut = (k: number) => 1 - (1 - k) ** 3;
 const ease = ([a, b]: Span, u: number) => easeOut(Math.max(0, Math.min(1, (u - a) / (b - a))));
+// 一层刚露出时半透明，到区间结束后再过 FADE_TAIL_S 秒升满。
+const fadeIn = ([a, b]: Span, u: number) => FADE_FROM + (1 - FADE_FROM) * smooth(a, b + FADE_TAIL_S / FLOOR_UNFOLD_S, u);
 
 // 只留半径 r0–r1 的圆环；sweep < 1 时只留从 from 角起按 dir 方向扫过的那一段。
 function band(c: CanvasRenderingContext2D, r0: number, r1: number, sweep = 1, from = 0, dir = 1) {
@@ -155,9 +172,10 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
 
   const spiral = ease(SPIRAL, u) * BLADE_END * rr;
   const wedges = ease(WEDGES, u) * BLADE_END * rr;
-  for (const [img, reach] of [[lines, spiral], [fill, wedges]] as const) {
+  for (const [img, reach, span] of [[lines, spiral, SPIRAL], [fill, wedges, WEDGES]] as const) {
     if (reach <= 0) continue;
     d.save();
+    d.globalAlpha = fadeIn(span, u);
     d.beginPath();
     d.arc(0, 0, reach, 0, TAU);
     d.clip();
@@ -174,8 +192,8 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
     d.restore();
   }
   d.globalCompositeOperation = "lighter";
-  wipeFront(d, spiral, 0.08 * rr, 0.5 * (1 - smooth(SPIRAL[1] - 0.06, SPIRAL[1], u)));
-  wipeFront(d, wedges, 0.1 * rr, 0.7 * (1 - smooth(WEDGES[1] - 0.06, WEDGES[1], u)));
+  wipeFront(d, spiral, 0.08 * rr, 0.5 * (1 - ease(SPIRAL, u)));
+  wipeFront(d, wedges, 0.1 * rr, 0.7 * (1 - ease(WEDGES, u)));
 
   const step = (SEALS[1] - SEALS[0]) / (SEAL_ANGLES.length + 1);
   for (let i = 0; i < SEAL_ANGLES.length; i++) {
@@ -196,6 +214,7 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
   const rim = ease(DISC_RIM, u);
   if (rim > 0) {
     d.save();
+    d.globalAlpha = fadeIn(DISC_RIM, u);
     band(d, BLADE_END * rr, n, rim, -Math.PI / 2);
     d.drawImage(inner, -n / 2, -n / 2);
     d.restore();
@@ -204,25 +223,26 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
 }
 
 // 展开中的法阵：都画在 scratch 里（原点在圆心、已按 spin 转好），投影仍由 floorPainter 一行行做。返回砖地该有的亮度。
-function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, spin: number, alpha: number, u: number) {
+function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, spin: number, base: number, u: number) {
   const { tex } = textures;
   const half = CIRCLE_TEX / 2;
-  const layer = (r0: number, r1: number, sweep: number, from: number, dir: number) => {
+  const alpha = base * (1 - (1 - DIM_TO) * (smooth(DIM[0], DIM[1], u) - smooth(RELIT[0], RELIT[1], u)));
+  const layer = (r0: number, r1: number, sweep: number, from: number, dir: number, a: number) => {
     if (sweep <= 0) return;
     s.save();
+    s.globalAlpha = alpha * a;
     band(s, r0, r1, sweep, from, dir);
     s.drawImage(tex, -half, -half);
     s.restore();
   };
-  s.globalAlpha = alpha * smooth(GROW[0], GROW[1], u);
-  layer(0, INNER_R, 1, 0, 1);
-  s.globalAlpha = alpha;
+  layer(0, INNER_R, 1, 0, 1, smooth(GROW[0], GROW[1], u));
   const rings = ease(RINGS, u);
-  layer(INNER_R, OUTER_RINGS * R, rings, Math.PI / 2, -1);
+  layer(INNER_R, OUTER_RINGS * R, rings, Math.PI / 2, -1, fadeIn(RINGS, u));
   const chords = ease(CHORDS, u);
-  layer(OUTER_RINGS * R, OUTER_RINGS * R + (OUTER_CHORDS - OUTER_RINGS) * R * chords, 1, 0, 1);
+  layer(OUTER_RINGS * R, OUTER_RINGS * R + (OUTER_CHORDS - OUTER_RINGS) * R * chords, 1, 0, 1, fadeIn(CHORDS, u));
   const runes = ease(RUNES, u);
-  layer(OUTER_CHORDS * R, half * 1.5, runes, -Math.PI / 2, 1);
+  layer(OUTER_CHORDS * R, half * 1.5, runes, -Math.PI / 2, 1, fadeIn(RUNES, u));
+  s.globalAlpha = alpha;
   s.globalCompositeOperation = "lighter";
   sweepHead(s, INNER_R, OUTER_RINGS * R, Math.PI / 2 - rings * TAU, rings > 0 ? 0.8 * (1 - smooth(0.9, 1, rings)) : 0);
   wipeFront(s, OUTER_RINGS * R + (OUTER_CHORDS - OUTER_RINGS) * R * chords, 0.06 * R, chords > 0 ? 0.6 * (1 - smooth(0.85, 1, chords)) : 0);
@@ -282,7 +302,8 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     }
   }
 
-  const bloom = smooth(BLOOM_IN[0], BLOOM_IN[1], u) * (1 - smooth(BLOOM_OUT[0], BLOOM_OUT[1], u));
+  const breath = 1 + BREATH * Math.sin(((u * FLOOR_UNFOLD_S) / BREATH_S) * TAU);
+  const bloom = smooth(BLOOM_IN[0], BLOOM_IN[1], u) * (1 - smooth(BLOOM_OUT[0], BLOOM_OUT[1], u)) * breath;
   if (bloom > 0) {
     const g = work.glow;
     g.clearRect(0, 0, GLOW_TEX, GLOW_TEX);
