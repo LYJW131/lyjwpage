@@ -1,4 +1,4 @@
-<!-- 给 codex exec 的改脸提示词。复制成 brief.md，换掉 {{名字}} 与 {{表情}}。第 1 张图那段描述的是青子的 face_open（喊叫脸），第 1 张图换了就照实改写：闭眼格把它换成这个表情的 Codex 原图（改名 face_base.png），并用文末「闭眼格」那段替换「Make」那段；别的角色照新底图写。害羞这类本来就脸红的表情，把 Rules 最后一条的 No blush 改成「A faint blush on the cheeks just under the eyes is fine」：害羞那格就是这样，lyjw 认可。 -->
+<!-- 给 codex exec 的改脸提示词。复制成 brief.md，换掉 {{名字}} 与 {{表情}}。第 1 张图那段描述的是青子的 face_open（喊叫脸），第 1 张图换了就照实改写：闭眼格把它换成这个表情的 Codex 原图（改名 face_base.png），并用文末「闭眼格」那段替换「Make」那段。换角色时，第 1 张图那段和 Rules 第 1、2 条里写死的青子特征（蓝眼睛、手套、眉毛和嘴）都照新角色改，照抄会让 Codex 往青子的蓝眼睛上靠。害羞这类本来就脸红的表情，把 Rules 最后一条的 No blush 改成「A faint blush on the cheeks just under the eyes is fine」：害羞那格就是这样，lyjw 认可。 -->
 
 Use your image generation tool (image editing, with the attached images as input). Do not write code to draw it.
 
