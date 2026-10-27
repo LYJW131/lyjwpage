@@ -28,7 +28,8 @@ const BLINK_OPEN = 0.17;
 const BLINK_TOTAL = BLINK_CLOSE + BLINK_HOLD + BLINK_OPEN;
 const BLINK_GAP: [number, number] = [2.5, 6.5];
 const DOUBLE_BLINK_CHANCE = 0.2;
-// 召唤时分层显现的总时长（秒）：地面法阵 → 人物从脚下往上显形 → 身后光环 → 手臂环与电弧。
+// 召唤时人物与光环分层显现的时长（秒）：人物从脚下往上显形 → 身后光环 → 手臂环与电弧。地面法阵不在这条进度上：
+// 等召唤白闪（SUMMON_FLASH_S）退了另按 FLOOR_UNFOLD_S 展开，整段显现到法阵展开完才结束。
 // 人物不做半透明淡入而是逐像素显形（显出来的地方就是不透明的），光环等人物整个显完才亮，所以身后的法阵始终被她挡住。
 const REVEAL_S = 3.6;
 const SUMMON_FLASH_S = 0.5;
