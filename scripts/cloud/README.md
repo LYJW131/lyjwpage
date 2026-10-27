@@ -30,3 +30,4 @@ bash /tmp/lyjw-setup.sh
 - 脚本从 GitHub raw 现拉，只认已合进 `main`（或 `LYJW_SETUP_REF` 指的分支）的版本。
 - 提交身份实际生效的是环境变量 `GIT_AUTHOR_*` / `GIT_COMMITTER_*`，见 [ops-facts.md](../../docs/ops-facts.md)。
 - `.claude/rules/*.md` 软链进 `~/.claude/rules/` 后，讨论串是否会按 `paths` 载入这些规则未核实，改匹配文件前仍直接打开读（见根 `AGENTS.md`）。
+- 环境编辑页「Environment variables」里要填的变量名与非机密值记在 [ops-facts.md](../../docs/ops-facts.md)，机密值不进仓库。
