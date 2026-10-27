@@ -4,9 +4,9 @@ import { EXTENT, FLOOR } from "./aoko-fx";
 import { bloom } from "./aoko-bloom";
 import { OVER } from "./aoko-gl";
 
-// 相机由地面法阵的投影反推：原来的 2D 条带就是针孔投影（近端横向放大 1/(1−depth·v)、纵向偏移 k·(放大−1)），
-// 对上之后镜头在法阵圆心正前方 DIST 远、高度在原图 y=EYE_Y（正是她眼睛的高度），z=0 平面上一个原图像素正好映到立绘的一个像素。
-// 所以平面的东西（立绘、身后光环、电弧）和原来逐像素对齐，地面、手臂环这些立体的东西按真透视画。
+// 相机由地面法阵 FLOOR 的压扁（tilt）与近大远小（depth）反推：把它们当成针孔投影（近端横向放大 1/(1−depth·v)、纵向偏移 k·(放大−1)），
+// 镜头就在法阵圆心正前方 DIST 远、高度在原图 y=EYE_Y（正是她眼睛的高度），z=0 平面上一个原图像素正好映到立绘的一个像素。
+// 平面的东西（立绘、身后光环、电弧）就是这个平面上的四边形，地面、手臂环这些立体的东西按真透视画。
 const REACH = FLOOR.r * EXTENT;
 export const DIST = REACH / FLOOR.depth;
 export const EYE_X = FLOOR.x;

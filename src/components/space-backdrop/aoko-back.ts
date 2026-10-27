@@ -1,6 +1,6 @@
 import { Group, type Mesh, type PlaneGeometry, type ShaderMaterial } from "three";
 
-import { FLOOR, RING_R, RING_SWELL, RING_SWELL_S, RING_X, RING_Y, RUNE_R, type FxState, type Reveal } from "./aoko-fx";
+import { FLOOR, floorRelight, RING_R, RING_SWELL, RING_SWELL_S, RING_X, RING_Y, RUNE_R, type FxState, type Reveal } from "./aoko-fx";
 import { COLORS, channels, plane, quads, shader, sprite, texture } from "./aoko-gl";
 import { BOKEH, RIM, hash } from "./aoko-paint";
 import { floor } from "./aoko-floor";
@@ -15,9 +15,10 @@ const LINE = `${COLORS}uniform float a;varying vec2 v;void main(){gl_FragColor=v
 
 const BOKEH_RGB = BOKEH.map(channels);
 
-export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInner", HTMLImageElement>, anisotropy: number) {
+export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInner" | "floorInnerFill", HTMLImageElement>, anisotropy: number) {
   const group = new Group();
-  const ground = floor(images.floorOuter, images.floorInner, anisotropy);
+  const ground = floor(images.floorOuter, images.floorInner, images.floorInnerFill, anisotropy);
+  let summonedAt = -Infinity;
   group.add(ground.mesh);
 
   const threads = quads(16, THREAD, {}, 1);
@@ -45,8 +46,11 @@ export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInne
 
   return {
     group,
-    update({ power, flash, t }: FxState, show: Reveal) {
-      ground.update(t * 0.03, 0.8 + 0.2 * power, show.floor);
+    update({ power, flash, t, still }: FxState, show: Reveal) {
+      // 召唤展开期间砖地跟着显现前沿出来（ground 0）；平时重放只熄法阵，砖地不动。
+      if (show.floor < 1) summonedAt = t;
+      const relight = still ? { alpha: 1, unfold: 1 } : floorRelight(t, summonedAt);
+      ground.update(t * 0.03, (0.8 + 0.2 * power) * relight.alpha, Math.min(show.floor, relight.unfold), show.floor < 1 ? 0 : 1);
 
       threads.begin();
       for (let i = 0; i < 16; i++) {

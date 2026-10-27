@@ -2,7 +2,7 @@ import { FACE_ATLAS } from "./aoko-face";
 
 // 默认页面只带这个文件：贴图预取与懒挂载。three 和立绘渲染在 ./aoko 里，按下秘技第一个键才动态加载。
 export const FX_ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
-export const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine", "floor-outer", "floor-inner"] as const;
+export const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine", "floor-outer", "floor-inner", "floor-inner-fill"] as const;
 export const ART = {
   src: "/mascots/aoko.webp",
   // 绑定图 RGB 分别是头发、裙摆、头部的权重（0 不动，1 摆幅最大），与立绘同框；离线生成，换立绘要一起重出。

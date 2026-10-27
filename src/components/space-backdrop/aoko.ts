@@ -4,7 +4,7 @@ import { faceDirector, STILL_FACE } from "./aoko-face";
 import { figure, PAD, SRC_H, SRC_W } from "./aoko-figure";
 import { cannonSince, palmLight } from "./aoko-cannon";
 import { front, muzzle } from "./aoko-front";
-import { fxState, SHOWN, STILL, type FxState } from "./aoko-fx";
+import { FLOOR_UNFOLD_S, fxState, SHOWN, STILL, type FxState } from "./aoko-fx";
 import { dispose } from "./aoko-gl";
 import { smooth } from "./aoko-paint";
 import type { HandPose } from "./aoko-rings";
@@ -21,9 +21,11 @@ const BLINK_OPEN = 0.17;
 const BLINK_TOTAL = BLINK_CLOSE + BLINK_HOLD + BLINK_OPEN;
 const BLINK_GAP: [number, number] = [2.5, 6.5];
 const DOUBLE_BLINK_CHANCE = 0.2;
-// 召唤时分层显现的总时长（秒）：地面法阵 → 人物从脚下往上显形 → 身后光环 → 手臂环与电弧。
+// 召唤时人物与光环分层显现的时长（秒）：人物从脚下往上显形 → 身后光环 → 手臂环与电弧。地面法阵不在这条进度上：
+// 等召唤白闪（SUMMON_FLASH_S）退了另按 FLOOR_UNFOLD_S 展开，整段显现到法阵展开完才结束。
 // 人物不做半透明淡入而是逐像素显形（显出来的地方就是不透明的），光环等人物整个显完才亮，所以身后的法阵始终被她挡住。
 const REVEAL_S = 3.6;
+const SUMMON_FLASH_S = 0.5;
 // 前景泛光的底强度（五级相加，所以要小），蓄力、发射时往上加。
 const BLOOM = 0.05;
 
@@ -44,7 +46,7 @@ function handPose(t: number): HandPose {
 // 闲置时也带一层蓝紫重打光：人站在亮着的法阵里，对照 img0611（原色）与 img0612（被法阵照亮）。
 const glowOf = ({ power, flash }: FxState) => 0.32 + 0.55 * power + 0.25 * flash;
 
-const FX = { band: "band", runes: "runes", ring: "ring", octa: "octa", bolt: "bolt", boltFine: "bolt-fine", floorOuter: "floor-outer", floorInner: "floor-inner" } as const;
+const FX = { band: "band", runes: "runes", ring: "ring", octa: "octa", bolt: "bolt", boltFine: "bolt-fine", floorOuter: "floor-outer", floorInner: "floor-inner", floorInnerFill: "floor-inner-fill" } as const;
 const loadAll = <K extends string>(srcs: Record<K, string>) =>
   Promise.all(Object.values<string>(srcs).map(loadImage)).then((imgs) => Object.fromEntries(Object.keys(srcs).map((k, i) => [k, imgs[i]])) as Record<K, HTMLImageElement>);
 
@@ -71,14 +73,16 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     if (!scene || !gl) return;
     const state = reducedMotion ? STILL : fxState(t);
     const p = revealAt === null ? 1 : (t - revealAt) / REVEAL_S;
-    const show = revealAt === null ? SHOWN : { floor: smooth(0, 0.25, p), ring: smooth(0.55, 0.85, p), front: summon && !reducedMotion ? smooth(0.7, 1, p) : 1 };
+    // 法阵等召唤那一下的白闪退了才展开，不然前半段全被盖住。
+    const unfold = revealAt === null ? 1 : (p * REVEAL_S - SUMMON_FLASH_S) / FLOOR_UNFOLD_S;
+    const show = revealAt === null ? SHOWN : { floor: Math.max(0, Math.min(1, unfold)), ring: smooth(0.55, 0.85, p), front: smooth(0.7, 1, p) };
     const pose = handPose(t);
     const lamp = [...muzzle(pose), palmLight(cannonSince(state)) * show.front];
     scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), lamp);
     scene.bk?.update(state, show);
     scene.fr?.update(state, pose, show.front);
     gl.render(BLOOM * (1 + state.power + 2 * state.flash));
-    if (p >= 1) revealAt = null;
+    if (p >= 1 && unfold >= 1) revealAt = null;
   };
   const frame = (now: number) => {
     if (stopped) return;
