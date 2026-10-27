@@ -21,47 +21,42 @@ const TAU = Math.PI * 2;
 // 展开从触地到定格的时长。
 export const FLOOR_UNFOLD_S = 7;
 
-// 展开的层次与节奏取自剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md），按原片的地面亮度曲线排：
-// 触地先亮一团光、溅出火星；旋臂猛地冲开（内盘的螺旋细线转着长出，伸出盘外成一圈冲到外缘的长辐条），然后停住一拍、辐条慢慢拉直；
-// 再上一个台阶：四枚印依次弹出，宽刃、内盘外环、外圈由内到外一层层出来（内环一组、弦线一带、符文带）；
-// 之后整面糊在泛光里亮着、微微起伏，最后暗下去一下，清晰的细节再亮回来。各层都是淡入加微微放大，互相交叠，不用硬边擦出；
-// 整盘同时连续放大、越转越慢，前几秒整面糊着，最后才对焦清楚。
-// 区间用秒写，换算成展开进度 0–1。
+// 展开照剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md）：原片里那面法阵就是内盘 img1627 这套画，
+// 它从触地点在光里一路放大到铺满整片地面——先只有螺旋细线（根部弯、外面直，放大时就从风车变成辐条），再弹出印、填满宽刃、出外环；
+// 整面糊着亮几秒、微微起伏，暗一下再对焦清楚。站上的法阵外面还套着 img0640 外圈，所以内盘放大到比整个法阵还大，
+// 泛光那几秒过后收拢回原位，外圈各层在它收拢时由内到外露出来。节奏照原片的地面亮度曲线排，区间用秒写，换算成展开进度 0–1。
 type Span = [number, number];
 const sec = (a: number, b: number): Span => [a / FLOOR_UNFOLD_S, b / FLOOR_UNFOLD_S];
 const SPARK = sec(0, 0.7);
-const SPIRAL = sec(0.3, 1.6);
-const GROW = sec(0.3, 1.6);
-const RAYS = sec(0.4, 1.4);
-const RAYS_STRAIGHTEN = sec(0.6, 3.6);
+const SPIRAL = sec(0.2, 1.0);
+const ZOOM = sec(0.2, 2.4);
 const SEALS = sec(1.9, 2.9);
-const WEDGES = sec(2.2, 3.4);
-const DISC_RIM = sec(2.7, 3.8);
-const RINGS = sec(3.1, 4.3);
-const CHORDS = sec(3.5, 4.7);
-const RUNES = sec(3.9, 5.1);
-const RAYS_OUT = sec(3.6, 4.8);
-const BLOOM_IN = sec(1.0, 3.2);
+const WEDGES = sec(2.2, 3.2);
+const DISC_RIM = sec(2.6, 3.6);
+const GATHER = sec(4.4, 6.2);
+const POOL = sec(4.2, 5.4);
+const RINGS = sec(4.6, 5.7);
+const CHORDS = sec(4.9, 6.0);
+const RUNES = sec(5.2, 6.3);
+const BLOOM_IN = sec(0.8, 2.8);
 const BLOOM_OUT = sec(5.4, 6.2);
 const DIM = sec(5.4, 6.0);
 const RELIT = sec(6.0, 7.0);
-// 整盘从小连续放大到原尺寸，同时多转一段、越转越慢，到定格时多转的角度正好归零。
-const ZOOM = sec(0.15, 3.6);
-const ZOOM_FROM = 0.12;
-const SPIN_EXTRA = 2.2;
+const LINE_BOOST = 2;
+// 内盘外缘半径（以 R 为 1）：从一点放大到 DISC_BIG（比整个法阵还大，铺满地面），收拢时回到 INNER_R。
+const DISC_FROM = 0.04;
+const DISC_BIG = 1.25;
 // 对焦：前一秒多整面糊在光里，之后半糊着亮几秒，收尾暗下去时对焦到清晰。
-const BLUR_EASE = sec(1.2, 3.4);
+const BLUR_EASE = sec(1.4, 3.4);
 const BLUR_CLEAR = sec(5.4, 6.6);
 // 糊的那两档摊薄了线条，按这个倍数补亮。
-const BLUR_GAIN = [1.5, 2.2];
+const BLUR_GAIN = [1.2, 1.8];
 const MID_TEX = 400;
 // 泛光那几秒的起伏：周期与幅度。
 const BREATH_S = 1.6;
 const BREATH = 0.15;
 // 暗下去那一下压到的亮度。
 const DIM_TO = 0.45;
-// 内盘长开时多转的角度，随长开减速归零。
-const SWIRL = 2.4;
 // img1627 内盘里量的位置（以内盘外缘半径为 1、纹理坐标 y 朝下）：四枚印的圆心半径、方位（按弹出先后）与印的半径，
 // 宽刃到 BLADE_END 为止，再往外是粗外环与菱形印框。
 const SEAL_RHO = 0.283;
@@ -72,13 +67,6 @@ const BLADE_END = 0.86;
 const OUTER_RINGS = 0.62;
 const OUTER_CHORDS = 0.84;
 const SPARKS = 14;
-// 伸出盘外的旋臂：根部弯、外段直，弯曲集中在离根 BEND 那么长的一段里；BEND 从比整盘还长缩到很短，
-// 旋臂就从整条弯的风车慢慢变成根部一点弯、外面笔直的辐条。外圈各层出来后退掉。条数照参考帧数的，弯度是目测。
-const RAY_COUNT = 16;
-const RAY_CURL = 1.7;
-const RAY_BEND: [number, number] = [1.4, 0.12];
-const RAY_STEPS = 28;
-
 export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, innerFill: HTMLImageElement) {
   const bricks = document.createElement("canvas");
   bricks.width = bricks.height = BRICK_TEX;
@@ -201,6 +189,11 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
     d.clip("evenodd");
     d.scale(settleScale(span, u), settleScale(span, u));
     d.drawImage(img, -n / 2, -n / 2);
+    // 细线原图只有两三个像素宽，放大再糊开就淡得断断续续；对焦之前多叠几遍，当原片里那种粗亮的光带。
+    for (let left = img === lines ? LINE_BOOST * (1 - smooth(BLUR_CLEAR[0], BLUR_CLEAR[1], u)) : 0; left > 0; left--) {
+      d.globalAlpha = a * Math.min(1, left);
+      d.drawImage(img, -n / 2, -n / 2);
+    }
     d.restore();
   }
 
@@ -236,12 +229,8 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
   const { tex } = textures;
   const half = CIRCLE_TEX / 2;
   const alpha = base * (1 - (1 - DIM_TO) * (smooth(DIM[0], DIM[1], u) - smooth(RELIT[0], RELIT[1], u)));
-  const settle = ease([0, 1], u);
-  s.save();
-  s.scale(ZOOM_FROM + (1 - ZOOM_FROM) * ease(ZOOM, u), ZOOM_FROM + (1 - ZOOM_FROM) * ease(ZOOM, u));
-  s.rotate(SPIN_EXTRA * (1 - settle) ** 2);
   s.globalCompositeOperation = "lighter";
-  for (const [i, span] of [GROW, RINGS, CHORDS, RUNES].entries()) {
+  for (const [i, span] of [POOL, RINGS, CHORDS, RUNES].entries()) {
     const a = appear(span, u);
     if (a <= 0) continue;
     const k = i ? settleScale(span, u) : 1;
@@ -251,39 +240,14 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     s.drawImage(outerBand(work.band, tex, i), -half, -half);
     s.restore();
   }
-  s.globalAlpha = alpha;
-
-  const rays = smooth(RAYS[0], RAYS[1], u) * (1 - smooth(RAYS_OUT[0], RAYS_OUT[1], u));
-  if (rays > 0) {
-    const bend = R * (RAY_BEND[0] + (RAY_BEND[1] - RAY_BEND[0]) * ease(RAYS_STRAIGHTEN, u));
-    const root = INNER_R * 0.3;
-    const reach = root + (R * 1.05 - root) * ease(RAYS, u);
-    s.lineCap = s.lineJoin = "round";
-    for (const [width, color, a] of [[0.07 * R, SCENE.sky, 0.22], [0.03 * R, SCENE.thread, 0.4], [0.012 * R, SCENE.ice, 0.9]] as const) {
-      s.lineWidth = width;
-      s.strokeStyle = tone(color, a * rays);
-      s.beginPath();
-      for (let i = 0; i < RAY_COUNT; i++) {
-        const t = (i / RAY_COUNT) * TAU;
-        for (let j = 0; j <= RAY_STEPS; j++) {
-          const r = root + ((reach - root) * j) / RAY_STEPS;
-          const angle = t + RAY_CURL * (1 - Math.exp(-(r - root) / bend));
-          if (j) s.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
-          else s.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
-        }
-      }
-      s.stroke();
-    }
-  }
 
   unfoldDisc(work.disc, textures, u);
-  const grow = ease(GROW, u);
+  const big = R * (DISC_FROM + (DISC_BIG - DISC_FROM) * smooth(ZOOM[0], ZOOM[1], u));
   s.save();
   s.globalCompositeOperation = "source-over";
-  s.globalAlpha = alpha * smooth(GROW[0], GROW[1], u);
-  s.rotate(-2.6 * spin - SWIRL * (1 - grow) ** 2);
-  circle(s, work.disc.canvas, INNER_R);
-  s.restore();
+  s.globalAlpha = alpha;
+  s.rotate(-2.6 * spin);
+  circle(s, work.disc.canvas, big + (INNER_R - big) * smooth(GATHER[0], GATHER[1], u));
   s.restore();
 
   s.globalCompositeOperation = "lighter";
@@ -355,7 +319,7 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
   }
   s.globalCompositeOperation = "source-over";
   s.globalAlpha = alpha;
-  return smooth(RAYS[0], CHORDS[1], u);
+  return smooth(ZOOM[0], ZOOM[1], u);
 }
 
 export type FloorSpot = { x: number; y: number; r: number; tilt: number; depth: number };
