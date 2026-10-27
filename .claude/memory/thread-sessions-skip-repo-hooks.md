@@ -18,3 +18,5 @@ Consequences: in threads, the identity/deploy guard, `guard-merge-method.ts`, an
 2026-10-24 06:31 SGT: lyjw approved splitting general skills to account level; thread proposed `bug-diagnose` and `delegate-cheap-work` (general cores of lyjwpage-diagnose/-delegate; descriptions defer to the repo skill when present).
 
 **How to apply:** don't claim a repo hook protects thread work. Re-test after platform updates with the same direct-vs-in-thread comparison.
+
+2026-10-27 20:17 SGT: after the #717 setup script, `~/.claude/rules/` symlinks all repo rules; in a thread, Read of `docs/*.md` and `shared/*.ts` auto-injected `docs-writing.md` and `api-contracts.md`. Path-scoped rules now load in threads (Read-triggered; Bash cat untested).
