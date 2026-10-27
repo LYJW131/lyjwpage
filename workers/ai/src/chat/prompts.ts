@@ -79,9 +79,10 @@ export const DEEPSEEK_NOTE = "Search results reach you as plain text. When you u
 
 // 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以汉字或假名为主的提问点名不许改英文；
 // 反过来英文提问读到日文歌名与「LYJW writes in Chinese」后，next 那行常写成中文，所以没有汉字假名的提问也点名不许改中日文；
-// textLanguage 对法文、韩文等同样回 en，所以这里只说「照访客原文」，不点名英文。
+// textLanguage 对法文、韩文等同样回 en，所以这里只说「照访客原文」，不点名英文；「??」「👍」这类没有字母的提问看不出语言，不加。
 // 不用 textLanguage 分中日：「今何時」这类短日文没有假名，会被判成中文，点名中文就把日文访客带偏了；有假名才说日文，否则只说中文或日文、照访客原文。
-export function replyLanguageNote(latest: string): string {
+export function replyLanguageNote(latest: string): string | undefined {
+  if (!/\p{L}/u.test(latest)) return undefined;
   if (textLanguage(latest) === "en") return "The visitor's latest message is in a language other than Chinese or Japanese. Write your whole reply in that same language, the next line included, not Chinese or Japanese, however much of those the site data contains; keep names, titles and code as they are.";
   const language = /[\u3040-\u30ff]/.test(latest) ? "Japanese" : "Chinese or Japanese";
   return `The visitor's latest message is in ${language}. Write your whole reply in the same language and script the visitor used, the next line included, not English, however much English the tool results contain; keep names, titles and code as they are.`;
