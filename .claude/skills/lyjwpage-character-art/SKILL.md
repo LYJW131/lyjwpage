@@ -5,14 +5,17 @@ description: 改站点深色模式里的青子动态立绘，或给站点做新�
 
 # 动态立绘
 
-青子不是网格绑定：一张抠好的立绘，加一张权重图驱动 WebGL 位移场；表情是贴在脸上的图集格；施法场景画在立绘前后两张 2D 画布上。代码都在 `src/components/space-backdrop/`：
+青子不是网格绑定：一张抠好的立绘，加一张权重图驱动着色器里的位移场；表情是贴在脸上的图集格；立绘和施法场景同在一个 three.js 场景、一张 WebGL2 画布里。相机由地面法阵的投影反推，z=0 平面上一个原图像素就是立绘的一个像素，立绘、身后光环、电弧是这个平面上的四边形，地面、手臂三环是真的立体。代码都在 `src/components/space-backdrop/`：
 
 | 文件 | 管什么 |
 | --- | --- |
-| `aoko.ts` | WebGL 立绘：位移场、眨眼（`lidAt`）、表情格取样、手部分层、重打光、显形 |
+| `aoko-figure.ts` | 立绘着色器：位移场、表情格取样、眨眼眼皮、手部分层、重打光、光炮照人、显形、影子 |
+| `aoko.ts` | 编排：眨眼时序（`lidAt`）、限帧、布局、显形节奏、没有 WebGL2 时退回 2D 原图 |
 | `aoko-face.ts` | 表情图集的格与调度：`FACE_BOX`、`FACES`、`IDLE`、`faceDirector` |
-| `aoko-fx.ts`、`aoko-floor.ts`、`aoko-rings.ts`、`aoko-paint.ts` | 身后光环、电弧、地面法阵、手臂三环 |
-| `aoko-summon.ts`、`scene.ts` | 秘技监听与逐键特效、召唤编排 |
+| `aoko-stage.ts`、`aoko-gl.ts`、`aoko-bloom.ts` | 画布与相机（`atDepth`）、底层与前景离屏层的合成、前景泛光、公共材质 |
+| `aoko-fx.ts`、`aoko-back.ts`、`aoko-floor.ts` | 节奏（`fxState`）与摆位；地面法阵、光丝、散景、身后光环 |
+| `aoko-front.ts`、`aoko-rings.ts`、`aoko-cannon.ts` | 手臂三环（只写深度的袖子圆柱与手层挡后半圈）、电弧、星点、掌心光炮 |
+| `aoko-entry.ts`、`aoko-summon.ts`、`scene.ts` | 贴图预取与懒挂载（three 按下秘技第一个键才加载）、秘技监听与逐键特效、召唤编排 |
 
 贴图在 `public/mascots/aoko*`，特效贴图由 `scripts/aoko-fx-assets.ts` 导出。外部来源登记在 `docs/references.md`「设计系统与 UI」一节。
 

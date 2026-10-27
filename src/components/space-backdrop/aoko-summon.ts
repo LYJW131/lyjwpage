@@ -1,4 +1,4 @@
-import { FX_ASSET, loadImage } from "./aoko-fx";
+import { FX_ASSET, loadImage } from "./aoko-entry";
 import { SCENE, hash, tone } from "./aoko-paint";
 
 // 青子立绘默认不挂，按出科乐美秘技才召唤；B、A 不分大小写。
