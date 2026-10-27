@@ -25,7 +25,8 @@
 - **Project threads skip repo hooks and nested rules; skills load** via Setup script symlinks. Follow AGENTS.md guard rules by hand: [[thread-sessions-skip-repo-hooks]].
 - **UI/UX changes need lyjw's OK after screenshots** (desktop + mobile, decision card once preview is up; clear bug fixes exempt): [[design-md-ui-approval]], [[ui-before-after-reference-lines]], [[ink-tokens-keep-chroma]].
 - **Screenshots/fixtures internally consistent** (「太假了」): one scene via `pnpm dev:scene <name>`; README cards are live `/cards/*.svg`; pain points /mnt/project-files/fixtures/痛点.md.
-- **Bot review only for real logic changes;** read every Devin/Codex/Claude review, fix or reply; Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]]. A push that started no build gets rebuilt at once: [[workers-builds-parallel-race]].
+- **Bot review only for real logic changes;** read every Devin/Codex/Claude review; fix only real bugs, reply「边缘情况，不改」to edge cases; one review-fix push, then merge (lyjw 2026-10-28); Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]].
+- **Verify receipt screenshots:** verifier keeps only 1–2 shots that show the change (max 4), folded in `<details>` (lyjw 2026-10-28「很多图片都是没有意义的」). A push that started no build gets rebuilt at once: [[workers-builds-parallel-race]].
 - **Post-merge:** check /api/version only; real prod test only for cache/purge, first-screen SSR, fonts, prod-only bindings.
 - **Bulk record reading → Haiku/Sonnet worker, never Opus:** [[batch-reading-goes-to-haiku]].
 - **Big-change PRs: run skill `lyjwpage-swe-loop` (Devin read-only review loop) first, unasked:** [[swe-loop-auto]].
