@@ -187,6 +187,10 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
     if (a <= 0) continue;
     d.save();
     d.globalAlpha = a;
+    // 两层拆自整张内盘、也含外环；外环只归下面的 DISC_RIM，这里先裁到宽刃外缘，不然外环会提前出来、叠两遍。
+    d.beginPath();
+    d.arc(0, 0, BLADE_END * rr, 0, TAU);
+    d.clip();
     d.beginPath();
     d.rect(-n / 2, -n / 2, n, n);
     for (let i = 0; i < SEAL_ANGLES.length; i++) {
