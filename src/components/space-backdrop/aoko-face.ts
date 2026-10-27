@@ -1,7 +1,7 @@
 import { CHARGE, CYCLE, FIRE } from "./aoko-fx";
 
 // 表情图集：FACE_COLS × FACE_ROWS 格，每格覆盖原图 FACE_BOX（x, y, 边长）这块正方形，alpha 是羽化遮罩，只盖眉眼和嘴。
-// 原图本身是喊叫脸，不占格；第 0 格是配它的挤眼闭眼。各格由 Codex 对着原图脸部改表情、以游戏立绘为表情参考生成，离线对齐后拼成。
+// 原图本身是喊叫脸，不占格；第 0 格是配它的挤眼闭眼，第 7、14 格分别是平静与害羞的闭眼。各格由 Codex 对着原图脸部改表情、以游戏立绘为表情参考生成，离线对齐后拼成。
 export const FACE_ATLAS = "/mascots/aoko-faces.webp";
 export const FACE_BOX = [360, 52, 256];
 export const FACE_COLS = 4;
@@ -21,6 +21,7 @@ const FACES = {
   smug: { tile: 10, shut: -1 },
   strain: { tile: 11, shut: -1 },
   glance: { tile: 12, shut: 7 },
+  shy: { tile: 13, shut: 14 },
 };
 type FaceName = keyof typeof FACES;
 
@@ -34,6 +35,7 @@ const IDLE: [FaceName, number][] = [
   ["wink", 1],
   ["surprised", 1],
   ["yawn", 1],
+  ["shy", 1],
 ];
 const CALM_HOLD: [number, number] = [2.5, 5];
 const IDLE_HOLD: [number, number] = [1.8, 3.5];
