@@ -53,7 +53,7 @@ uv run -q --with numpy --with scipy --with pillow --with "rembg[cpu]" python -I 
    cd <工作目录> && timeout 1500 codex exec --skip-git-repo-check -s workspace-write -C . "$(cat brief.md)" -i face_open.png -i expression_ref.png > codex_run.log 2>&1
    ```
    提示词放在 `-i` 前面：`-i` 吞后面所有参数，放在后面时 Codex 会停下来等标准输入。单张约 4 到 6 分钟，可以几张并行，放后台跑。
-4. **配套闭眼格**。要眨眼的表情另出一张闭眼图，以这个表情刚生成的图为底，不以喊叫脸为底，否则眨眼时眉毛会跳。闭眼写成「略向下弯的睫毛线」，明说不要 ^ ^ 笑眼、不要挤眼。不眨的表情（已经闭着、单眼眨、眼形和闭眼图差太多）`shut` 写 -1。
+4. **配套闭眼格**。要眨眼的表情另出一张闭眼图，以这个表情的 Codex 原图为底，不以喊叫脸为底，否则眨眼时眉毛会跳。各表情的 Codex 原图（1024）和参考图放在母图目录的 face-codex/<名字>/，新生成的也放进去，以后补闭眼格要用。闭眼写成「略向下弯的睫毛线」，明说不要 ^ ^ 笑眼、不要挤眼。不眨的表情（已经闭着、单眼眨、眼形和闭眼图差太多）`shut` 写 -1。
 5. **对齐贴回**。`patch` 在 512 空间里穷举缩放 0.98–1.02、平移 ±8 px，只在五官以外算误差，再按遮罩边缘那一圈把 Codex 的整体偏色拉回来：
    `uv run -q --with numpy --with scipy --with pillow python -I $SK/face_patch.py patch face_open.png shy=<输出>.png shy_shut=<闭眼输出>.png:eyes --tiles <母图目录>/face-tiles`
    `:eyes` 只取眉眼，嘴留给当前表情。现有各格的残差在 2.4 到 4.2；明显更大就重出，提示词里再强调取景、大小逐像素不动。打开 tiles 目录里的 check 对照图看接缝。不要整张贴：Codex 会把全图轻微重画一遍，只有遮罩内可用。
