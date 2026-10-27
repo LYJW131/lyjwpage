@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: fix-annoyed-blink
+expected_outcome: |
+  说清原因：嫌弃脸借用平静脸的闭眼格，闭眼格的眉毛是平静的。修法：以嫌弃脸为底让 Codex 出一张配套闭眼格，只取眉眼贴回，放进图集空格并改 FACES 里 annoyed 的 shut；或者把 shut 改成 -1 不眨。改完在真 WebGL 里强制嫌弃脸、眼皮 0 / 0.5 / 1 截图核对。

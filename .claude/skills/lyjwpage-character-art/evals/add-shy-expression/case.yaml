@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: add-shy-expression
+expected_outcome: |
+  青子的表情图集多一格害羞脸（另有配套的闭眼格，或说明为什么不眨），FACES 和 IDLE 里登记了它；在真 WebGL 里强制这个表情截了脸部图，睁眼、半闭、闭眼都有；临时调试钩子已删，代码改动只在 aoko-face.ts 和 aoko-faces.webp。
