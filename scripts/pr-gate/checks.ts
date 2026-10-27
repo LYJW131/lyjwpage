@@ -28,7 +28,7 @@ export function newestByName(runs: CheckRun[]) {
   return newest;
 }
 
-// 实验任务按 scripts/AGENTS.md 不挡合并：跑着、没成功都只列在 items 里，不进 pending / failing
+// 实验任务按 .claude/rules/scripts.md 不挡合并：跑着、没成功都只列在 items 里，不进 pending / failing
 export const ADVISORY_CHECKS = ["verify-pi"];
 
 // 不挡合并，但没跑成或还在跑都要说出来，不当成「没有问题」
