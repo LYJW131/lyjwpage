@@ -115,7 +115,6 @@ function band(c: CanvasRenderingContext2D, r0: number, r1: number, sweep = 1, fr
   c.clip();
 }
 
-// 描圈的笔头：沿扫到的那条半径亮一道。
 function sweepHead(c: CanvasRenderingContext2D, r0: number, r1: number, angle: number, a: number) {
   if (a <= 0) return;
   const w = 0.012 * R;
@@ -130,7 +129,6 @@ function sweepHead(c: CanvasRenderingContext2D, r0: number, r1: number, angle: n
   c.restore();
 }
 
-// 擦出的前沿亮一圈。
 function wipeFront(c: CanvasRenderingContext2D, r: number, w: number, a: number) {
   if (a <= 0 || r <= 0) return;
   const g = c.createRadialGradient(0, 0, Math.max(0, r - w), 0, 0, r);
@@ -155,7 +153,6 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
   d.globalCompositeOperation = "lighter";
   const seal = (i: number): [number, number] => [Math.cos(SEAL_ANGLES[i]) * SEAL_RHO * rr, Math.sin(SEAL_ANGLES[i]) * SEAL_RHO * rr];
 
-  // 印以外、宽刃外缘以内：螺旋细线从中心擦出去，宽刃随后由内往外填。
   const spiral = ease(SPIRAL, u) * BLADE_END * rr;
   const wedges = ease(WEDGES, u) * BLADE_END * rr;
   for (const [img, reach] of [[lines, spiral], [fill, wedges]] as const) {
@@ -176,7 +173,6 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
   wipeFront(d, spiral, 0.08 * rr, 0.5 * (1 - smooth(SPIRAL[1] - 0.06, SPIRAL[1], u)));
   wipeFront(d, wedges, 0.1 * rr, 0.7 * (1 - smooth(WEDGES[1] - 0.06, WEDGES[1], u)));
 
-  // 四枚印依次弹出：各自从小放大到原位。
   const step = (SEALS[1] - SEALS[0]) / (SEAL_ANGLES.length + 1);
   for (let i = 0; i < SEAL_ANGLES.length; i++) {
     const k = ease([SEALS[0] + i * step, SEALS[0] + (i + 2) * step], u);
@@ -193,7 +189,6 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
     d.restore();
   }
 
-  // 粗外环与菱形印框描一圈。
   const rim = ease(DISC_RIM, u);
   if (rim > 0) {
     d.save();
@@ -215,7 +210,6 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     s.drawImage(tex, -half, -half);
     s.restore();
   };
-  // 外圈与底下的暗池：池心随内盘一起亮，外面三层由内到外。
   s.globalAlpha = alpha * smooth(GROW[0], GROW[1], u);
   layer(0, INNER_R, 1, 0, 1);
   s.globalAlpha = alpha;
@@ -250,7 +244,6 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     }
   }
 
-  // 内盘拼好后照平时的位置与转向贴上，长开时从小转着放大。
   unfoldDisc(work.disc, textures, u);
   const grow = ease(GROW, u);
   s.save();
@@ -260,7 +253,6 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
   if (grow > 0) circle(s, work.disc.canvas, INNER_R * (0.25 + 0.75 * grow));
   s.restore();
 
-  // 触地那一下：中心一团白光，火星往外溅。
   s.globalCompositeOperation = "lighter";
   const spark = ease(SPARK, u);
   const fade = 1 - smooth(SPARK[0] + 0.04, SPARK[1], u);
@@ -285,7 +277,6 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     }
   }
 
-  // 泛光：把已经出来的部分缩小再放大叠回去。
   const bloom = smooth(BLOOM_IN[0], BLOOM_IN[1], u) * (1 - smooth(BLOOM_OUT[0], BLOOM_OUT[1], u));
   if (bloom > 0) {
     const g = work.glow;
