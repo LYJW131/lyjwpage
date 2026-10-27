@@ -1,7 +1,7 @@
 // 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、
 // 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）；掌心的蓄力与发射在 aoko-cannon.ts。
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
-import { palmCannon } from "./aoko-cannon";
+import { palmCannon, palmPose } from "./aoko-cannon";
 import { floorPainter, floorTextures } from "./aoko-floor";
 import { BOKEH, type FxState, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 import { type Hand, type HandPose, armRings, cutArm, glints } from "./aoko-rings";
@@ -41,6 +41,9 @@ export function fxState(t: number): FxState {
 }
 
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
+
+// 光炮相对发射时刻的秒数（负数是发射前）；减少动态效果的静帧给 null。
+export const cannonSince = ({ t, still }: FxState) => (still ? null : (t % CYCLE) - FIRE);
 
 // 身后光环的胀缩：周期比她的呼吸（4.4 秒）慢一倍多、幅度只有 1.5%，只求「微微在动」，调大就抢人物的戏。
 const RING_SWELL_S = 9;
@@ -184,7 +187,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     const { power, t, still } = state;
     begin(ctx);
     armRings(ctx, s, state, false);
-    if (hand) cutArm(ctx, hand, pose);
+    if (hand) cutArm(ctx, hand, pose, palmPose(cannonSince(state)));
     // 闲置时电弧每几秒噼啪一阵，蓄力起持续闪；闪烁按 70ms 一格取随机亮度。
     const win = Math.floor(t / 3.2);
     const burst = (t % 3.2) - hash(win) * 2.4;
@@ -212,7 +215,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     ctx.fillStyle = g;
     ctx.fillRect(ORB[0] - r, ORB[1] - r, 2 * r, 2 * r);
 
-    palmCannon(ctx, state, (t % CYCLE) - FIRE, hand?.palm ?? null, pose);
+    palmCannon(ctx, state, cannonSince(state) ?? 0, hand?.palm ?? null, pose);
   };
 
   const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine, floorOuter, floorInner]) => {

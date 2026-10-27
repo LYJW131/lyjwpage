@@ -7,7 +7,7 @@ import type { HandPose } from "./aoko-rings";
 const LIGHT = 0.75;
 const GROWN = 0.55;
 // 掌心在立绘原图里的位置；原图画好的蓝色球在 aoko-fx.ts 的 ORB（掌根），闲置时那团光照它，这里是光炮的炮口。
-const MUZZLE = [339, 298] as const;
+export const MUZZLE = [339, 298] as const;
 const R = 70;
 const TAU = Math.PI * 2;
 // 动画「一拍二」的翻滚：轮廓每 1/12 秒换一次。
@@ -112,6 +112,41 @@ function ring(ctx: CanvasRenderingContext2D, r: number, a: number) {
 
 // 减少动态效果时停在长满手掌那一刻，不留半截点亮。
 const STILL_SINCE = -0.3;
+
+// 光团照在手上的强度：长满手掌时为 1，发射那一下再亮一截，半秒内退掉。since 为 null 是减少动态效果的静帧。
+// 蓄力和发射时换手势：0 是立绘原来的手，1 手指微弯绷劲，2 手指猛张。1、2 是 Codex 照预告帧改的手指，拇指、握腕的右手、蓝球与袖子仍是原图；
+// 原图与拼法在本机母图目录（项目记忆 aoko-face-pipeline），图集由 scripts/aoko-hand-normals.py --tiles 2 生成。
+// 硬切不淡化，两张手叠着淡化会有重影；切的那一刻正好光团长满或光线迸出，最亮，看不出跳。
+export const HANDS = "/mascots/aoko-hands.webp";
+// 手势图集每格覆盖的原图区域（x, y, 宽, 高），比 aoko.ts 的 ARM_BOX 四周大一圈，猛张的手指才放得下；上行颜色、下行法线。
+export const HAND_BOX = [170, 120, 320, 320] as const;
+const FIRE_HAND_S = 0.3;
+
+export function palmPose(since: number | null) {
+  const at = since ?? STILL_SINCE;
+  if (at < -GROWN) return 0;
+  if (at < 0) return 1;
+  return at < FIRE_HAND_S ? 2 : 0;
+}
+
+export function palmLight(since: number | null) {
+  const at = since ?? STILL_SINCE;
+  if (at < -LIGHT) return 0;
+  if (at < 0) return 0.3 + 0.7 * smooth(-LIGHT, -GROWN, at);
+  return (1 - smooth(0, 0.5, at)) * (1 + 0.5 * Math.exp(-at * 10));
+}
+
+// 光源在炮口正前方 LIGHT_Z 处（原图像素），光照随距离按 FALLOFF 衰减；手的法线来自 scripts/aoko-hand-normals.py。
+// 受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；背光面压成冷紫，光越亮压得越深，对比才出得来。
+const LIGHT_Z = 34;
+const FALLOFF = 125;
+export const PALM_LIT_GLSL = `vec3 palmLit(vec3 col,vec3 n,vec2 q,float k){
+  vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-q,${LIGHT_Z}.);
+  float d=length(l);
+  float e=max(dot(n,l/d),0.)/(1.+d*d/${FALLOFF * FALLOFF}.)*k;
+  float band=smoothstep(.2,.24,e)*.6+smoothstep(.48,.52,e)*.4;
+  return mix(col*vec3(.62,.62,.9),max(col,vec3(.88,.9,1.)),band);
+}`;
 
 export function palmCannon(ctx: CanvasRenderingContext2D, { flash, t, still }: FxState, since: number, palm: readonly number[] | null, pose: HandPose) {
   const at = still ? STILL_SINCE : since;
