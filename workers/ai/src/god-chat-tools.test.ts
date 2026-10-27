@@ -81,11 +81,11 @@ test("先写完答案再调 show_card、下一轮空收尾时不提示步数用�
   }
 });
 
-test("汉字假名提问时点名不许改英文，有假名才说日文，英文提问点名英文", async (t) => {
+test("汉字假名提问时点名不许改英文，有假名才说日文，没有汉字假名只说照原文", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
-  for (const [content, expected] of [["LYJW 现在在干什么？", "Chinese or Japanese"], ["今何時", "Chinese or Japanese"], ["今日の天気", "Japanese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", "English"]] as const) {
+  for (const [content, expected] of [["LYJW 现在在干什么？", "Chinese or Japanese"], ["今何時", "Chinese or Japanese"], ["今日の天気", "Japanese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", "a language other than Chinese or Japanese"], ["Que fait LYJW ?", "a language other than Chinese or Japanese"]] as const) {
     const { env, requests } = designEnv();
     await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content }]), env, toolIO));
     const notes = requests[0].messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("The visitor's latest message is in"));
