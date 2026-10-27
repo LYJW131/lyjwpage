@@ -21,6 +21,7 @@ import { PwaRegistration } from "@/components/pwa-registration";
 import { RestReady } from "@/components/rest-ready";
 import { SiteAnalytics } from "@/components/site-analytics";
 import { SiteWebMcp } from "@/components/site-webmcp";
+import { WEBMCP_ORIGIN_TRIAL_TOKEN } from "@/lib/webmcp";
 import { SpaceBackdrop } from "@/components/space-backdrop";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -111,6 +112,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta httpEquiv="origin-trial" content={WEBMCP_ORIGIN_TRIAL_TOKEN} />
         {commitSha ? <meta name={DOCUMENT_COMMIT_META} content={commitSha} /> : null}
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />

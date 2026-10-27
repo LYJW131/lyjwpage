@@ -12,7 +12,7 @@
 
 ## 调试
 
-API 只在 Chrome 149 及以上可用，需打开开关或站点加入 origin trial（本站没加入）。
+API 只在 Chrome 149 及以上可用。`https://lyjw.me` 已加入 origin trial（令牌在 `src/lib/webmcp.ts#WEBMCP_ORIGIN_TRIAL_TOKEN`，经 `src/app/root.tsx` 的 `origin-trial` meta 下发，到期时间是令牌里的 `expiry`），生产页面在普通 Chrome 里就有 API；分支预览与本地不在令牌的源里，仍要打开开关。
 
 1. 打开 `chrome://flags/#enable-webmcp-testing`，设为 Enabled，重启 Chrome。要用 DevTools 的 WebMCP 面板再开 `chrome://flags/#devtools-webmcp-support`。
 2. 打开 `https://lyjw.me` 或分支预览 `https://<预览名>.preview.lyjw.dev`（预览名由 `scripts/preview-worker-name.ts#previewWorkerName` 算）。
@@ -29,7 +29,7 @@ API 只在 Chrome 149 及以上可用，需打开开关或站点加入 origin tr
 5. 让 agent 调：Chrome 网上应用店的 Model Context Tool Inspector 扩展（填 Gemini API key），或 [chrome-devtools-mcp](https://developer.chrome.com/docs/devtools/agents/webmcp-debugging) 加 `--categoryExperimentalWebmcp` 后用 `list_webmcp_tools`、`execute_webmcp_tool`。
 6. 本地或 Playwright 自带的 Chromium：启动参数加 `--enable-features=WebMCPTesting`，页面需是安全上下文（`https` 或 `localhost`）。
 
-7. Lighthouse 的 Agentic Browsing 类别有三项 WebMCP 检查（已注册工具、schema 有效、表单覆盖）。PageSpeed Insights 的浏览器没开 WebMCP，本站又没有 origin trial 令牌，三项都是「不适用」；要看结果就在本地跑，打开同一个开关：
+7. Lighthouse 的 Agentic Browsing 类别有三项 WebMCP 检查（已注册工具、schema 有效、表单覆盖）。PageSpeed Insights 测 `https://lyjw.me` 时有 origin trial 令牌；测分支预览时没有，三项都是「不适用」，要看结果就在本地跑，打开同一个开关：
 
    ```sh
    npx lighthouse@latest <页面地址> --only-categories=agentic-browsing \

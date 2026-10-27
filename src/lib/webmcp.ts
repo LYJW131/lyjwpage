@@ -21,6 +21,10 @@ declare global {
   }
 }
 
+// 只对 https://lyjw.me 生效，到期后 Chrome 忽略它；令牌本身公开。
+export const WEBMCP_ORIGIN_TRIAL_TOKEN =
+  "ApxnjBvae+a+Fix9D9mcxvYMD7fs34z9qI8gOeMkhFNUT5rLNSf9gwTHo6cJKIbroZMZKyU+i1Ic0Ucx+cqfyQkAAABHeyJvcmlnaW4iOiJodHRwczovL2x5ancubWU6NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0=";
+
 const READ_TIMEOUT_MS = 10_000;
 // 结果整段进浏览器里模型的上下文；codingYear 这类大视图截掉尾部，不分页。
 const MAX_RESULT_CHARS = 20_000;
