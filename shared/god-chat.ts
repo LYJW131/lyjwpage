@@ -14,8 +14,9 @@ export const GOD_CHAT_PASS_TTL_MS = 7 * 24 * 60 * 60_000;
 export const GOD_CHAT_PASS_PATTERN = /^\d{13}\.[\w-]{20,100}$/;
 
 // 普通回复末尾那句「访客下一句」预测的代码块语言标记与长度上限；切分逻辑在 shared/god-chat-next.ts，常量放这里是因为它在 ai Worker 的构建监视路径里。
+// 上限按 375 宽下整句中文灰字能放进 max-h-32 输入框（不出现被裁的行）取。
 export const GOD_CHAT_NEXT_FENCE = "next";
-export const GOD_CHAT_NEXT_MAX_CHARS = 80;
+export const GOD_CHAT_NEXT_MAX_CHARS = 40;
 
 // 公开端点直接花 API 额度：这几项上限共同限定单次请求的最大花费，放宽前先算账。
 export const GOD_CHAT_LIMITS = {
