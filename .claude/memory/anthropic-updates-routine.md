@@ -23,3 +23,5 @@ Since 2026-10-26 (lyjw「改mcp 顺便一起看我的点赞和收藏」) X is re
 First item (2026-10-14): Scion engineering post; its "superfan" idea was approved and built as [[collector-superfan-routine]].
 
 Practices: [[agent-automation-practices]]. Siblings: [[lyjwpage-daily-review-routine]], [[skill-mining-routine]].
+
+**Moved 2026-10-28 06:33 SGT** to a new thread/session and new trigger id (old signing key revoked); current ids and branch: [[routine-bindings]]. Ids above are the old, disabled ones.

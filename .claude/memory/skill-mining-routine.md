@@ -18,3 +18,5 @@ Created 2026-10-13 at lyjw's request. Routine `trig_0177b6cgVarcfBLirk8qSXN2` ("
 **Feedback phase:** every run replies in its thread and asks for lyjw's reaction until 5 reports are sent or lyjw says "磨合结束"; then it only replies when a PR merged or a decision is needed.
 
 Practices: [[agent-automation-practices]]. Sibling routine: [[lyjwpage-daily-review-routine]]. Verification inside it: [[verification-haiku-worker]]. Hand-off fix from the first drift pass: [[handoff-carry-user-constraints]].
+
+**Moved 2026-10-28 06:33 SGT** to a new thread/session and new trigger id (old signing key revoked); current ids and branch: [[routine-bindings]]. Ids above are the old, disabled ones.

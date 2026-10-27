@@ -57,6 +57,7 @@
 - Old account project: [[old-account-project-import]]. wrangler → cf CLI partial: [[cf-cli-migration]].
 
 ## Routines
+- **All six moved to new threads 2026-10-28 06:33 SGT** (old signing key revoked); trigger/session/branch table and how to move again: [[routine-bindings]]. Old triggers disabled, not deleted.
 - 04:00 daily code review: [[lyjwpage-daily-review-routine]].
 - 04:53 skill-mining + drift review: [[skill-mining-routine]].
 - 08:41 Anthropic updates digest: [[anthropic-updates-routine]].

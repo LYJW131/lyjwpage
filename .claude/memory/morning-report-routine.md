@@ -14,3 +14,5 @@ Content: 要你做的 / 隔夜合并 / 失败与没读到 / Anthropic 动态 (on
 Same session also did the 2026-10-20 prompt trim of the review / skill-mining / memory-mirror / collector routines (new texts kept in /mnt/project-files/routine-prompts/). Siblings: [[lyjwpage-daily-review-routine]], [[anthropic-updates-routine]], [[collector-superfan-routine]], [[skill-mining-routine]].
 
 Since 2026-10-23 06:38 SGT (lyjw「处理定时任务吧」, thread「Token 效率复盘」) the prompt has the session dispatch a Sonnet medium worker that reads everything and drafts the report; the session only re-checks listed PRs and posts. Prompt text: /mnt/project-files/routine-prompts/morning-report.txt. See [[token-efficiency-review]].
+
+**Moved 2026-10-28 06:33 SGT** to a new thread/session and new trigger id (old signing key revoked); current ids and branch: [[routine-bindings]]. Ids above are the old, disabled ones.
