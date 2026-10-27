@@ -4,6 +4,7 @@ set -euo pipefail
 : "${DEVIN_SESSION_TOKEN:?set DEVIN_SESSION_TOKEN (the devin-session-token\$... login) at the top of the environment setup script}"
 
 bin="$HOME/.local/bin"
+mkdir -p "$bin"
 export PATH="$bin:$PATH"
 
 if ! command -v devin >/dev/null 2>&1; then
