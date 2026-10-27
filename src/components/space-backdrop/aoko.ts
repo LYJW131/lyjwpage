@@ -1,4 +1,4 @@
-import { aokoFx, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
+import { aokoFx, FLOOR_UNFOLD_S, fxState, loadImage, ORB, preloadFx, STILL, type FxState, type HandPose } from "./aoko-fx";
 import { smooth } from "./aoko-paint";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
 import { FACE_ATLAS, FACE_BOX, FACE_COLS, FACE_ROWS, faceDirector, STILL_FACE, type Face } from "./aoko-face";
@@ -31,6 +31,7 @@ const DOUBLE_BLINK_CHANCE = 0.2;
 // 召唤时分层显现的总时长（秒）：地面法阵 → 人物从脚下往上显形 → 身后光环 → 手臂环与电弧。
 // 人物不做半透明淡入而是逐像素显形（显出来的地方就是不透明的），光环等人物整个显完才亮，所以身后的法阵始终被她挡住。
 const REVEAL_S = 3.6;
+const SUMMON_FLASH_S = 0.5;
 
 function lidAt(dt: number) {
   if (dt < 0 || dt >= BLINK_TOTAL) return 0;
@@ -292,7 +293,9 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
     render?.(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p));
     if (revealAt === null) return fx.render(state, handPose(t));
     front.style.opacity = String(smooth(0.7, 1, p));
-    fx.render(state, handPose(t), { floor: smooth(0, 0.25, p), ring: smooth(0.55, 0.85, p) });
+    // 法阵等召唤那一下的白闪退了才展开，不然前半段全被盖住。
+    const unfold = (p * REVEAL_S - SUMMON_FLASH_S) / FLOOR_UNFOLD_S;
+    fx.render(state, handPose(t), { floor: Math.max(0, Math.min(1, unfold)), ring: smooth(0.55, 0.85, p) });
     if (p >= 1) revealAt = null;
   };
 

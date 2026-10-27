@@ -42,6 +42,24 @@ export function fxState(t: number): FxState {
 
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
+// 地面法阵从一点长到完整的时长，召唤时与平时重新点亮共用。
+export const FLOOR_UNFOLD_S = 1.8;
+// 平时法阵不定期熄灭再重新展开：约四成的轮次里，在蓄力之前的空档随机挑一刻淡出，暗一会儿再从中心长出来。
+// 第一轮不熄，召唤时刚展开过。
+const RELIGHT_CHANCE = 0.4;
+const RELIGHT_FADE_S = 0.7;
+const RELIGHT_DARK_S = 1.2;
+const RELIGHT_S = RELIGHT_FADE_S + RELIGHT_DARK_S + FLOOR_UNFOLD_S;
+
+function floorRelight(t: number) {
+  const n = Math.floor(t / CYCLE);
+  const at = 2 + hash(n + 60) * (CHARGE - 2 - RELIGHT_S);
+  const c = (t % CYCLE) - at;
+  if (n < 1 || hash(n + 50) >= RELIGHT_CHANCE || c < 0 || c > RELIGHT_S) return { alpha: 1, unfold: 1 };
+  if (c < RELIGHT_FADE_S) return { alpha: 1 - smooth(0, RELIGHT_FADE_S, c), unfold: 1 };
+  return { alpha: 1, unfold: Math.max(0, (c - RELIGHT_FADE_S - RELIGHT_DARK_S) / FLOOR_UNFOLD_S) };
+}
+
 // 身后光环的胀缩：周期比她的呼吸（4.4 秒）慢一倍多、幅度只有 1.5%，只求「微微在动」，调大就抢人物的戏。
 const RING_SWELL_S = 9;
 const RING_SWELL = 0.015;
@@ -65,7 +83,7 @@ export function loadImage(src: string) {
 
 export const preloadFx = () => FX_NAMES.map((name) => loadImage(FX_ASSET(name)));
 
-// 召唤时分层渐显：地面法阵先亮，身后光环随后，各自 0–1。
+// 召唤时分层出现，各自 0–1：floor 是地面法阵的展开进度（aoko-floor.ts 的 floorPainter），ring 是身后光环的透明度。
 export type Reveal = { floor: number; ring: number };
 const SHOWN: Reveal = { floor: 1, ring: 1 };
 
@@ -111,8 +129,9 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const drawBack = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, show: Reveal) => {
     const { power, flash, t } = state;
     begin(ctx);
-    ctx.globalAlpha = show.floor;
-    if (floor) paintFloor(ctx, floor, t * 0.03, 0.8 + 0.2 * power, FLOOR);
+    const relight = state.still ? { alpha: 1, unfold: 1 } : floorRelight(t);
+    ctx.globalAlpha = relight.alpha;
+    if (floor) paintFloor(ctx, floor, t * 0.03, 0.8 + 0.2 * power, FLOOR, Math.min(show.floor, relight.unfold));
     ctx.globalAlpha = show.ring;
 
     for (let i = 0; i < 16; i++) {
