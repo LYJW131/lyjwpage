@@ -98,7 +98,10 @@ export function CompletionField({ completion, draft, children }: { completion: C
             className="pointer-events-auto cursor-text text-muted-foreground"
           >
             {completion.suffix}
-            <kbd className="label-mono ml-1.5 hidden rounded border border-line-strong px-1 align-middle pointer-fine:inline">Tab</kbd>
+            {/* 键帽按行盒居中：align-middle 对的是西文 x 高，中文字形的中线比它高，键帽看着偏低。 */}
+            <span className="ml-1.5 hidden h-lh items-center align-top pointer-fine:inline-flex">
+              <kbd className="label-mono rounded border border-line-strong px-1 py-0.5">Tab</kbd>
+            </span>
           </span>
         )}
       </div>
