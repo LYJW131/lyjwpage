@@ -24,6 +24,8 @@ API 只在 Chrome 149 及以上可用，需打开开关或站点加入 origin tr
    await document.modelContext.executeTool(tool, { view: "server" });
    ```
 
+   Chrome 155 以前的版本只认 JSON 字符串参数，对象会报 `Failed to parse input arguments`，这时写 `executeTool(tool, JSON.stringify({ view: "server" }))`。工具抛错时 `executeTool` 只回笼统的 `UnknownError`，具体消息看控制台的 `WebMCP tool execution failed`。
+
 5. 让 agent 调：Chrome 网上应用店的 Model Context Tool Inspector 扩展（填 Gemini API key），或 [chrome-devtools-mcp](https://developer.chrome.com/docs/devtools/agents/webmcp-debugging) 加 `--categoryExperimentalWebmcp` 后用 `list_webmcp_tools`、`execute_webmcp_tool`。
 6. 本地或 Playwright 自带的 Chromium：启动参数加 `--enable-features=WebMCPTesting`，页面需是安全上下文（`https` 或 `localhost`）。
 
