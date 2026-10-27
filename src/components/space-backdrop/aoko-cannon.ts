@@ -14,6 +14,9 @@ const TAU = Math.PI * 2;
 const BOIL_S = 1 / 12;
 // 参考 f37–f40 的光线大致朝这几个方向（画布 y 朝下），每发再随机偏一点。
 const RAYS = [-1.25, -0.4, 0.06, 0.45, 1.1, 2.05, 2.8, -2.55];
+// 射出后整组光线绕光点顺时针转、越转越慢：参考 f37→f41 朝上那条从 -78° 转到 -49°，即 0.17 秒约 27°。
+const SPIN = 3.3;
+const SPIN_EASE_S = 0.35;
 // 参考 f41 光线射出约 0.17 秒后才扩出那圈环，出现时半径约两个手掌宽。
 const RING_AT = 0.14;
 
@@ -72,9 +75,9 @@ function blob(ctx: CanvasRenderingContext2D, size: number, e: number, seed: numb
   ctx.fillRect(-size * 1.7, -1, size * 3.4, 2);
 }
 
-function rays(ctx: CanvasRenderingContext2D, shot: number, reach: number, a: number) {
+function rays(ctx: CanvasRenderingContext2D, shot: number, reach: number, a: number, turn: number) {
   RAYS.forEach((base, i) => {
-    const angle = base + (hash(shot * 8 + i) - 0.5) * 0.25;
+    const angle = base + turn + (hash(shot * 8 + i) - 0.5) * 0.25;
     const len = (300 + hash(shot * 8 + i + 0.5) * 450) * reach;
     ctx.save();
     ctx.rotate(angle);
@@ -135,7 +138,7 @@ export function palmCannon(ctx: CanvasRenderingContext2D, { flash, t, still }: F
       [1, tone(SCENE.core, 0)],
     ]);
     if (flash > 0.01) {
-      rays(ctx, Math.round(t - at), 0.75 + 0.25 * smooth(0, 0.08, at), Math.min(1, flash * 1.6));
+      rays(ctx, Math.round(t - at), 0.75 + 0.25 * smooth(0, 0.08, at), Math.min(1, flash * 1.6), SPIN * SPIN_EASE_S * (1 - Math.exp(-at / SPIN_EASE_S)));
       ring(ctx, 200 + 1400 * Math.max(0, at - RING_AT), smooth(RING_AT, RING_AT + 0.03, at) * (1 - smooth(RING_AT, RING_AT + 0.35, at)));
       glow(ctx, 640, [
         [0, tone(SCENE.white, 0.35 * flash)],
