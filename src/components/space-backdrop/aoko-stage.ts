@@ -1,4 +1,4 @@
-import { ColorManagement, Group, LinearSRGBColorSpace, Mesh, NoToneMapping, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector2, WebGLRenderer, WebGLRenderTarget } from "three";
+import { ColorManagement, Group, type Object3D, LinearSRGBColorSpace, Mesh, NoToneMapping, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector2, WebGLRenderer, WebGLRenderTarget } from "three";
 
 import { EXTENT, FLOOR } from "./aoko-fx";
 import { bloom } from "./aoko-bloom";
@@ -25,7 +25,7 @@ export function stage(canvas: HTMLCanvasElement) {
   ColorManagement.enabled = false;
   let renderer: WebGLRenderer;
   try {
-    renderer = new WebGLRenderer({ canvas, alpha: true, premultipliedAlpha: true, antialias: true, powerPreference: "low-power" });
+    renderer = new WebGLRenderer({ canvas, alpha: true, premultipliedAlpha: true, antialias: false, powerPreference: "low-power" });
   } catch {
     return null;
   }
@@ -92,6 +92,18 @@ void main(){vec4 c=texture2D(map,v)+texture2D(glow,v)*k;c.a=max(c.a,max(c.r,max(
       const B = (height - oy) / scale - EYE_Y;
       camera.projectionMatrix.makePerspective(L * k, R * k, -T * k, -B * k, near, DIST * 3);
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+    },
+    // 先把所有着色器编好：光炮的光线、扩散环平时不显示，three 只编可见的，第一次发射时现编会卡一下。
+    warm() {
+      for (const { scene } of [base, fore]) {
+        const hidden: Object3D[] = [];
+        scene.traverse((o) => {
+          if (!o.visible) hidden.push(o);
+          o.visible = true;
+        });
+        renderer.compile(scene, camera);
+        for (const o of hidden) o.visible = false;
+      }
     },
     // strength 是泛光强度（0 不糊）。
     render(strength: number) {

@@ -152,6 +152,7 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
         scene = { fig: figure(art), bk: back(fx, gl.anisotropy), fr: front({ ...fx, arm: art.arm }, gl.anisotropy) };
         gl.root.add(scene.bk.group, scene.fig.shadow, scene.fig.mesh);
         gl.fore.add(scene.fr.group);
+        gl.warm();
         if (summon && !reducedMotion) revealAt = (performance.now() - t0) / 1000;
         layout();
       } catch {
