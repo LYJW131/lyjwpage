@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
+import { ArrowUp, History, PencilRuler, Plus, Square } from "lucide-react";
 
 import { AnswerCard, AskCard, BuildPlanCard } from "@/components/lazy-chat-cards";
 import { ChatMarkdown, preloadChatMarkdown, useChatMarkdownReady } from "@/components/lazy-chat-markdown";
@@ -17,6 +17,8 @@ import { textLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
+import { CHAT_FORM_TOOL, CHAT_MESSAGE_PARAM, answerAgentSubmit } from "@/lib/webmcp";
+import { SessionList, savedSessions } from "@/components/god-chat/session-list";
 import { GOD_CHAT_LIMITS, GOD_CHAT_PATH, GOD_CHAT_PRESETS, type GodChatEvent, type GodChatMessage, fitHistory, readGodChatRoute, GOD_CHAT_ANTHROPIC_CONSENT } from "@shared/god-chat";
 import type { GodChatLineup, GodChatUsage } from "@shared/god-chat-tiers";
 import { type Reply, PlannerActivity, DesignStatus, DesignEndNotice, ReplyBody, LineupSwitch, RankLabel, RouteStatus } from "@/components/god-chat/message-parts";
@@ -665,9 +667,11 @@ function Conversation({ className, archive, session: conversation }: { className
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
         <div ref={human.slotRef} className={cn(human.state === "interactive" && "pb-2")} />
         <form
+          {...CHAT_FORM_TOOL}
           className="relative flex items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
+            answerAgentSubmit(event.nativeEvent, "The visitor sent the message to the homepage chat; the reply streams in on the page.");
             submit(draft);
           }}
         >
@@ -748,9 +752,12 @@ function Conversation({ className, archive, session: conversation }: { className
               rows={1}
               placeholder={completion.predicted ? "" : human.state === "interactive" ? "Tick the box above to continue…" : human.state === "checking" ? "Verifying you are human…" : "Speak, mortal… (type /)"}
               aria-label="Message"
+              name="message"
+              {...CHAT_MESSAGE_PARAM}
               className="scrollbar-none max-h-32 min-h-10 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
             />
           </CompletionField>
+          {/* 发送键用 aria-disabled 而不是 disabled：声明式 WebMCP 不自动提交时要找到可用的提交按钮，空消息由 ask 拦下。 */}
           {/* 两个按钮各带 key：同类型同位置的元素会被 React 复用，发送按钮会从停止按钮的不透明度过渡到禁用态，结束时闪一下。 */}
           {streaming ? (
             <button
@@ -767,8 +774,8 @@ function Conversation({ className, archive, session: conversation }: { className
               key="send"
               type="submit"
               aria-label="Send"
-              disabled={!draft.trim()}
-              className="flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-30"
+              aria-disabled={!draft.trim()}
+              className="flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition-opacity aria-disabled:opacity-30"
             >
               <ArrowUp className="size-4" />
             </button>
@@ -776,38 +783,6 @@ function Conversation({ className, archive, session: conversation }: { className
         </form>
       </div>
     </Card>
-  );
-}
-
-// 存储层总留一条空会话给输入框当草稿；只有带消息的会话才算存档，列表与计数都不含草稿。
-function savedSessions(archive: ChatArchive): ChatSession[] {
-  return archive.sessions.filter((session) => session.messages.length > 0);
-}
-
-function SessionList({ archive }: { archive: ChatArchive }) {
-  const sessions = savedSessions(archive);
-  function remove(id: string) {
-    chatArchive.remove(id);
-    if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
-  }
-  return (
-    <div className="border-b border-line bg-muted px-4 py-2 lg:px-5">
-      <div className="mb-2 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
-        <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
-        {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-signal-red">Clear all conversations</button>}
-      </div>
-      {sessions.length > 0 && <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
-        {sessions.map((session) => (
-          <li key={session.id} className="flex h-11 snap-start items-center gap-2">
-            <button type="button" aria-current={session.id === archive.activeId ? "true" : undefined} onClick={() => chatArchive.select(session.id)} className={cn("flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs", session.id === archive.activeId ? "bg-surface text-foreground" : "text-muted-foreground hover:bg-surface-hover")}>
-              <span className="truncate">{session.title}</span>
-              <time className="shrink-0 text-2xs" dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</time>
-            </button>
-            <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-signal-red"><Trash2 className="size-3.5" /></button>
-          </li>
-        ))}
-      </ul>}
-    </div>
   );
 }
 

@@ -453,6 +453,8 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
       const response = await env.ASSETS.fetch(new Request(new URL(asset, url), request));
       const headers = new Headers(response.headers);
       headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
+      // 这些都是公开静态文件；发现清单（/.well-known/ard.json）要让别的源上的浏览器 agent 读得到。
+      headers.set("Access-Control-Allow-Origin", "*");
       return new Response(response.body, { status: response.status, headers });
     }
     case "archived-asset":
