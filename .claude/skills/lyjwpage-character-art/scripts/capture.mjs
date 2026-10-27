@@ -167,7 +167,8 @@ if (+a.frames > 0) {
   await goTo(+a.from);
   for (let i = 0; i < +a.frames; i++) {
     await shot(`f${String(i).padStart(3, "0")}`);
-    await page.clock.runFor(+a.step);
+    // 假时钟按整毫秒走：每帧推进到累计时刻取整，16.7 ms 一帧时 17、17、16 交替，长了也不漂。
+    await page.clock.runFor(Math.round((i + 1) * +a.step) - Math.round(i * +a.step));
   }
 }
 const faces = a.face.split(",").filter(Boolean);

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
 立绘表情格：裁脸、把 Codex 改过的脸对齐贴回、按 FACES 拼图集。
-格框、格数与格序从 --face-ts 读（FACE_BOX、FACE_COLS、FACE_ROWS、FACES），原图宽从同目录 aoko.ts 的 SRC_W 读，
+格框、格数与格序从 --face-ts 读（FACE_BOX、FACE_COLS、FACE_ROWS、FACES），原图宽从同目录 aoko-figure.ts 的 SRC_W 读，
 都是青子的文件；换角色时指向新角色的文件，或用 --src-w 直接给。
 
-  P="uv run -q --with numpy --with scipy --with pillow python -I face_patch.py"
-  $P crop <母图.png> <face_open.png> --face-ts <aoko-face.ts> [--src-w 934] [--bg 24231f]
-  $P patch <face_open.png> <名字>=<Codex 输出.png>[:eyes] ... [--tiles 目录] [--eyes cx,cy,rx,ry/cx,cy,rx,ry] [--mouth cx,cy,rx,ry]
-  $P atlas <tiles 目录> <输出.webp> --face-ts <aoko-face.ts> --extra 0=angry_shut,7=relaxed_shut
+  py(){ uv run -q --with numpy --with scipy --with pillow python -I "$@"; }
+  py face_patch.py crop <母图.png> <face_open.png> --face-ts <aoko-face.ts> [--src-w 934] [--bg 24231f]
+  py face_patch.py patch <face_open.png> <名字>=<Codex 输出.png>[:eyes|:mouth] ... [--tiles 目录] [--eyes cx,cy,rx,ry/cx,cy,rx,ry] [--mouth cx,cy,rx,ry]
+  py face_patch.py atlas <tiles 目录> <输出.webp> --face-ts <aoko-face.ts> --extra 0=angry_shut,7=relaxed_shut
 
 patch 打印每格的对齐残差；check.png 是原脸和各格贴回后的横排对照。
+:eyes 只贴眉眼（闭眼格），:mouth 只贴嘴（眼睛不动的表情），不加后缀两样都贴。
+新角色还没有自己的 face.ts 时，在母图目录写一份只含 FACE_BOX、FACE_COLS、FACE_ROWS、FACES 的临时 ts 传给 --face-ts。
 --eyes / --mouth 是 512×512 空间（face_open 缩到一半）里的椭圆：两眼各一个、含眉毛，嘴一个；默认值是青子的。
 """
 import argparse
@@ -47,7 +49,7 @@ def read_face_ts(path):
 def src_width(args):
     if args.src_w:
         return args.src_w
-    shader = Path(args.face_ts).with_name("aoko.ts")
+    shader = Path(args.face_ts).with_name("aoko-figure.ts")
     m = re.search(r"const SRC_W = (\d+);", shader.read_text()) if shader.exists() else None
     if not m:
         sys.exit(f"没在 {shader} 里读到 SRC_W，用 --src-w 给原图宽")
@@ -104,7 +106,9 @@ def align(base, out, region):
 
 def patch(args):
     eye_d = np.minimum(*(ellipse(e) for e in args.eyes.split("/")))
-    feature_d = np.minimum(eye_d, ellipse(args.mouth))
+    mouth_d = ellipse(args.mouth)
+    feature_d = np.minimum(eye_d, mouth_d)
+    masks = {"": feature_d, "eyes": eye_d, "mouth": mouth_d}
     base = load512(args.face_open)
     # 五官本来就被改了，误差只在五官以外、脸部上下范围内算。
     region = (feature_d > 2.0) & (yy > 120) & (yy < 480)
@@ -114,9 +118,11 @@ def patch(args):
     for spec in args.specs:
         name, _, rest = spec.partition("=")
         src, _, kind = rest.partition(":")
+        if kind not in masks:
+            sys.exit(f"{spec}：后缀只认 :eyes、:mouth")
         out = load512(src)
         err, s, dy, dx, moved = align(base, out, region)
-        mask = feather(eye_d if kind == "eyes" else feature_d)
+        mask = feather(masks[kind])
         # 遮罩边缘那一圈把均值拉回原图：Codex 会整张轻微偏色，不校就是一块补丁。
         ring = (mask > 0.05) & (mask < 0.6)
         moved = moved + (base[ring].mean(0) - moved[ring].mean(0))
