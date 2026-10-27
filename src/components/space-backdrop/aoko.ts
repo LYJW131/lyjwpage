@@ -339,7 +339,7 @@ export function aokoStanding(parent: HTMLElement, { gutter, reducedMotion = fals
   };
   layout();
 
-  // 法线与手势图集只给光炮用：缺一张时手不打光或不换手势，立绘照常挂。顶替的 1×1 透明图让着色器读到 alpha 0，法线按朝前算。
+  // 法线与手势图集只给光炮用，缺了立绘照常挂：顶替的 1×1 透明图让着色器读到 alpha 0，缺法线时手按朝前的法线照样打光（没有手指侧面的明暗），缺图集时不换手势。
   const optional = (src: string) => loadImage(src).catch(() => null);
   void Promise.all([loadImage(SRC), loadImage(RIG), loadImage(FACE_ATLAS), loadImage(ARM), loadImage(FILL), optional(ARM_NORMAL), optional(HANDS), fx.ready]).then(([art, rig, faces, arm, fill, armNormal, hands]) => {
     if (stopped) return;
