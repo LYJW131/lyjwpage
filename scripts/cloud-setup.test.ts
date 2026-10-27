@@ -48,6 +48,8 @@ function run(extra: Record<string, string>) {
       STUB_LOG: log,
       AAPAY_SIGN_KEY_B64: "key",
       DEVIN_SESSION_TOKEN: "tok",
+      STUB_TRUNCATE: "",
+      STUB_RUN_FAIL: "",
       ...extra,
     },
   });
