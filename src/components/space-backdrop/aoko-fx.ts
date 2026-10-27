@@ -1,6 +1,7 @@
 // 青子立绘周围的施法场景，复刻《魔法使之夜》那段演出：脚下的地面法阵（img0607/0609，平视远景 img0633 里是脚下一条扁椭圆）、
-// 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）与发射瞬间的星芒（img0660）。
+// 身后的竖直光环与扫向手臂的电弧（img0627–0630）、套在手臂上的法阵（img0664/0667）；掌心的蓄力与发射在 aoko-cannon.ts。
 // 坐标一律是立绘原图像素（934×1873，与 aoko.ts 的 SRC_W/SRC_H 同一套）。
+import { palmCannon } from "./aoko-cannon";
 import { floorPainter, floorTextures } from "./aoko-floor";
 import { BOKEH, type FxState, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 import { type Hand, type HandPose, armRings, cutArm, glints } from "./aoko-rings";
@@ -23,7 +24,6 @@ const BOLT_W = 2100 * SHOT_K;
 const BOLT_H = 1260 * SHOT_K;
 
 export const ORB: [number, number] = [368, 318];
-const FLARE_ANGLE = -0.5;
 // 地面法阵：圆心在两脚之间；压扁比取平视偏高的机位，比 img0633 的近地机位厚；depth 是近大远小的程度（近端比圆心放大 1/(1-depth)）。
 // 半径是 lyjw 要的大小：伸到卡片列背后的那半边被挡住也无妨（img0609 里法阵直径有人物身高的数倍，照比例画会出视口）。
 const FLOOR = { x: 490, y: 1858, r: 1100, tilt: 0.21, depth: 0.22 };
@@ -181,7 +181,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   };
 
   const drawFront = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, pose: HandPose) => {
-    const { power, flash, t, still } = state;
+    const { power, t, still } = state;
     begin(ctx);
     armRings(ctx, s, state, false);
     if (hand) cutArm(ctx, hand, pose);
@@ -202,36 +202,17 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     armRings(ctx, s, state, true);
     glints(ctx, t, power);
 
-    const r = 46 + 70 * power + 140 * flash;
+    // 原图画好的蓝球上常亮的一团光；蓄力和发射交给掌心光炮，这团不跟着涨。
+    const r = 46;
     const g = ctx.createRadialGradient(ORB[0], ORB[1], 0, ORB[0], ORB[1], r);
-    g.addColorStop(0, tone(SCENE.white, 0.3 + 0.45 * power + 0.25 * flash));
-    g.addColorStop(0.35, tone(SCENE.core, 0.18 + 0.3 * power));
+    g.addColorStop(0, tone(SCENE.white, 0.3));
+    g.addColorStop(0.35, tone(SCENE.core, 0.18));
     g.addColorStop(1, tone(SCENE.sky, 0));
     ctx.globalAlpha = 1;
     ctx.fillStyle = g;
     ctx.fillRect(ORB[0] - r, ORB[1] - r, 2 * r, 2 * r);
 
-    if (flash > 0.01) {
-      ctx.save();
-      ctx.translate(ORB[0], ORB[1]);
-      for (const [angle, len] of [[FLARE_ANGLE, 520], [FLARE_ANGLE + Math.PI / 2, 360]]) {
-        ctx.save();
-        ctx.rotate(angle);
-        const ray = ctx.createLinearGradient(-len, 0, len, 0);
-        ray.addColorStop(0, tone(SCENE.sky, 0));
-        ray.addColorStop(0.5, tone(SCENE.white, flash));
-        ray.addColorStop(1, tone(SCENE.sky, 0));
-        ctx.fillStyle = ray;
-        ctx.fillRect(-len, -5 * flash - 1, 2 * len, 10 * flash + 2);
-        ctx.restore();
-      }
-      const bloom = ctx.createRadialGradient(0, 0, 0, 0, 0, 640);
-      bloom.addColorStop(0, tone(SCENE.white, 0.35 * flash));
-      bloom.addColorStop(1, tone(SCENE.sky, 0));
-      ctx.fillStyle = bloom;
-      ctx.fillRect(-640, -640, 1280, 1280);
-      ctx.restore();
-    }
+    palmCannon(ctx, state, (t % CYCLE) - FIRE, hand?.palm ?? null, pose);
   };
 
   const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine, floorOuter, floorInner]) => {
