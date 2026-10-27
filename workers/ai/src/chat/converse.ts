@@ -94,8 +94,7 @@ export async function converse({
   ];
   const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
-  const language = replyLanguageNote(history.at(-1)?.content ?? "");
-  if (language) messages.push({ role: "system", content: language });
+  messages.push({ role: "system", content: replyLanguageNote(history.at(-1)?.content ?? "") });
   if (designOff) messages.push({ role: "system", content: DESIGN_OFF_NOTE });
   if (show) messages.push({ role: "system", content: `This is one of the homepage's sample questions, picked to show visitors what this chat can draw. ${show}` });
   const sources = new Map<string, GodChatSource>();

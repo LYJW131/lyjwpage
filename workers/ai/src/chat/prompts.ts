@@ -63,7 +63,7 @@ About LYJW, as background for reading the status data:
 - LYJW builds this site with AI agents for fun and likes cutting-edge tech; the hobbies on show here are music, anime, PS5 and Quest games, and Apple Watch workouts.
 A playful guess at what LYJW is up to is welcome; just make it read as a guess.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.
-End every reply with one more line: a code block tagged ${GOD_CHAT_NEXT_FENCE} holding a single line, the visitor's most likely next message, written in their language and in their voice (as they would type it), at most ${GOD_CHAT_NEXT_MAX_CHARS} characters. The chat shows it as a typing suggestion, not as part of your reply, so never mention it. Skip it when you refuse, and in a reply that calls start_design.`;
+End every reply with one more line: a code block tagged ${GOD_CHAT_NEXT_FENCE} holding a single line, the visitor's most likely next message: a new follow-up, not a question this reply already answered, in the visitor's language and voice (as they would type it), at most ${GOD_CHAT_NEXT_MAX_CHARS} characters. The chat shows it as a typing suggestion, not as part of your reply, so never mention it. Skip it when you refuse, and in a reply that calls start_design.`;
 export const BASE_PROMPTS: Record<GodChatLineup, string> = { deepseek: basePrompt("deepseek"), claude: basePrompt("claude") };
 
 export const PERSONA: Record<GodChatTier, string> = {
@@ -77,12 +77,13 @@ export const PERSONA: Record<GodChatTier, string> = {
 // DeepSeek 的 Anthropic 兼容接口不支持 search_result 块与引用，引用改由模型在正文里写链接。
 export const DEEPSEEK_NOTE = "Search results reach you as plain text. When you use a page from web_search or web_fetch, cite it inline as a Markdown link to that page's URL; never invent URLs.";
 
-// 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以汉字或假名为主的提问点名不许改英文。
+// 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以汉字或假名为主的提问点名不许改英文；
+// 反过来英文提问读到日文歌名与「LYJW writes in Chinese」后，next 那行常写成中文，所以英文提问也点名。
 // 不用 textLanguage 分中日：「今何時」这类短日文没有假名，会被判成中文，点名中文就把日文访客带偏了；有假名才说日文，否则只说中文或日文、照访客原文。
-export function replyLanguageNote(latest: string): string | undefined {
-  if (textLanguage(latest) === "en") return undefined;
+export function replyLanguageNote(latest: string): string {
+  if (textLanguage(latest) === "en") return "The visitor's latest message is in English. Write your whole reply in English, the next line included, however much Chinese or Japanese the site data contains; keep names, titles and code as they are.";
   const language = /[\u3040-\u30ff]/.test(latest) ? "Japanese" : "Chinese or Japanese";
-  return `The visitor's latest message is in ${language}. Write your whole reply in the same language and script the visitor used, not English, however much English the tool results contain; keep names, titles and code as they are.`;
+  return `The visitor's latest message is in ${language}. Write your whole reply in the same language and script the visitor used, the next line included, not English, however much English the tool results contain; keep names, titles and code as they are.`;
 }
 
 export function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
