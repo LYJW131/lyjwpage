@@ -9,7 +9,7 @@ export type { FxState } from "./aoko-paint";
 export type { HandPose } from "./aoko-rings";
 
 export const FX_ASSET = (name: string) => `/mascots/aoko-fx-${name}.webp`;
-const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine", "floor-outer", "floor-inner"];
+const FX_NAMES = ["band", "runes", "ring", "octa", "bolt", "bolt-fine", "floor-outer", "floor-inner", "floor-inner-fill"];
 
 // 在 img0628-HD（2100×1260）上量的位置，按两眼中点和瞳距换算进立绘：镜头瞳距 196px、立绘 85px。
 const SHOT_K = 85 / 196;
@@ -43,7 +43,7 @@ export function fxState(t: number): FxState {
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
 // 地面法阵从一点长到完整的时长，召唤时与平时重新点亮共用。
-export const FLOOR_UNFOLD_S = 1.8;
+export const FLOOR_UNFOLD_S = 2.6;
 // 平时法阵不定期熄灭再重新展开：约四成的轮次里，在蓄力之前的空档随机挑一刻淡出，暗一会儿再从中心长出来。
 // 第一轮不熄，召唤时刚展开过。
 const RELIGHT_CHANCE = 0.4;
@@ -253,9 +253,9 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     }
   };
 
-  const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine, floorOuter, floorInner]) => {
+  const ready = Promise.all(preloadFx()).then(([band, runes, ring, octa, bolt, boltFine, floorOuter, floorInner, floorInnerFill]) => {
     sprites = { band, runes, ring, octa, bolt: fadeFrame(bolt), boltFine: fadeFrame(boltFine) };
-    floor = floorTextures(floorOuter, floorInner);
+    floor = floorTextures(floorOuter, floorInner, floorInnerFill);
   })
     // 特效贴图缺一张时只是不画特效，立绘照常挂（aoko.ts 等这个 promise）。
     .catch(() => undefined);
