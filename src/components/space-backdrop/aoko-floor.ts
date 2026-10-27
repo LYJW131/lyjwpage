@@ -1,7 +1,7 @@
 import { RIM, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 
 // 脚下的地面法阵就是 img0609（俯视）里那面：外圈 img0640（符文带、星形弦线、印章环）套内盘 img1627（旋刃、中心四枚印章、粗亮边），
-// 底下是被法阵照成紫色的砖地。投到地面时按 img0633（平视远景）那样近大远小。
+// 底下是砖地：本身是暗灰紫，紫色是法阵照出来的，法阵暗了、熄了，那层紫跟着淡，只剩暗底。投到地面时按 img0633（平视远景）那样近大远小。
 // 砖地铺到法阵外圈半径的 EXTENT 倍，多出来的一圈是砖地的余光。
 const EXTENT = 1.6;
 const BRICK_TEX = 1280;
@@ -18,14 +18,14 @@ const CIRCLE_SPAN = 1 / (EXTENT * RIM);
 const GLOW_TEX = 160;
 const TAU = Math.PI * 2;
 
-// 展开从触地到定格的时长。
-export const FLOOR_UNFOLD_S = 7.75;
+// 展开从触地到回落成平时亮度的时长：原片那段 7.75 秒，加上 GAIN 回落的那段。
+export const FLOOR_UNFOLD_S = 9.25;
 
 // 展开逐帧照剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md）。原片那面法阵就是内盘 img1627，
 // 把原片每一帧按透视拉正回 img1627 的贴图坐标，按半径分圈、对细线与宽块两层做回归，量出每一圈每一刻的亮度：
 // 法阵从头到尾是原尺寸、不转，从触地点往外显现（软前沿）；细线与靠中心的宽块跟着前沿出来，外半圈的宽刃先只有三四成亮，
 // 等第二道波从半径 0.45 推到外缘才填满；整面糊在光里亮几秒、微微起伏；收尾细线和中心一带暗下去再亮回清晰版。
-// 下面的关键帧除 BLUR 外就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；到 FLOOR_UNFOLD_S 都回到平时的完整法阵。
+// 下面的关键帧除 BLUR、GAIN 外就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；7.75 秒以后都是平时的完整法阵，只剩 GAIN 往下回落。
 // 原片没有 img0640 外圈，显现前沿过了内盘外缘就接着往外推，把外圈也显出来。
 type Keys = [number, number][];
 // 显现前沿（亮到一半处）的半径。
@@ -45,6 +45,8 @@ const FILL: Keys = [[0, 1], [6.75, 1], [7.25, 0.65], [7.75, 1]];
 // 糊的程度（1 = 整面换成糊的那份）与额外泛光。原片糊到 6.75 秒，lyjw 嫌长，宽刃填满后就对焦。
 const BLUR: Keys = [[0, 1], [3.2, 1], [4, 0], [7.75, 0]];
 const BLOOM: Keys = [[0, 0], [0.5, 0.25], [2.75, 0.25], [4.5, 0.2], [6, 0.22], [6.6, 0.28], [7.1, 0], [7.75, 0]];
+// 整面的增益：展开时比平时亮（lyjw 要的），定格后用 1.5 秒回落到平时亮度。
+const GAIN: Keys = [[0, 1.5], [7.75, 1.5], [9.25, 1]];
 // 原片没有外圈；泛光那几秒外圈先压暗，免得粗亮环抢了内盘。
 const OUTER: Keys = [[0, 0.6], [6.75, 0.6], [7.75, 1]];
 const SPARK_S = 0.5;
@@ -57,22 +59,29 @@ const OUTER_SPAN = 3.2;
 const BLUR_GAIN = [0.6, 0.75];
 const MID_TEX = 400;
 const SPARKS = 14;
-export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, innerFill: HTMLImageElement) {
+// 暗底与照亮的那层同一张砖缝、同一条衰减，叠起来只差颜色。
+function brickTexture(color: string) {
   const bricks = document.createElement("canvas");
   bricks.width = bricks.height = BRICK_TEX;
   const b = bricks.getContext("2d")!;
   const lit = b.createRadialGradient(BRICK_TEX / 2, BRICK_TEX / 2, 0, BRICK_TEX / 2, BRICK_TEX / 2, BRICK_TEX / 2);
   // 四成半径内保持亮，往外按 smoothstep 落到零，到边上斜率也归零；线性收尾在透视压扁的远端会显出一道硬边。
-  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(SCENE.brick, 0.85 * (1 - smooth(0.4, 1, i / 16))));
+  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(color, 0.85 * (1 - smooth(0.4, 1, i / 16))));
   b.fillStyle = lit;
   b.fillRect(0, 0, BRICK_TEX, BRICK_TEX);
   b.globalCompositeOperation = "destination-out";
-  b.fillStyle = tone(SCENE.brick, 0.6);
+  b.fillStyle = tone(color, 0.6);
   const row = BRICK_R * 0.09;
   for (let y = 0, i = 0; y < BRICK_TEX; y += row, i++) {
     b.fillRect(0, y, BRICK_TEX, 4);
     for (let x = (i % 2) * row; x < BRICK_TEX; x += row * 2.1) b.fillRect(x, y, 3, row);
   }
+  return bricks;
+}
+
+export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, innerFill: HTMLImageElement) {
+  const bricks = brickTexture(SCENE.brick);
+  const dark = brickTexture(SCENE.brickDark);
 
   const tex = document.createElement("canvas");
   tex.width = tex.height = CIRCLE_TEX;
@@ -98,7 +107,7 @@ export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, 
     x.drawImage(innerFill, 0, 0, c.width, c.height);
     return c;
   };
-  return { bricks, tex, inner, fill: split("destination-in"), lines: split("destination-out") };
+  return { bricks, dark, tex, inner, fill: split("destination-in"), lines: split("destination-out") };
 }
 
 const at = (keys: Keys, t: number) => {
@@ -125,7 +134,7 @@ function profile(c: CanvasRenderingContext2D, radius: number, f: (rho: number) =
 type Textures = ReturnType<typeof floorTextures>;
 type Work = { disc: CanvasRenderingContext2D; layer: CanvasRenderingContext2D; mid: CanvasRenderingContext2D; glow: CanvasRenderingContext2D; up: CanvasRenderingContext2D };
 
-// 展开中的法阵：都画在 scratch 里（原点在圆心、已按 spin 转好），投影仍由 floorPainter 一行行做。返回砖地该有的亮度。
+// 展开中的法阵：都画在 scratch 里（原点在圆心、已按 spin 转好），投影仍由 floorPainter 一行行做。返回显现前沿到了砖地的几成与整面增益。
 function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, spin: number, base: number, u: number) {
   const { tex, inner, fill, lines } = textures;
   const half = CIRCLE_TEX / 2;
@@ -239,15 +248,25 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     }
     s.restore();
   }
+  // 增益超出 1 的部分把整面再叠一遍：同一张画布画到自己身上时浏览器先拷一份再画。
+  const gain = at(GAIN, t);
+  if (gain > 1) {
+    s.save();
+    s.setTransform(1, 0, 0, 1, 0, 0);
+    s.globalCompositeOperation = "lighter";
+    s.globalAlpha = Math.min(1, gain - 1);
+    s.drawImage(s.canvas, 0, 0);
+    s.restore();
+  }
   s.globalCompositeOperation = "source-over";
   s.globalAlpha = base;
-  return Math.max(0, Math.min(1, reach / R));
+  return { reach: Math.max(0, Math.min(1, reach / R)), gain };
 }
 
 export type FloorSpot = { x: number; y: number; r: number; tilt: number; depth: number };
 
 // 法阵先在自己的纹理里转好，再和不转的砖地一起一行行按深度投到地面。unfold 是展开进度（召唤时、平时重新点亮时），到 1 就是完整法阵；
-// 砖地亮度不低于 ground：召唤时给 0，砖地跟着显现前沿一起出来，平时重放给 1，熄的只是法阵。条带用 source-over 互相覆盖，
+// alpha 是法阵亮度，砖地上那层紫按它照亮；暗底不低于 ground：召唤时给 0，砖地跟着显现前沿一起出来，平时重放给 1，熄的只是法阵和它照出的紫。条带用 source-over 互相覆盖，
 // 所以地面必须是背景画布清空后画的第一样东西：叠加（lighter）模式下砖缝会从法阵亮线里透出来，压扁后成了横纹。
 export function floorPainter() {
   const scratch = document.createElement("canvas");
@@ -263,16 +282,17 @@ export function floorPainter() {
     return x;
   };
   return (ctx: CanvasRenderingContext2D, textures: Textures, spin: number, alpha: number, spot: FloorSpot, unfold = 1, ground = 1) => {
-    const { bricks, tex, inner } = textures;
+    const { bricks, dark, tex, inner } = textures;
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.clearRect(0, 0, CIRCLE_TEX, CIRCLE_TEX);
     s.globalAlpha = alpha;
     s.translate(CIRCLE_TEX / 2, CIRCLE_TEX / 2);
     s.rotate(spin);
     let lit = 1;
+    let gain = 1;
     if (unfold < 1) {
       work ??= { disc: canvas2d(inner.naturalWidth), layer: canvas2d(inner.naturalWidth), mid: canvas2d(MID_TEX), glow: canvas2d(GLOW_TEX), up: canvas2d(MID_TEX) };
-      lit = Math.max(ground, unfolding(s, textures, work, spin, alpha, unfold));
+      ({ reach: lit, gain } = unfolding(s, textures, work, spin, alpha, unfold));
     }
     else {
       s.drawImage(tex, -CIRCLE_TEX / 2, -CIRCLE_TEX / 2);
@@ -290,6 +310,8 @@ export function floorPainter() {
     const vAt = (row: number) => Math.max(-1, Math.min(1, (1 - 1 / (((row - m.f) / m.d - y) / k + 1)) / depth));
     const cx = m.a * x + m.e;
     const base = ctx.globalAlpha;
+    const ambient = base * Math.max(ground, lit);
+    const light = base * Math.min(1, alpha * gain) * lit;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "source-over";
@@ -299,13 +321,19 @@ export function floorPainter() {
       const v1 = vAt(row + 1);
       if (v1 <= v0) continue;
       const half = (m.a * reach) / (1 - (depth * (v0 + v1)) / 2);
-      if (lit < 1) ctx.globalAlpha = base * lit;
-      ctx.drawImage(bricks, 0, ((v0 + 1) / 2) * BRICK_TEX, BRICK_TEX, ((v1 - v0) / 2) * BRICK_TEX, cx - half, row, 2 * half, 1);
+      const sy = ((v0 + 1) / 2) * BRICK_TEX;
+      const sh = ((v1 - v0) / 2) * BRICK_TEX;
+      ctx.globalAlpha = ambient;
+      ctx.drawImage(dark, 0, sy, BRICK_TEX, sh, cx - half, row, 2 * half, 1);
+      if (light > 0) {
+        ctx.globalAlpha = light;
+        ctx.drawImage(bricks, 0, sy, BRICK_TEX, sh, cx - half, row, 2 * half, 1);
+      }
       const a0 = Math.max(v0, -CIRCLE_SPAN);
       const a1 = Math.min(v1, CIRCLE_SPAN);
       if (a1 <= a0) continue;
       const w = half * CIRCLE_SPAN;
-      if (lit < 1) ctx.globalAlpha = base;
+      ctx.globalAlpha = base;
       ctx.drawImage(scratch, 0, ((a0 / CIRCLE_SPAN + 1) / 2) * CIRCLE_TEX, CIRCLE_TEX, ((a1 - a0) / CIRCLE_SPAN / 2) * CIRCLE_TEX, cx - w, row, 2 * w, 1);
     }
     ctx.restore();

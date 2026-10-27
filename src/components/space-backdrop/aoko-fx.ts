@@ -50,10 +50,12 @@ const RELIGHT_CHANCE = 0.4;
 const RELIGHT_FADE_S = 0.7;
 const RELIGHT_DARK_S = 1.2;
 const RELIGHT_S = RELIGHT_FADE_S + RELIGHT_DARK_S + FLOOR_UNFOLD_S;
+// 平时法阵的亮度，蓄力时升到 1；展开时另有增益（aoko-floor.ts#GAIN），定格后落回这里。
+const FLOOR_IDLE = 0.65;
 
 function floorRelight(t: number, summonedAt: number) {
   const n = Math.floor(t / CYCLE);
-  const at = 2 + hash(n + 60) * (CHARGE - 2 - RELIGHT_S);
+  const at = 1 + hash(n + 60) * (CHARGE - 1 - RELIGHT_S);
   const c = (t % CYCLE) - at;
   if (n < 1 || n * CYCLE + at <= summonedAt || hash(n + 50) >= RELIGHT_CHANCE || c < 0 || c > RELIGHT_S) return { alpha: 1, unfold: 1 };
   if (c < RELIGHT_FADE_S) return { alpha: 1 - smooth(0, RELIGHT_FADE_S, c), unfold: 1 };
@@ -136,7 +138,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     if (show.floor < 1) summonedAt = t;
     const relight = state.still ? { alpha: 1, unfold: 1 } : floorRelight(t, summonedAt);
     ctx.globalAlpha = 1;
-    if (floor) paintFloor(ctx, floor, t * 0.03, (0.8 + 0.2 * power) * relight.alpha, FLOOR, Math.min(show.floor, relight.unfold), show.floor < 1 ? 0 : 1);
+    if (floor) paintFloor(ctx, floor, t * 0.03, (FLOOR_IDLE + (1 - FLOOR_IDLE) * power) * relight.alpha, FLOOR, Math.min(show.floor, relight.unfold), show.floor < 1 ? 0 : 1);
     ctx.globalAlpha = show.ring;
 
     for (let i = 0; i < 16; i++) {
