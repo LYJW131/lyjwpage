@@ -40,7 +40,7 @@ description: lyjwpage 里排查并修 bug：lyjw 说「X 不对」、线上报�
 
 按这个顺序找回路，用第一个够得着的：
 
-1. 单测：纯逻辑在 `src/lib/`、`shared/`、Worker 目录里，`node --test` 跑单文件（命令见根 `AGENTS.md`「项目入口与验证」与各 Worker 的 `AGENTS.md`）。
+1. 单测：纯逻辑在 `src/lib/`、`shared/`、Worker 目录里，`node --test` 跑单文件（命令见`.claude/skills/lyjwpage-verify/SKILL.md` 与各 Worker 的 `AGENTS.md`）。
 2. 对本地 Worker 栈发请求：`pnpm dev:worker` 起栈，`curl` 打端点；此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入（`--list` 看已有夹具，缺的照 `workers/core/dev-fixtures/` 新写一份）；症状牵涉几张卡或要复现生产某一刻，`NODE_USE_ENV_PROXY=1 pnpm dev:scene --capture <名>` 把生产此刻整份抓下再 `pnpm dev:scene <名>` 注入。
 3. 回放：把 Workers 日志里的请求或上报负载存成文件，喂给出错的函数，或 POST 到本地的上报入口。
 4. 无头浏览器脚本：Playwright 断言 DOM、computed style、控制台；跳动和首帧问题按时间点截图或录帧。写法照 `.claude/skills/lyjwpage-verify/SKILL.md`「UI 浏览器端到端」。

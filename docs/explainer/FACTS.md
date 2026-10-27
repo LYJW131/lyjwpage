@@ -546,7 +546,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 第 08 章每个机位的墙上和地上有几件摆设，上面的字都照这个项目的规矩和旧事：
   - 「AGENTS.md ≤ 18 KB」：根 `AGENTS.md` 的上限按字节算，是 `scripts/docs-check.ts#ROOT_AGENTS_MAX_BYTES`，写在 `.claude/rules/docs-writing.md`，`pnpm docs:check` 查。
-  - 「家 = localhost:3211」：`pnpm dev` 的地址（根 `AGENTS.md`「项目入口与验证」）。
+  - 「家 = localhost:3211」：`pnpm dev` 的地址（`.claude/skills/lyjwpage-verify/SKILL.md`）。
   - 「禁止手跑 wrangler deploy」：根 `AGENTS.md`「禁区」，由钩子 `scripts/guard-forbidden-commands.mjs` 拦。
   - 「基线只减不增」：`pnpm baselines:check`（根 `AGENTS.md`「规则 → 由什么强制」）。
   - 纸箱 `site-assets-legacy/`「Vercel 时代」：R2 里回填的旧静态资源前缀（`src/lib/asset-archive.ts#LEGACY_ASSET_PREFIX`、`docs/ops-facts.md`）。
