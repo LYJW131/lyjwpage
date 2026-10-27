@@ -45,17 +45,17 @@ export function fxState(t: number): FxState {
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
 // 平时法阵不定期熄灭再重新展开：约四成的轮次里，在蓄力之前的空档随机挑一刻淡出，暗一会儿再从中心长出来。
-// 第一轮不熄，召唤时刚展开过。
+// 第一轮不熄，召唤时刚展开过；贴图来得慢时召唤展开会拖进后面的轮次，起点在召唤展开结束前的那次整段跳过，免得两段展开互相卡住或召唤一结束就跳进暗段。
 const RELIGHT_CHANCE = 0.4;
 const RELIGHT_FADE_S = 0.7;
 const RELIGHT_DARK_S = 1.2;
 const RELIGHT_S = RELIGHT_FADE_S + RELIGHT_DARK_S + FLOOR_UNFOLD_S;
 
-function floorRelight(t: number) {
+function floorRelight(t: number, summonedAt: number) {
   const n = Math.floor(t / CYCLE);
   const at = 2 + hash(n + 60) * (CHARGE - 2 - RELIGHT_S);
   const c = (t % CYCLE) - at;
-  if (n < 1 || hash(n + 50) >= RELIGHT_CHANCE || c < 0 || c > RELIGHT_S) return { alpha: 1, unfold: 1 };
+  if (n < 1 || n * CYCLE + at <= summonedAt || hash(n + 50) >= RELIGHT_CHANCE || c < 0 || c > RELIGHT_S) return { alpha: 1, unfold: 1 };
   if (c < RELIGHT_FADE_S) return { alpha: 1 - smooth(0, RELIGHT_FADE_S, c), unfold: 1 };
   return { alpha: 1, unfold: Math.max(0, (c - RELIGHT_FADE_S - RELIGHT_DARK_S) / FLOOR_UNFOLD_S) };
 }
@@ -120,6 +120,7 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const paintFloor = floorPainter();
   let view = { left: 0, ox: 0, oy: 0, scale: 1, dpr: 1 };
   let hand: Hand | null = null;
+  let summonedAt = -Infinity;
 
   const begin = (ctx: CanvasRenderingContext2D) => {
     const { left, ox, oy, scale, dpr } = view;
@@ -132,7 +133,8 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
   const drawBack = (ctx: CanvasRenderingContext2D, s: Sprites, state: FxState, show: Reveal) => {
     const { power, flash, t } = state;
     begin(ctx);
-    const relight = state.still ? { alpha: 1, unfold: 1 } : floorRelight(t);
+    if (show.floor < 1) summonedAt = t;
+    const relight = state.still ? { alpha: 1, unfold: 1 } : floorRelight(t, summonedAt);
     ctx.globalAlpha = relight.alpha;
     if (floor) paintFloor(ctx, floor, t * 0.03, 0.8 + 0.2 * power, FLOOR, Math.min(show.floor, relight.unfold));
     ctx.globalAlpha = show.ring;
