@@ -1,6 +1,7 @@
 import { ColorManagement, Group, LinearSRGBColorSpace, Mesh, NoToneMapping, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector2, WebGLRenderer, WebGLRenderTarget } from "three";
 
 import { EXTENT, FLOOR } from "./aoko-fx";
+import { bloom } from "./aoko-bloom";
 import { OVER } from "./aoko-gl";
 
 // 相机由地面法阵的投影反推：原来的 2D 条带就是针孔投影（近端横向放大 1/(1−depth·v)、纵向偏移 k·(放大−1)），
@@ -55,13 +56,16 @@ export function stage(canvas: HTMLCanvasElement) {
     new PlaneGeometry(2, 2),
     new ShaderMaterial({
       vertexShader: `varying vec2 v;void main(){v=uv;gl_Position=vec4(position.xy,0.,1.);}`,
-      fragmentShader: `uniform sampler2D map;varying vec2 v;void main(){gl_FragColor=texture2D(map,v);}`,
-      uniforms: { map: { value: layer.texture } },
+      // 泛光按叠加光算：透明度也跟着涨，和前景层自己的 lighter 一样。
+      fragmentShader: `uniform sampler2D map,glow;uniform float k;varying vec2 v;
+void main(){vec4 c=texture2D(map,v)+texture2D(glow,v)*k;c.a=max(c.a,max(c.r,max(c.g,c.b)));gl_FragColor=min(c,vec4(1.));}`,
+      uniforms: { map: { value: layer.texture }, glow: { value: null }, k: { value: 0 } },
       ...OVER,
     }),
   );
   quad.frustumCulled = false;
   blit.add(quad);
+  const glow = bloom(renderer);
   const size = new Vector2();
   const camera = new PerspectiveCamera();
   camera.position.set(EYE_X, -EYE_Y, DIST);
@@ -79,6 +83,7 @@ export function stage(canvas: HTMLCanvasElement) {
       renderer.setSize(width, height, false);
       renderer.getDrawingBufferSize(size);
       layer.setSize(size.x, size.y);
+      glow.setSize(size.x, size.y);
       const near = 10;
       const k = near / DIST;
       const L = (left - ox) / scale - EYE_X;
@@ -88,9 +93,12 @@ export function stage(canvas: HTMLCanvasElement) {
       camera.projectionMatrix.makePerspective(L * k, R * k, -T * k, -B * k, near, DIST * 3);
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
     },
-    render() {
+    // strength 是泛光强度（0 不糊）。
+    render(strength: number) {
       renderer.setRenderTarget(layer);
       renderer.render(fore.scene, camera);
+      quad.material.uniforms.k.value = strength;
+      if (strength > 0) quad.material.uniforms.glow.value = glow.render(layer.texture);
       renderer.setRenderTarget(null);
       renderer.render(base.scene, camera);
       renderer.autoClear = false;
@@ -99,6 +107,7 @@ export function stage(canvas: HTMLCanvasElement) {
     },
     dispose() {
       layer.dispose();
+      glow.dispose();
       quad.geometry.dispose();
       quad.material.dispose();
       renderer.dispose();

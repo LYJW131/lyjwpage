@@ -1,6 +1,7 @@
 import { CylinderGeometry, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, ShaderMaterial, SphereGeometry, Vector3, type Texture } from "three";
 
 import { BOLT_H, BOLT_W, BOLT_X, BOLT_Y, ORB, type FxState } from "./aoko-fx";
+import { cannon, cannonSince, MUZZLE } from "./aoko-cannon";
 import { ARM_BOX, PALM } from "./aoko-figure";
 import { COLORS, LIGHTER, VERT, plane, quads, shader, texture } from "./aoko-gl";
 import { RIM, hash, smooth } from "./aoko-paint";
@@ -51,9 +52,9 @@ const BOLT = `uniform sampler2D map;uniform float alpha;varying vec2 v;
 void main(){vec2 e=vec2(min(v.x/.12,1.)*min((1.-v.x)/.12,1.),min(v.y/.12,1.)*min((1.-v.y)/.12,1.));gl_FragColor=texture2D(map,v)*alpha*e.x*e.y;}`;
 // 径向光：中心 c0，到 m 处 c1，边上 0。
 const ORB_FRAG = `${COLORS}uniform float a0,a1;varying vec2 v;void main(){float r=length(v*2.-1.);vec4 c=r<.35?mix(vec4(WHITE,1.)*a0,vec4(CORE,1.)*a1,r/.35):mix(vec4(CORE,1.)*a1,vec4(0.),clamp((r-.35)/.65,0.,1.));gl_FragColor=c;}`;
-const RAY = `${COLORS}uniform float a;varying vec2 v;void main(){float k=1.-abs(v.x*2.-1.);gl_FragColor=mix(vec4(0.),vec4(WHITE,1.)*a,k);}`;
-const BLOOM = `${COLORS}uniform float a;varying vec2 v;void main(){float r=min(length(v*2.-1.),1.);gl_FragColor=vec4(WHITE,1.)*a*(1.-r);}`;
-const FLARE_ANGLE = -0.5;
+
+// 炮口跟着手层摆：与立绘着色器里的 dh、上面的手挡板同一个变换。
+export const muzzle = ({ dx, dy, zoom }: HandPose) => [PALM[0] + zoom * (MUZZLE[0] + dx - PALM[0]), PALM[1] + zoom * (MUZZLE[1] + dy - PALM[1])] as const;
 
 type Sprites = Record<"ring" | "octa" | "runes" | "bolt" | "boltFine" | "arm", HTMLImageElement>;
 
@@ -129,18 +130,11 @@ export function front(images: Sprites, anisotropy: number) {
   const stars = quads(8, GLINT, {}, 64);
   group.add(stars.mesh);
 
-  const orb = plane(2, 2, shader(ORB_FRAG, { a0: { value: 0 }, a1: { value: 0 } }), 65);
+  // 原图画好的蓝球上常亮的一团光；蓄力和发射交给掌心光炮，这团不跟着涨。
+  const orb = plane(92, 92, shader(ORB_FRAG, { a0: { value: 0.3 }, a1: { value: 0.18 } }), 65);
   orb.position.set(ORB[0], ORB[1], 0);
-  const flare = new Group();
-  flare.position.set(ORB[0], ORB[1], 0);
-  const rays = ([[FLARE_ANGLE, 520], [FLARE_ANGLE + Math.PI / 2, 360]] as const).map(([angle, len]) => {
-    const ray = plane(2 * len, 1, shader(RAY, { a: { value: 0 } }), 66);
-    ray.rotation.z = angle;
-    return ray;
-  });
-  const bloom = plane(1280, 1280, shader(BLOOM, { a: { value: 0 } }), 67);
-  flare.add(...rays, bloom);
-  group.add(orb, flare);
+  const gun = cannon(66);
+  group.add(orb, gun.group);
 
   return {
     group,
@@ -200,16 +194,10 @@ export function front(images: Sprites, anisotropy: number) {
       }
       stars.end();
 
-      const r = 46 + 70 * power + 140 * flash;
-      orb.scale.setScalar(r);
-      orb.material.uniforms.a0.value = Math.min(1, 0.3 + 0.45 * power + 0.25 * flash) * show;
-      orb.material.uniforms.a1.value = Math.min(1, 0.18 + 0.3 * power) * show;
-      flare.visible = flash > 0.01;
-      for (const ray of rays) {
-        ray.scale.y = 10 * flash + 2;
-        ray.material.uniforms.a.value = flash * show;
-      }
-      bloom.material.uniforms.a.value = 0.35 * flash * show;
+      orb.material.uniforms.a0.value = 0.3 * show;
+      orb.material.uniforms.a1.value = 0.18 * show;
+      const [mx, my] = muzzle(pose);
+      gun.update(state, cannonSince(state), mx, my, show);
     },
   };
 }

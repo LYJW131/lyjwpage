@@ -1,5 +1,6 @@
 import { Mesh, PlaneGeometry, ShaderMaterial, type Texture } from "three";
 
+import { MUZZLE } from "./aoko-cannon";
 import { ORB } from "./aoko-fx";
 import { FACE_BOX, FACE_COLS, FACE_ROWS, type Face } from "./aoko-face";
 import { OVER, VERT, texture } from "./aoko-gl";
@@ -26,9 +27,17 @@ const REFRACT = ARM_RING_SHAPES.rings
   })
   .join("\n");
 
-const FRAG = `uniform sampler2D img,rig,faces,arm,fill;uniform float t,lid,glow,flash,appear,shutTile;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
+// 光炮照人：光源在炮口正前方 LAMP_Z（原图像素），随距离按 FALLOFF 衰减（照法与参数取自 PR #722）。
+// 手用法线图（scripts/aoko-hand-normals.py），受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；整只手先冲一层淡紫（原片里背光面也是亮的淡紫，不是暗紫）。
+// 手以外（脸、袖子、头发）拿立绘透明度的梯度当法线，朝光的轮廓边先亮，按更远的 BODY_FALLOFF 柔和地补一层，不分档。
+const LAMP_Z = 34;
+const HAND_FALLOFF = 170;
+const BODY_FALLOFF = 210;
+
+const FRAG = `uniform sampler2D img,rig,faces,arm,fill,armN;uniform vec3 lamp;uniform float t,lid,glow,flash,appear,shutTile;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
+const vec3 FILL=vec3(.42,.46,.78),LAVENDER=vec3(.62,.6,.98);
 const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
 vec4 tile(float i,vec2 bu){if(i<0.)return vec4(0.);vec2 o=vec2(mod(i,${FACE_COLS}.),floor(i/${FACE_COLS}.));return texture2D(faces,(o+clamp(bu,0.,1.))/vec2(${FACE_COLS}.,${FACE_ROWS}.))*inside(bu);}
@@ -109,6 +118,22 @@ ${REFRACT}
   float near=texture2D(img,s+vec2(px.x,0.)).a+texture2D(img,s-vec2(px.x,0.)).a+texture2D(img,s+vec2(0.,px.y)).a+texture2D(img,s-vec2(0.,px.y)).a;
   float rim=clamp((c.a-near*.25)*2.,0.,1.);
   base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
+  if(lamp.z>0.){
+    vec4 nm=texture2D(armN,clamp(au,0.,1.))*inside(au);
+    vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
+    vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-(Q0-dh),${LAMP_Z}.);
+    float dl=length(l);
+    float e=max(dot(n,l/dl),0.)/(1.+dl*dl/${HAND_FALLOFF ** 2}.)*lamp.z;
+    float band=smoothstep(.16,.2,e)*.6+smoothstep(.4,.44,e)*.4;
+    vec3 wash=mix(base,LAVENDER*(.55+.45*dot(base,vec3(.299,.587,.114))),.6*min(lamp.z,1.));
+    vec3 lit=mix(wash,max(base,vec3(.9,.91,1.)),band);
+    base=mix(base,lit,ar.a*min(lamp.z,1.));
+    vec2 ga=vec2(texture2D(img,s+vec2(px.x,0.)).a-texture2D(img,s-vec2(px.x,0.)).a,texture2D(img,s+vec2(0.,px.y)).a-texture2D(img,s-vec2(0.,px.y)).a);
+    vec3 nb=normalize(vec3(-ga*1.5,1.));
+    vec3 lb=vec3(lamp.xy-P,${LAMP_Z * 2}.);
+    float db=length(lb);
+    base+=FILL*max(dot(nb,lb/db),0.)/(1.+db*db/${BODY_FALLOFF ** 2}.)*lamp.z*(1.-ar.a);
+  }
   c.rgb=base*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
   c.rgb+=smoothstep(170.,20.,length(P-ORB))*(.05+.09*pulse)*GLOW*c.a;
@@ -132,7 +157,7 @@ ${REFRACT}
 const SHADOW_FRAG = `uniform sampler2D map;uniform float appear,alpha,h,top;varying vec2 v;
 void main(){float y=v.y*h-top;float front=appear*1.3-.15-(1.-y/${SRC_H}.);gl_FragColor=vec4(0.,0.,0.,texture2D(map,v).a*alpha*smoothstep(0.,.08,front));}`;
 
-type Images = Record<"art" | "rig" | "faces" | "arm" | "fill", HTMLImageElement>;
+type Images = Record<"art" | "rig" | "faces" | "arm" | "fill" | "normal", HTMLImageElement>;
 
 export function figure(images: Images) {
   const riftData = new Float32Array(RIFTS * 3);
@@ -145,6 +170,8 @@ export function figure(images: Images) {
       faces: { value: texture(images.faces) },
       arm: { value: texture(images.arm) },
       fill: { value: texture(images.fill) },
+      armN: { value: texture(images.normal, { premultiply: false }) },
+      lamp: { value: [0, 0, 0] },
       t: { value: 0 },
       lid: { value: 0 },
       glow: { value: 0 },
@@ -197,8 +224,10 @@ export function figure(images: Images) {
       shadowMat.uniforms.top.value = PAD + margin;
       shadowTex.needsUpdate = true;
     },
-    update(t: number, closed: number, face: Face, light: number, flash: number, appear: number) {
+    // lamp：光炮炮口跟手摆动后的位置与照在人身上的强度 [x, y, k]。
+    update(t: number, closed: number, face: Face, light: number, flash: number, appear: number, lamp: readonly number[]) {
       const u = material.uniforms;
+      u.lamp.value = lamp;
       u.t.value = t;
       u.lid.value = closed;
       u.face.value = [face.from, face.to, face.mix];

@@ -6,7 +6,8 @@
     "thread": "#54f1fb",
     "core": "#78d2ff",
     "white": "#ebf8ff",
-    "brick": "#6b57d6"
+    "brick": "#6b57d6",
+    "pale": "#b6ccfc"
   },
   "bokeh": [
     "#abc4f6",

@@ -2,7 +2,8 @@ import { back } from "./aoko-back";
 import { ART, FX_ASSET, loadImage, type AokoOptions } from "./aoko-entry";
 import { faceDirector, STILL_FACE } from "./aoko-face";
 import { figure, PAD, SRC_H, SRC_W } from "./aoko-figure";
-import { front } from "./aoko-front";
+import { cannonSince, palmLight } from "./aoko-cannon";
+import { front, muzzle } from "./aoko-front";
 import { fxState, SHOWN, STILL, type FxState } from "./aoko-fx";
 import { dispose } from "./aoko-gl";
 import { smooth } from "./aoko-paint";
@@ -23,6 +24,8 @@ const DOUBLE_BLINK_CHANCE = 0.2;
 // 召唤时分层显现的总时长（秒）：地面法阵 → 人物从脚下往上显形 → 身后光环 → 手臂环与电弧。
 // 人物不做半透明淡入而是逐像素显形（显出来的地方就是不透明的），光环等人物整个显完才亮，所以身后的法阵始终被她挡住。
 const REVEAL_S = 3.6;
+// 前景泛光的底强度（五级相加，所以要小），蓄力、发射时往上加。
+const BLOOM = 0.05;
 
 function lidAt(dt: number) {
   if (dt < 0 || dt >= BLINK_TOTAL) return 0;
@@ -70,10 +73,12 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     const state = reducedMotion ? STILL : fxState(t);
     const p = revealAt === null ? 1 : (t - revealAt) / REVEAL_S;
     const show = revealAt === null ? SHOWN : { floor: smooth(0, 0.25, p), ring: smooth(0.55, 0.85, p), front: summon && !reducedMotion ? smooth(0.7, 1, p) : 1 };
-    scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p));
+    const pose = handPose(t);
+    const lamp = [...muzzle(pose), palmLight(cannonSince(state)) * show.front];
+    scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), lamp);
     scene.bk.update(state, show);
-    scene.fr.update(state, handPose(t), show.front);
-    gl.render();
+    scene.fr.update(state, pose, show.front);
+    gl.render(BLOOM * (1 + state.power + 2 * state.flash));
     if (p >= 1) revealAt = null;
   };
   const frame = (now: number) => {
@@ -139,7 +144,7 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     layout();
   };
 
-  void Promise.all([loadAll({ art: ART.src, rig: ART.rig, faces: ART.faces, arm: ART.arm, fill: ART.fill }), loadAll(Object.fromEntries(Object.entries(FX).map(([k, v]) => [k, FX_ASSET(v)])) as Record<keyof typeof FX, string>)]).then(
+  void Promise.all([loadAll({ art: ART.src, rig: ART.rig, faces: ART.faces, arm: ART.arm, fill: ART.fill, normal: ART.normal }), loadAll(Object.fromEntries(Object.entries(FX).map(([k, v]) => [k, FX_ASSET(v)])) as Record<keyof typeof FX, string>)]).then(
     ([art, fx]) => {
       if (stopped) return;
       if (!gl) return fallback(art.art);
