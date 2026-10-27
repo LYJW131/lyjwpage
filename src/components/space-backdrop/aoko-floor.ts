@@ -62,7 +62,6 @@ const at = (keys: Keys, t: number) => {
   return keys[keys.length - 1][1];
 };
 
-// 暗底与照亮的那层同一张砖缝、同一条衰减，叠起来只差颜色。
 function brickTexture(color: string) {
   const bricks = document.createElement("canvas");
   bricks.width = bricks.height = BRICK_TEX;
