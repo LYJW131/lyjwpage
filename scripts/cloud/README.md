@@ -28,3 +28,4 @@ bash /tmp/lyjw-setup.sh
 - 变量值用单引号：Devin 令牌里有 `$`。
 - 脚本从 GitHub raw 现拉，只认已合进 `main`（或 `LYJW_SETUP_REF` 指的分支）的版本。
 - 提交身份实际生效的是环境变量 `GIT_AUTHOR_*` / `GIT_COMMITTER_*`，见 [ops-facts.md](../../docs/ops-facts.md)。
+- `.claude/rules/*.md` 软链进 `~/.claude/rules/` 后，讨论串是否会按 `paths` 载入这些规则未核实，改匹配文件前仍直接打开读（见根 `AGENTS.md`）。
