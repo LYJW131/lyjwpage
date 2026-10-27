@@ -160,6 +160,10 @@ function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Texture
     d.save();
     d.beginPath();
     d.arc(0, 0, reach, 0, TAU);
+    d.clip();
+    // 展开圆与印分两次裁：放进同一条 evenodd 路径时，伸出展开圆的那截印会被异或进来。
+    d.beginPath();
+    d.rect(-n / 2, -n / 2, n, n);
     for (let i = 0; i < SEAL_ANGLES.length; i++) {
       const [x, y] = seal(i);
       d.moveTo(x + SEAL_SIZE * rr, y);
