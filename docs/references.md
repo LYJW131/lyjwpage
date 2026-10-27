@@ -207,7 +207,7 @@
   - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko-rings.ts`、`src/components/space-backdrop/aoko-summon.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[《魔法使之夜》剧场版官方账号的「魔法陣体験」视频](https://x.com/mahoyo_movie/status/2110295214434775288)**（@mahoyo_movie，マチ★アソビ vol.31 的地面投影装置）
   - 是什么：人蹲下触地后，地面投影的法阵从触地点展开。那面法阵就是 img1627（原片定格帧按透视拉正后与 img1627 逐处重合）：从头到尾原尺寸、不转，从触地点往外软前沿显现；细线与中心四枚印先出，宽刃等一道从中心推到外缘的波才填满；整面糊在泛光里亮几秒、微微起伏，细线与中心暗下去后变清晰。
-  - 取了什么：逐帧量出来的状态。用原片定格帧上的四枚印与菱形印框求出原片画面与 img1627 贴图之间的透视对应，把每一帧拉正回贴图坐标，按半径分圈对细线、宽块两层做回归，得到显现前沿、宽刃那道波、各层亮度随时间的关键帧，写进 `aoko-floor.ts`（共 7.75 秒）。内盘的宽块与细线靠一张开运算做出的遮罩拆开（`scripts/aoko-fx-assets.ts` 导出 floor-inner-fill）。原片没有 img0640 外圈，前沿过了内盘外缘就照原片末段的速度接着往外推，泛光那几秒外圈压暗。透视不变。召唤时播一次，平时约四成的轮次里熄掉再展开一遍（这一条是 lyjw 加的，原视频没有）。
+  - 取了什么：逐帧量出来的状态。用原片定格帧上的四枚印与菱形印框求出原片画面与 img1627 贴图之间的透视对应，把每一帧拉正回贴图坐标，按半径分圈对细线、宽块两层做回归，得到显现前沿、宽刃那道波、各层亮度随时间的关键帧，写进 `aoko-floor.ts`（共 7.75 秒）。内盘的宽块与细线靠一张开运算做出的遮罩拆开（`scripts/aoko-fx-assets.ts` 导出 floor-inner-fill）。原片没有 img0640 外圈，前沿过了内盘外缘就照原片末段的速度接着往外推，泛光那几秒外圈压暗。整面糊的时长比原片短，宽刃填满就对焦（lyjw 定的）。透视不变。召唤时播一次，平时约四成的轮次里只把法阵熄掉再展开一遍、砖地不动（这一条是 lyjw 加的，原视频没有）。
   - 状态：采用。落在 `src/components/space-backdrop/aoko-floor.ts#floorPainter` 与 `src/components/space-backdrop/aoko-fx.ts#FLOOR_UNFOLD_S`。
 - **[剧场版《魔法使之夜》最终预告的开头](https://x.com/mahoyo_movie/status/2108754403486584867)**（@mahoyo_movie，TYPE-MOON / ufotable）
   - 是什么：官方动画账号发的 30 秒剧场用预告，开头约 1.7 秒是青子伸掌放光炮：掌心冒出一点碎白光，约 0.2 秒长成盖满手掌的白芯淡紫蓝光团，边缘翻滚着停半秒，发射时收成一点、迸出几道不等角的细长光线，再扩出一圈细亮的环。

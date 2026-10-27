@@ -25,7 +25,7 @@ export const FLOOR_UNFOLD_S = 7.75;
 // 把原片每一帧按透视拉正回 img1627 的贴图坐标，按半径分圈、对细线与宽块两层做回归，量出每一圈每一刻的亮度：
 // 法阵从头到尾是原尺寸、不转，从触地点往外显现（软前沿）；细线与靠中心的宽块跟着前沿出来，外半圈的宽刃先只有三四成亮，
 // 等第二道波从半径 0.45 推到外缘才填满；整面糊在光里亮几秒、微微起伏；收尾细线和中心一带暗下去再亮回清晰版。
-// 下面的关键帧就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；到 FLOOR_UNFOLD_S 都回到平时的完整法阵。
+// 下面的关键帧除 BLUR 外就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；到 FLOOR_UNFOLD_S 都回到平时的完整法阵。
 // 原片没有 img0640 外圈，显现前沿过了内盘外缘就接着往外推，把外圈也显出来。
 type Keys = [number, number][];
 // 显现前沿（亮到一半处）的半径。
@@ -42,8 +42,8 @@ const FILL_EARLY = 0.15;
 // 两层的整体亮度，平时为 1：显现时细线比平稳时亮一截，6–6.6 秒再起一点；收尾细线与宽块暗下去再亮回。
 const LINES: Keys = [[0, 1.6], [2.8, 1.5], [4, 1], [6, 0.97], [6.6, 1.07], [6.75, 1.05], [7.25, 0.25], [7.75, 1]];
 const FILL: Keys = [[0, 1], [6.75, 1], [7.25, 0.65], [7.75, 1]];
-// 糊的程度（1 = 整面换成糊的那份）与额外泛光。
-const BLUR: Keys = [[0, 1], [6.75, 1], [7.2, 0], [7.75, 0]];
+// 糊的程度（1 = 整面换成糊的那份）与额外泛光。原片糊到 6.75 秒，lyjw 嫌长，宽刃填满后就对焦。
+const BLUR: Keys = [[0, 1], [3.2, 1], [4, 0], [7.75, 0]];
 const BLOOM: Keys = [[0, 0], [0.5, 0.25], [2.75, 0.25], [4.5, 0.2], [6, 0.22], [6.6, 0.28], [7.1, 0], [7.75, 0]];
 // 原片没有外圈；泛光那几秒外圈先压暗，免得粗亮环抢了内盘。
 const OUTER: Keys = [[0, 0.6], [6.75, 0.6], [7.75, 1]];
@@ -246,7 +246,8 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
 
 export type FloorSpot = { x: number; y: number; r: number; tilt: number; depth: number };
 
-// 法阵先在自己的纹理里转好，再和不转的砖地一起一行行按深度投到地面。unfold 是展开进度（召唤时、平时重新点亮时），到 1 就是完整法阵。条带用 source-over 互相覆盖，
+// 法阵先在自己的纹理里转好，再和不转的砖地一起一行行按深度投到地面。unfold 是展开进度（召唤时、平时重新点亮时），到 1 就是完整法阵；
+// 砖地亮度不低于 ground：召唤时给 0，砖地跟着显现前沿一起出来，平时重放给 1，熄的只是法阵。条带用 source-over 互相覆盖，
 // 所以地面必须是背景画布清空后画的第一样东西：叠加（lighter）模式下砖缝会从法阵亮线里透出来，压扁后成了横纹。
 export function floorPainter() {
   const scratch = document.createElement("canvas");
@@ -261,7 +262,7 @@ export function floorPainter() {
     x.imageSmoothingQuality = "high";
     return x;
   };
-  return (ctx: CanvasRenderingContext2D, textures: Textures, spin: number, alpha: number, spot: FloorSpot, unfold = 1) => {
+  return (ctx: CanvasRenderingContext2D, textures: Textures, spin: number, alpha: number, spot: FloorSpot, unfold = 1, ground = 1) => {
     const { bricks, tex, inner } = textures;
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.clearRect(0, 0, CIRCLE_TEX, CIRCLE_TEX);
@@ -271,7 +272,7 @@ export function floorPainter() {
     let lit = 1;
     if (unfold < 1) {
       work ??= { disc: canvas2d(inner.naturalWidth), layer: canvas2d(inner.naturalWidth), mid: canvas2d(MID_TEX), glow: canvas2d(GLOW_TEX), up: canvas2d(MID_TEX) };
-      lit = unfolding(s, textures, work, spin, alpha, unfold);
+      lit = Math.max(ground, unfolding(s, textures, work, spin, alpha, unfold));
     }
     else {
       s.drawImage(tex, -CIRCLE_TEX / 2, -CIRCLE_TEX / 2);

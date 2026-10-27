@@ -135,8 +135,8 @@ export function aokoFx(back: HTMLCanvasElement, front: HTMLCanvasElement) {
     begin(ctx);
     if (show.floor < 1) summonedAt = t;
     const relight = state.still ? { alpha: 1, unfold: 1 } : floorRelight(t, summonedAt);
-    ctx.globalAlpha = relight.alpha;
-    if (floor) paintFloor(ctx, floor, t * 0.03, 0.8 + 0.2 * power, FLOOR, Math.min(show.floor, relight.unfold));
+    ctx.globalAlpha = 1;
+    if (floor) paintFloor(ctx, floor, t * 0.03, (0.8 + 0.2 * power) * relight.alpha, FLOOR, Math.min(show.floor, relight.unfold), show.floor < 1 ? 0 : 1);
     ctx.globalAlpha = show.ring;
 
     for (let i = 0; i < 16; i++) {
