@@ -88,6 +88,9 @@ try {
     const box = `${Math.round(2 * half)}x${Math.round(2 * half)}+${Math.round(c.cx * k - half)}+${Math.round(c.cy * k - half)}`;
     execFileSync("magick", [c.sr ? upscaled(c.src) : hd(c.src), "-background", "none", "-gravity", "NorthWest", "-extent", box, "+repage", "-filter", "Lanczos", "-resize", `${c.size}x${c.size}!`, ...webp, out(c.out)]);
   }
+  // 内盘的宽刃与粗外环单独一张遮罩：alpha 取阈值后做开运算，细线、符文和印里的字被抹掉，只剩宽块；
+  // aoko-floor.ts 用它把内盘拆成「宽块」和「其余」两层，召唤时分先后出现。两层按 alpha 互补，叠回去就是原图。
+  execFileSync("magick", [out("floor-inner"), "-alpha", "extract", "-threshold", "60%", "-morphology", "Open", "Disk:6", "-morphology", "Dilate", "Disk:3", "-blur", "0x1", "-background", "white", "-alpha", "shape", ...webp, out("floor-inner-fill")]);
   for (const b of BOLTS) execFileSync("magick", [hd(b.src), "-resize", BOLT_SIZE, ...webp, out(b.out)]);
   for (const c of CUES) {
     const box = `${c.size}x${c.size}`;

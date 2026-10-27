@@ -60,8 +60,8 @@ const num = (file, re) => {
   if (!m) throw new Error(`${file} 里没找到 ${re}`);
   return m.slice(1).map(Number);
 };
-const [SRC_W] = num("src/components/space-backdrop/aoko.ts", /const SRC_W = (\d+);/);
-const [PAD] = num("src/components/space-backdrop/aoko.ts", /const PAD = (\d+);/);
+const [SRC_W] = num("src/components/space-backdrop/aoko-figure.ts", /const SRC_W = (\d+);/);
+const [PAD] = num("src/components/space-backdrop/aoko-figure.ts", /const PAD = (\d+);/);
 const [REVEAL_S] = num("src/components/space-backdrop/aoko.ts", /const REVEAL_S = ([\d.]+);/);
 const FACE_BOX = num("src/components/space-backdrop/aoko-face.ts", /FACE_BOX = \[(\d+), (\d+), (\d+)\]/);
 
@@ -136,12 +136,13 @@ for (let attempt = 0; attempt < 3; attempt++) {
   await page.waitForLoadState("domcontentloaded");
 }
 
+// 立绘框（含四周 PAD）记在挂载点的 data-figure 上；画布要等渲染模块到了才插进去，有画布才算挂上。
 const figureBox = () =>
   page.evaluate(() => {
-    const c = [...document.querySelectorAll("canvas")].find((el) => el.style.filter.includes("drop-shadow"));
-    if (!c) return null;
-    const r = c.getBoundingClientRect();
-    return { x: r.left, y: r.top, width: r.width, height: r.height };
+    const root = document.querySelector("[data-figure]");
+    if (!root?.querySelector("canvas")) return null;
+    const [x, y, width, height] = root.dataset.figure.split(",").map(Number);
+    return { x, y, width, height };
   });
 const clipFor = async () => {
   if (a.clip === "viewport") return undefined;

@@ -1,175 +1,143 @@
-import { type FxState, SCENE, hash, smooth, tone } from "./aoko-paint";
-import type { HandPose } from "./aoko-rings";
+import { Group } from "three";
 
-// 掌心光炮照剧场版最终预告开头复刻（源：docs/references.md）。时间都相对 aoko-fx.ts 的 FIRE（since < 0 是发射前），
-// 只管光球本身，不改 power：地面、背环、电弧和重打光照旧跟 power 走。
-// 参考帧 24fps：f19 点亮、f24 长满、f37 发射，换成秒就是 LIGHT、GROWN。
+import { CYCLE, FIRE, type FxState } from "./aoko-fx";
+import { COLORS, channels, plane, quads, shader } from "./aoko-gl";
+import { SCENE, hash, smooth } from "./aoko-paint";
+
+// 掌心光炮照剧场版最终预告开头复刻（源：docs/references.md），节奏与形状沿用 PR #722 在参考帧上量的：
+// 时间都相对 aoko-fx.ts 的 FIRE（since < 0 是发射前）；参考帧 24fps：f19 点亮、f24 长满、f37 发射，换成秒就是 LIGHT、GROWN。
 const LIGHT = 0.75;
 const GROWN = 0.55;
-// 掌心在立绘原图里的位置；原图画好的蓝色球在 aoko-fx.ts 的 ORB（掌根），闲置时那团光照它，这里是光炮的炮口。
+// 掌心在立绘原图里的位置；原图画好的蓝色球在 aoko-fx.ts 的 ORB（掌根），这里是光炮的炮口。
 export const MUZZLE = [339, 298] as const;
+// 光团悬在掌心前方、不贴在手上：img0660/0661 的侧面镜头里，光团离手约一个「头到手」的距离（0.8–1.1 倍），换到立绘里约 180 原图像素。
+// 立绘的掌心正对镜头（同 img0628），所以只往镜头方向挪，正面看仍落在掌心；单位是原图像素。
+export const AHEAD = 180;
 const R = 70;
 const TAU = Math.PI * 2;
 // 动画「一拍二」的翻滚：轮廓每 1/12 秒换一次。
 const BOIL_S = 1 / 12;
-// 参考 f37–f40 的光线大致朝这几个方向（画布 y 朝下），每发再随机偏一点。
+// 参考 f37–f40 的光线大致朝这几个方向（y 朝下），每发再随机偏一点。
 const RAYS = [-1.25, -0.4, 0.06, 0.45, 1.1, 2.05, 2.8, -2.55];
 // 射出后整组光线绕光点顺时针转、越转越慢：参考 f37→f41 朝上那条从 -78° 转到 -49°，即 0.17 秒约 27°。
 const SPIN = 3.3;
 const SPIN_EASE_S = 0.35;
 // 参考 f41 光线射出约 0.17 秒后才扩出那圈环，出现时半径约两个手掌宽。
 const RING_AT = 0.14;
-
-// 云团一样的鼓包轮廓：取一圈随机半径的点，经相邻中点用二次曲线连起来，边是圆鼓的而不是尖刺。
-function billow(ctx: CanvasRenderingContext2D, r: number, seed: number, rough: number) {
-  const n = 9;
-  const pts = Array.from({ length: n }, (_, i) => {
-    const a = ((i + hash(seed * 13 + i) * 0.5) / n) * TAU;
-    const k = 1 + (hash(seed * 31 + i) - 0.5) * rough;
-    return [Math.cos(a) * r * k * 1.25, Math.sin(a) * r * k * 0.85];
-  });
-  const mid = (i: number) => {
-    const [ax, ay] = pts[i % n];
-    const [bx, by] = pts[(i + 1) % n];
-    return [(ax + bx) / 2, (ay + by) / 2];
-  };
-  ctx.beginPath();
-  ctx.moveTo(...(mid(0) as [number, number]));
-  for (let i = 1; i <= n; i++) {
-    const [cx, cy] = pts[i % n];
-    const [mx, my] = mid(i);
-    ctx.quadraticCurveTo(cx, cy, mx, my);
-  }
-  ctx.closePath();
-}
-
-function glow(ctx: CanvasRenderingContext2D, r: number, stops: [number, string][]) {
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-  for (const [at, color] of stops) g.addColorStop(at, color);
-  ctx.fillStyle = g;
-  ctx.fillRect(-r, -r, 2 * r, 2 * r);
-}
-
-function blob(ctx: CanvasRenderingContext2D, size: number, e: number, seed: number) {
-  glow(ctx, size * 3, [
-    [0, tone(SCENE.pale, 0.35 * e)],
-    [0.35, tone(SCENE.brick, 0.22 * e)],
-    [1, tone(SCENE.deep, 0)],
-  ]);
-  const body = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.2);
-  body.addColorStop(0, tone(SCENE.white, e));
-  body.addColorStop(0.35, tone(SCENE.white, 0.8 * e));
-  body.addColorStop(0.7, tone(SCENE.pale, 0.55 * e));
-  body.addColorStop(1, tone(SCENE.pale, 0.25 * e));
-  ctx.fillStyle = body;
-  billow(ctx, size, seed, 0.75);
-  ctx.fill();
-  ctx.fillStyle = tone(SCENE.white, e);
-  billow(ctx, size * 0.5, seed + 7, 0.8);
-  ctx.fill();
-  const streak = ctx.createLinearGradient(-size * 1.7, 0, size * 1.7, 0);
-  streak.addColorStop(0, tone(SCENE.white, 0));
-  streak.addColorStop(0.5, tone(SCENE.white, 0.6 * e));
-  streak.addColorStop(1, tone(SCENE.white, 0));
-  ctx.fillStyle = streak;
-  ctx.fillRect(-size * 1.7, -1, size * 3.4, 2);
-}
-
-function rays(ctx: CanvasRenderingContext2D, shot: number, reach: number, a: number, turn: number) {
-  RAYS.forEach((base, i) => {
-    const angle = base + turn + (hash(shot * 8 + i) - 0.5) * 0.25;
-    const len = (300 + hash(shot * 8 + i + 0.5) * 450) * reach;
-    ctx.save();
-    ctx.rotate(angle);
-    for (const [w, color, alpha] of [[12, SCENE.sky, 0.35], [3.2, SCENE.white, 1]] as const) {
-      const g = ctx.createLinearGradient(0, 0, len, 0);
-      g.addColorStop(0, tone(color, alpha * a));
-      g.addColorStop(0.5, tone(color === SCENE.white ? SCENE.core : color, alpha * a * 0.7));
-      g.addColorStop(1, tone(SCENE.sky, 0));
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.moveTo(0, -w / 2);
-      ctx.lineTo(len, 0);
-      ctx.lineTo(0, w / 2);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-  });
-}
-
-function ring(ctx: CanvasRenderingContext2D, r: number, a: number) {
-  for (const [w, color, alpha] of [[18, SCENE.sky, 0.4], [3, SCENE.white, 0.9]] as const) {
-    ctx.globalAlpha = alpha * a;
-    ctx.strokeStyle = tone(color, 1);
-    ctx.lineWidth = w;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, TAU);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-}
-
 // 减少动态效果时停在长满手掌那一刻，不留半截点亮。
 const STILL_SINCE = -0.3;
+const LOBES = 9;
 
-// 光团照在手上的强度：长满手掌时为 1，发射那一下再亮一截，半秒内退掉。since 为 null 是减少动态效果的静帧。
-export function palmLight(since: number | null) {
-  const at = since ?? STILL_SINCE;
+export const cannonSince = ({ t, still }: FxState) => (still ? STILL_SINCE : (t % CYCLE) - FIRE);
+
+// 光团照在手上的强度：长满手掌时为 1，发射那一下再亮一截，半秒内退掉。
+export function palmLight(at: number) {
   if (at < -LIGHT) return 0;
   if (at < 0) return 0.3 + 0.7 * smooth(-LIGHT, -GROWN, at);
   return (1 - smooth(0, 0.5, at)) * (1 + 0.5 * Math.exp(-at * 10));
 }
 
-// 光源在炮口正前方 LIGHT_Z 处（原图像素），光照随距离按 FALLOFF 衰减；手的法线来自 scripts/aoko-hand-normals.py。
-// 受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；背光面压成冷紫，光越亮压得越深，对比才出得来。
-const LIGHT_Z = 34;
-const FALLOFF = 125;
-// col 是该像素的颜色，nm 是法线图采样（a 为 0 时当朝前），hand 是手层的 alpha，q 是手层自己的坐标（扣掉摆动），p 是画面坐标。
-// 手以外、离光团近的地方（脸、胸口）只补一层淡光。
-export const PALM_LIT_GLSL = `vec3 palmLit(vec3 col,vec4 nm,float hand,vec2 q,vec2 p,float k){
-  vec2 m=vec2(${MUZZLE[0]}.,${MUZZLE[1]}.);
-  vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
-  vec3 l=vec3(m-q,${LIGHT_Z}.);
-  float d=length(l);
-  float e=max(dot(n,l/d),0.)/(1.+d*d/${FALLOFF * FALLOFF}.)*k;
-  float band=smoothstep(.2,.24,e)*.6+smoothstep(.48,.52,e)*.4;
-  vec3 lit=mix(col*vec3(.62,.62,.9),max(col,vec3(.88,.9,1.)),band);
-  return mix(col,lit,hand*min(k,1.))+vec3(.55,.6,1.)*smoothstep(260.,0.,length(p-m))*.22*k*(1.-hand);
-}`;
-
-export function palmCannon(ctx: CanvasRenderingContext2D, { flash, t, still }: FxState, since: number, palm: readonly number[] | null, pose: HandPose) {
-  const at = still ? STILL_SINCE : since;
-  if (at < -LIGHT) return;
-  const fired = at >= 0;
-  // 炮口跟着手层摆：与 aoko-rings.ts#cutArm 同一个变换。
-  const [x, y] = palm ? [palm[0] + pose.zoom * (MUZZLE[0] + pose.dx - palm[0]), palm[1] + pose.zoom * (MUZZLE[1] + pose.dy - palm[1])] : MUZZLE;
-  const tick = still ? 0 : Math.floor(t / BOIL_S);
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.globalAlpha = 1;
-
-  if (!fired) {
-    const grow = smooth(-LIGHT, -GROWN, at);
-    const size = 14 + (R - 14) * grow * grow;
-    const pulse = still ? 1 : 1 + 0.03 * Math.sin(t * 9);
-    blob(ctx, size * pulse, 0.75 + 0.25 * grow, tick);
-  } else {
-    const fade = 1 - smooth(0, 0.3, at);
-    if (fade > 0) blob(ctx, R * (0.6 - 0.2 * smooth(0, 0.1, at)), fade, tick);
-    glow(ctx, 30, [
-      [0, tone(SCENE.white, flash)],
-      [0.3, tone(SCENE.white, 0.7 * flash)],
-      [1, tone(SCENE.core, 0)],
-    ]);
-    if (flash > 0.01) {
-      rays(ctx, Math.round(t - at), 0.75 + 0.25 * smooth(0, 0.08, at), Math.min(1, flash * 1.6), SPIN * SPIN_EASE_S * (1 - Math.exp(-at / SPIN_EASE_S)));
-      ring(ctx, 200 + 1400 * Math.max(0, at - RING_AT), smooth(RING_AT, RING_AT + 0.03, at) * (1 - smooth(RING_AT, RING_AT + 0.35, at)));
-      glow(ctx, 640, [
-        [0, tone(SCENE.white, 0.35 * flash)],
-        [1, tone(SCENE.sky, 0)],
-      ]);
-    }
+// 云团一样的鼓包轮廓：参考帧里光团边缘是圆鼓的，不是尖刺。
+function lobes(seed: number, rough: number, out: Float32Array) {
+  for (let i = 0; i < LOBES; i++) {
+    out[i * 2] = ((i + hash(seed * 13 + i) * 0.5) / LOBES) * TAU;
+    out[i * 2 + 1] = 1 + (hash(seed * 31 + i) - 0.5) * rough;
   }
-  ctx.restore();
+  return out;
+}
+const BILLOW = `float billow(vec2 p,float r,vec2 l[${LOBES}]){
+  vec2 q=vec2(p.x/1.25,p.y/.85);float a=atan(q.y,q.x);if(a<0.)a+=${TAU.toFixed(6)};
+  float k=l[${LOBES - 1}].y,k0=l[${LOBES - 1}].y,a0=l[${LOBES - 1}].x-${TAU.toFixed(6)};
+  for(int i=0;i<${LOBES};i++){if(a>=a0&&a<l[i].x){float s=(a-a0)/max(l[i].x-a0,.001);k=mix(k0,l[i].y,s*s*(3.-2.*s));}a0=l[i].x;k0=l[i].y;}
+  if(a>=a0){float s=(a-a0)/max(l[0].x+${TAU.toFixed(6)}-a0,.001);k=mix(k0,l[0].y,s*s*(3.-2.*s));}
+  return smoothstep(1.5,-1.5,length(q)-r*k);
+}`;
+// 光团本体边上仍要够亮，鼓包轮廓才看得出。size 是本体半径，四边形半边 3·size。
+const BLOB = `${COLORS}uniform float size,e;uniform vec2 outer[${LOBES}],inner[${LOBES}];varying vec2 v;
+${BILLOW}
+void main(){
+  vec2 p=(v*2.-1.)*size*3.;
+  float r=length(p);
+  float g=r/(size*3.);
+  vec4 c=g<.35?mix(vec4(PALE,1.)*.2,vec4(BRICK,1.)*.12,g/.35):mix(vec4(BRICK,1.)*.12,vec4(0.),clamp((g-.35)/.65,0.,1.));
+  c*=e;
+  float b=r/(size*1.2);
+  vec4 body=b<.5?mix(vec4(WHITE,1.),vec4(WHITE,1.)*.9,b/.5):mix(vec4(WHITE,1.)*.9,vec4(PALE,1.)*.75,clamp((b-.5)/.5,0.,1.));
+  c+=body*e*billow(p,size,outer)+vec4(WHITE,1.)*e*billow(p,size*.5,inner);
+  float streak=step(abs(p.y),1.)*step(abs(p.x),size*1.7)*(1.-abs(p.x)/(size*1.7))*.6*e;
+  gl_FragColor=c+vec4(WHITE,1.)*streak;
+}`;
+const GLOW = `${COLORS}uniform float a;varying vec2 v;void main(){float r=length(v*2.-1.);gl_FragColor=(r<.3?mix(vec4(WHITE,1.)*a,vec4(WHITE,1.)*.7*a,r/.3):mix(vec4(WHITE,1.)*.7*a,vec4(CORE,1.)*0.,clamp((r-.3)/.7,0.,1.)));}`;
+const RAY = `void main(){float w=1.-v.x;float m=smoothstep(w+.08,w-.08,abs(v.y*2.-1.));float a=v.x<.5?mix(1.,.7,v.x*2.):mix(.7,0.,v.x*2.-1.);gl_FragColor=vec4(q.rgb,1.)*q.a*a*m;}`;
+// 扩散环：宽 18 的蓝晕叠宽 3 的白线；r 和宽度单位都是原图像素。
+const RING = `${COLORS}uniform float r,a,span;varying vec2 v;void main(){float d=abs(length((v*2.-1.)*span)-r);gl_FragColor=(vec4(SKY,1.)*.4*smoothstep(9.,7.,d)+vec4(WHITE,1.)*.9*smoothstep(1.5,.5,d))*a;}`;
+const BLOOM = `${COLORS}uniform float a;varying vec2 v;void main(){gl_FragColor=vec4(WHITE,1.)*a*(1.-min(length(v*2.-1.),1.));}`;
+
+export function cannon(order: number) {
+  const group = new Group();
+  const outer = new Float32Array(LOBES * 2);
+  const inner = new Float32Array(LOBES * 2);
+  const blob = plane(2, 2, shader(BLOB, { size: { value: R }, e: { value: 0 }, outer: { value: outer }, inner: { value: inner } }), order);
+  const core = plane(60, 60, shader(GLOW, { a: { value: 0 } }), order + 1);
+  const rays = quads(RAYS.length * 2, RAY, {}, order + 2);
+  const span = 1000;
+  const ring = plane(2 * span, 2 * span, shader(RING, { r: { value: 0 }, a: { value: 0 }, span: { value: span } }), order + 3);
+  const bloom = plane(1280, 1280, shader(BLOOM, { a: { value: 0 } }), order + 4);
+  group.add(blob, core, rays.mesh, ring, bloom);
+  const sky = channels(SCENE.sky);
+  const white = channels(SCENE.white);
+
+  return {
+    group,
+    // [x, y, z] 是光团在场景里的位置（aoko-front.ts#orbAt）；show 是前景整层的渐显。
+    update({ flash, t, still }: FxState, at: number, [x, y, z]: readonly number[], show: number) {
+      group.position.set(x, y, z);
+      group.visible = at >= -LIGHT && show > 0;
+      if (!group.visible) return;
+      const fired = at >= 0;
+      const tick = still ? 0 : Math.floor(t / BOIL_S);
+      lobes(tick, 0.75, outer);
+      lobes(tick + 7, 0.8, inner);
+      const grow = smooth(-LIGHT, -GROWN, at);
+      const size = fired ? R * (0.6 - 0.2 * smooth(0, 0.1, at)) : (14 + (R - 14) * grow * grow) * (still ? 1 : 1 + 0.03 * Math.sin(t * 9));
+      const e = fired ? 1 - smooth(0, 0.3, at) : 0.75 + 0.25 * grow;
+      blob.scale.setScalar(size * 3);
+      blob.material.uniforms.size.value = size;
+      blob.material.uniforms.e.value = e * show;
+      core.visible = fired;
+      core.material.uniforms.a.value = flash * show;
+
+      rays.begin();
+      const lit = fired && flash > 0.01;
+      if (lit) {
+        const shot = Math.round(t - at);
+        const reach = 0.75 + 0.25 * smooth(0, 0.08, at);
+        const a = Math.min(1, flash * 1.6) * show;
+        const turn = SPIN * SPIN_EASE_S * (1 - Math.exp(-at / SPIN_EASE_S));
+        RAYS.forEach((base, i) => {
+          const angle = base + turn + (hash(shot * 8 + i) - 0.5) * 0.25;
+          const len = (300 + hash(shot * 8 + i + 0.5) * 450) * reach;
+          const [c, s] = [Math.cos(angle), Math.sin(angle)];
+          for (const [w, color, alpha] of [[12, sky, 0.35], [3.2, white, 1]] as const) {
+            const h = w / 2;
+            rays.add(
+              [
+                [h * s, -h * c],
+                [len * c + h * s, len * s - h * c],
+                [len * c - h * s, len * s + h * c],
+                [-h * s, h * c],
+              ],
+              [...color, alpha * a],
+            );
+          }
+        });
+      }
+      rays.end();
+      ring.visible = lit;
+      ring.material.uniforms.r.value = 200 + 1400 * Math.max(0, at - RING_AT);
+      ring.material.uniforms.a.value = smooth(RING_AT, RING_AT + 0.03, at) * (1 - smooth(RING_AT, RING_AT + 0.35, at)) * show;
+      bloom.visible = lit;
+      bloom.material.uniforms.a.value = 0.35 * flash * show;
+    },
+  };
 }

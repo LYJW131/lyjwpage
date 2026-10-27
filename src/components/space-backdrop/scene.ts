@@ -1,4 +1,4 @@
-import { aokoStanding, preloadAoko } from "./aoko";
+import { mountAoko as mountAokoLazy, preloadAoko } from "./aoko-entry";
 import { konami, RELEASE_MS, summonCues } from "./aoko-summon";
 import { clawdActor, type ClawdCast, type FloatTarget } from "./clawd-actor";
 import { astronautCast } from "./casts";
@@ -56,11 +56,11 @@ export function mountSpaceScene(host: HTMLElement) {
   let pointer: { x: number; y: number } | null = null;
   let column = columnRect();
   let headerBottom = 0;
-  let aoko: ReturnType<typeof aokoStanding> | null = null;
+  let aoko: ReturnType<typeof mountAokoLazy> | null = null;
   let summoning = false;
   let stopped = false;
   const parent = host.parentElement ?? document.body;
-  const mountAoko = (summon: boolean) => aokoStanding(parent, { gutter: () => ({ left: 0, right: column.left }), reducedMotion, summon });
+  const mountAoko = (summon: boolean) => mountAokoLazy(parent, { gutter: () => ({ left: 0, right: column.left }), reducedMotion, summon });
 
   const gutterCenter = (s: Side) => (s === "left" ? column.left / 2 : (column.right + innerWidth) / 2);
   const boundsX = (s: Slot): [number, number] => {

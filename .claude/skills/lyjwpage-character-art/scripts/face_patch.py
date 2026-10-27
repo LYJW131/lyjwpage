@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 立绘表情格：裁脸、把 Codex 改过的脸对齐贴回、按 FACES 拼图集。
-格框、格数与格序从 --face-ts 读（FACE_BOX、FACE_COLS、FACE_ROWS、FACES），原图宽从同目录 aoko.ts 的 SRC_W 读，
+格框、格数与格序从 --face-ts 读（FACE_BOX、FACE_COLS、FACE_ROWS、FACES），原图宽从同目录 aoko-figure.ts 的 SRC_W 读，
 都是青子的文件；换角色时指向新角色的文件，或用 --src-w 直接给。
 
   py(){ uv run -q --with numpy --with scipy --with pillow python -I "$@"; }
@@ -49,7 +49,7 @@ def read_face_ts(path):
 def src_width(args):
     if args.src_w:
         return args.src_w
-    shader = Path(args.face_ts).with_name("aoko.ts")
+    shader = Path(args.face_ts).with_name("aoko-figure.ts")
     m = re.search(r"const SRC_W = (\d+);", shader.read_text()) if shader.exists() else None
     if not m:
         sys.exit(f"没在 {shader} 里读到 SRC_W，用 --src-w 给原图宽")

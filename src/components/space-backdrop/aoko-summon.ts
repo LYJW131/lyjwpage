@@ -1,4 +1,4 @@
-import { FX_ASSET, loadImage } from "./aoko-fx";
+import { FX_ASSET, loadImage } from "./aoko-entry";
 import { SCENE, hash, tone } from "./aoko-paint";
 
 // 青子立绘默认不挂，按出科乐美秘技才召唤；B、A 不分大小写。
@@ -9,6 +9,8 @@ const IDLE_MS = 2500;
 export const RELEASE_MS = 400;
 // strike-*、swoop、storm 是整帧图层，按铺满整屏画；往里加的图也要是整帧（来源见 scripts/aoko-fx-assets.ts）。
 const STRIKES = Array.from({ length: 6 }, (_, i) => `strike-${i + 1}`);
+// 最后一键从 STRIKES 里随机取几道和电柱一起劈下；六道全下时整页只剩闪电，看不清立绘在哪显形。
+const FINALE_STRIKES = 2;
 // spin 是淡出时转过的角度（度），from / to 是出现与淡出时相对最终大小的缩放。
 const CUES = [
   { sprite: "glint", spin: 0, from: 0.3, to: 1.3 },
@@ -128,8 +130,8 @@ function storm() {
   };
 }
 
-// 每按对一键：镜头朝立绘要出现的地方推近一点（背景层放大），那里亮起这个键的图层、背景提亮，整页劈过闪电；越往后推得越近、闪电越多越亮。
-// B、A 两键另在背景里撕开几道空间裂缝，A 键再加一道横扫电弧。最后一键六道闪电与电柱齐下、整页白闪一次，立绘那里炸开能量爆、冲击星芒和八芒星闪。
+// 每按对一键：镜头朝立绘要出现的地方推近一点（背景层放大），那里亮起这个键的图层、背景提亮，整页劈过一道闪电；越往后推得越近、闪电越亮。
+// B、A 两键在立绘那侧各撕开一道空间裂缝，A 键再加一道横扫电弧。最后一键两道闪电与电柱齐下、整页白闪一次，立绘那里炸开能量爆、冲击星芒和八芒星闪。
 // 减少动效时只留图层的淡入淡出，不推镜头、不闪。
 export function summonCues(host: HTMLElement, parent: HTMLElement, reducedMotion: boolean) {
   const layer = document.createElement("div");
@@ -196,11 +198,10 @@ export function summonCues(host: HTMLElement, parent: HTMLElement, reducedMotion
       flare(0.15 + 0.6 * k, 380 + 400 * k);
       show(at, k, CUES[Math.min(count, CUES.length) - 1]);
       if (count === CUES.length) show(at, k * 1.1, WHEEL);
-      if (count >= CUES.length - 1) {
-        for (let i = 0; i < count - CUES.length + 3; i++) show({ x: innerWidth * (0.1 + 0.8 * Math.random()), y: innerHeight * (0.15 + 0.7 * Math.random()) }, 0.3 + 0.3 * Math.random(), RIFT);
-      }
+      // 裂缝只开在立绘那一侧、离召唤点不远；撒满整页时和闪电、各键图层叠在一起太乱。
+      if (count >= CUES.length - 1) show({ x: at.x + (Math.random() - 0.5) * at.x, y: at.y + (Math.random() - 0.5) * 0.5 * innerHeight }, 0.4, RIFT);
       if (reducedMotion) return;
-      storm.strike(k < 0.4 ? 1 : k < 0.75 ? 2 : 3, 0.3 + 0.7 * k, 320 + 320 * k);
+      storm.strike(1, 0.25 + 0.45 * k, 320 + 320 * k);
       if (count === CUES.length) storm.strike(1, 0.9, 700, ["swoop"]);
     },
     miss: () => release(900),
@@ -210,9 +211,9 @@ export function summonCues(host: HTMLElement, parent: HTMLElement, reducedMotion
       flare(1.4, 1100);
       FINALE.forEach((cue, i) => show(at, 1.3 - 0.1 * i, cue));
       if (reducedMotion) return;
-      storm.strike(STRIKES.length, 1, 1000);
-      storm.strike(1, 1, 1300, ["storm"]);
-      storm.flash(0.75, 900);
+      storm.strike(FINALE_STRIKES, 0.85, 1000);
+      storm.strike(1, 0.75, 1300, ["storm"]);
+      storm.flash(0.45, 700);
     },
     stop() {
       clearTimeout(idle);
