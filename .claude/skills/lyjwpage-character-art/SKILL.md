@@ -26,7 +26,7 @@ description: 改站点深色模式里的青子动态立绘，或给站点做新�
 
 ## 流程
 
-复制到状态行，做完一项打勾；只加表情就做 3 和 6。
+复制到状态行，做完一项打勾。只加表情就做 3 和 6；换角色从 1 做起，着色器里按青子量的坐标也要重量（[pipeline.md](pipeline.md) 第 2 节末）。
 
 ```
 - [ ] 1 素材：超分 → 去色带 → 精细抠图
@@ -52,7 +52,7 @@ description: 改站点深色模式里的青子动态立绘，或给站点做新�
 
 脚本在 [scripts/](scripts/)，用法看各自的 `--help`（`face-brief.md` 是模板，说明在它开头）：
 
-- `face_patch.py`：裁脸、把 Codex 的输出对齐贴回、按 `FACES` 拼图集。坐标和格序从 `aoko-face.ts` 读，`FACES` 用到但缺图的格会报出来。
+- `face_patch.py`：裁脸、把 Codex 的输出对齐贴回、按 `FACES` 拼图集。坐标和格序从 `aoko-face.ts` 读，`FACES` 用到但缺图的格会报出来；眼、嘴的位置默认是青子的，换角色用参数传。
 - `matte.py`：BiRefNet 粗抠，再按已知背景色反解透明度。
 - `face-brief.md`：给 Codex 改脸的提示词模板。
 - `capture.mjs`：无头浏览器召唤青子，用假时钟定格截图、逐帧连拍、截脸。内置浏览器面板隐藏时截图是空帧，所以截图走它。工作树里先软链主仓的 `docs/explainer/render/node_modules`，它才找得到 Playwright。

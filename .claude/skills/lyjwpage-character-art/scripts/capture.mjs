@@ -14,7 +14,8 @@ const USAGE = `立绘截图：无头浏览器打开站点（深色模式），�
     [--face calm,grin --lid 0,1]        逐个强制表情与眼皮（先在代码里临时加 __aokoFace / __aokoLid，见 pipeline.md 第 3 节）
     [--engine webkit] [--width 1920 --height 1080 --dpr 2] [--reduced-motion] [--video]
 
-截图写进 --out；最后一行打印 JSON：是否挂上了立绘、失败的 /mascots/ 请求、页面错误（已滤掉本地连不上后端这类环境噪音）。`;
+截图写进 --out；最后一行打印 JSON：mounted 是否挂上了立绘（左侧留白太窄时本来就不挂），reloads 中途整页重载了几次（重载后已自动从头再按），
+失败的 /mascots/ 请求，页面错误（已滤掉本地连不上后端这类环境噪音）。宽屏按了秘技 mounted 仍是 false，截出来的图就不能用。`;
 
 const { values: a } = parseArgs({
   strict: true,
@@ -78,29 +79,47 @@ page.on("response", (r) => {
   if (r.url().includes("/mascots/")) mascots.add(`${r.status()} ${new URL(r.url()).pathname}`);
 });
 
+let loads = 0;
+page.on("domcontentloaded", () => loads++);
 await page.clock.install({ time: new Date("2026-10-26T12:00:00+08:00") });
 await page.goto(a.url, { waitUntil: "domcontentloaded", timeout: 60000 });
-await page.addStyleTag({ content: HIDE_DEV_UI });
-await page.clock.runFor(4000);
-await page.waitForTimeout(1500);
 
 const advance = async (ms) => {
   for (let left = ms; left > 0; left -= 250) await page.clock.runFor(Math.min(250, left));
 };
-if (a.summon) {
-  await page.mouse.click(5, Math.round(+a.height / 3));
-  for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a", "Enter"]) {
-    await page.keyboard.press(key);
-    await page.clock.runFor(160);
+const prepare = async () => {
+  mascots.clear();
+  await page.addStyleTag({ content: HIDE_DEV_UI });
+  await page.clock.runFor(4000);
+  await page.waitForTimeout(1500);
+  if (a.summon) {
+    await page.mouse.click(5, Math.round(+a.height / 3));
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a", "Enter"]) {
+      await page.keyboard.press(key);
+      await page.clock.runFor(160);
+    }
   }
-}
-// 贴图到齐之前立绘不开始计时：按真实时间等 /mascots/ 的请求停下来，期间让假时钟慢慢走。
-let seen = -1;
-for (let quiet = 0, i = 0; quiet < 4 && i < 80; i++) {
-  await page.clock.runFor(100);
-  await page.waitForTimeout(250);
-  quiet = mascots.size === seen ? quiet + 1 : 0;
-  seen = mascots.size;
+  // 贴图到齐之前立绘不开始计时：按真实时间等 /mascots/ 的请求停下来，期间让假时钟慢慢走。
+  let seen = -1;
+  for (let quiet = 0, i = 0; quiet < 4 && i < 80; i++) {
+    await page.clock.runFor(100);
+    await page.waitForTimeout(250);
+    quiet = mascots.size === seen ? quiet + 1 : 0;
+    seen = mascots.size;
+  }
+};
+// Vite 冷启动预构建完依赖会整页重载一次，重载前加的样式和按下的秘技随旧页面一起没了：发现重载就从头再来。
+let reloads = 0;
+for (let attempt = 0; attempt < 3; attempt++) {
+  const before = loads;
+  try {
+    await prepare();
+  } catch (e) {
+    if (loads === before) throw e;
+  }
+  if (loads === before) break;
+  reloads += loads - before;
+  await page.waitForLoadState("domcontentloaded");
 }
 
 const figureBox = () =>
@@ -149,4 +168,4 @@ for (const face of faces) {
 
 await ctx.close();
 await browser.close();
-console.log(JSON.stringify({ mounted, mascots: [...mascots].filter((m) => !m.startsWith("2")), errors }));
+console.log(JSON.stringify({ mounted, reloads, mascots: [...mascots].filter((m) => !m.startsWith("2")), errors }));

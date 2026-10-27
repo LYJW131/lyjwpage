@@ -1,4 +1,0 @@
-schema_version: "1.1"
-name: new-character-plan
-expected_outcome: |
-  一份按步骤的计划：先超分、去色带、精细抠图，再做绑定图和位移场，再用 Codex 改脸出闭眼和表情并对齐贴回，最后无头浏览器逐帧截图给 lyjw 看。点名避开试过不行的路线。
