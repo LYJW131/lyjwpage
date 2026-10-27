@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "r=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; mkdir -p \"$HOME/.claude/skills\"; for s in \"$r\"/.claude/skills/*/; do [ -d \"$s\" ] && ln -sfn \"${s%/}\" \"$HOME/.claude/skills/\"; done; true",
+            "command": "r=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; mkdir -p \"$HOME/.claude/skills\"; for s in \"$r\"/.claude/skills/*/; do [ -d \"$s\" ] && ln -sfn \"${s%/}\" \"$HOME/.claude/skills/\"; done; mkdir -p \"$HOME/.claude/rules\"; for f in \"$r\"/.claude/rules/*.md; do [ -f \"$f\" ] && ln -sf \"$f\" \"$HOME/.claude/rules/\"; done; true",
             "timeout": 10
           }
         ]
