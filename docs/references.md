@@ -330,6 +330,10 @@
 
 ## 前端与工具链
 
+- **[WebMCP 规范草案](https://webmachinelearning.github.io/webmcp/)**（W3C Web Machine Learning CG）与 **[Chrome 的 WebMCP 文档](https://developer.chrome.com/docs/ai/webmcp)**
+  - 是什么：页面用 `document.modelContext.registerTool` 把能力注册成浏览器内 agent 可调的工具，Chrome 149 起有开关与 origin trial，DevTools Application 面板可查看和手动运行。
+  - 取了什么：把公开状态视图注册成一个只读工具，标 `readOnlyHint` 与 `untrustedContentHint`，经 `AbortSignal` 注销；报错写清怎么改。
+  - 状态：采用（试验）。落在 `src/lib/webmcp.ts`、`src/components/site-webmcp.tsx` 与 [WebMCP 试验](./webmcp.md)。
 - **[TypeScript 7.0 RC 公告](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)**（Microsoft）与 **[Nx 的 TypeScript 7 指南](https://nx.dev/docs/kb/typescript-7)**
   - 是什么：Go 实现的原生 TypeScript 编译器，以及迁移办法。
   - 取了什么：`tsc` 换成 TypeScript 7；typescript-eslint 还要旧的 JS API，所以按指南两版并装；Worker 的 tsconfig 去掉 7 不再支持的 `baseUrl`。
