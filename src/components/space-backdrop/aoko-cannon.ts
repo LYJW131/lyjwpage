@@ -114,7 +114,7 @@ function ring(ctx: CanvasRenderingContext2D, r: number, a: number) {
 const STILL_SINCE = -0.3;
 
 // 光团照在手上的强度：长满手掌时为 1，发射那一下再亮一截，半秒内退掉。since 为 null 是减少动态效果的静帧。
-// 蓄力和发射时换手势：0 是立绘原来的手，1 手指微弯绷劲，2 手指猛张。1、2 是 Codex 照预告帧改的手指，拇指、握腕的右手、蓝球与袖子仍是原图；
+// 蓄力和发射时换手势：0 是立绘原来的手，1 手指朝镜头扣、手掌略往左上偏，2 手指伸直猛张、手掌正对镜头。1、2 是 Codex 照预告帧改的手掌和手指（指节一律往掌心那侧弯，反折就成了鸡爪），拇指、握腕的右手、蓝球与袖子仍是原图；
 // 原图与拼法在本机母图目录（项目记忆 aoko-face-pipeline），图集由 scripts/aoko-hand-normals.py --tiles 2 生成。
 // 硬切不淡化，两张手叠着淡化会有重影；切的那一刻正好光团长满或光线迸出，最亮，看不出跳。
 export const HANDS = "/mascots/aoko-hands.webp";

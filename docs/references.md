@@ -203,7 +203,7 @@
   - 状态：采用。落在 `src/components/space-backdrop/aoko-fx.ts`、`src/components/space-backdrop/aoko-floor.ts`、`src/components/space-backdrop/aoko-rings.ts`、`src/components/space-backdrop/aoko-summon.ts`、`src/components/space-backdrop/aoko.ts#glowOf`，贴图由 `scripts/aoko-fx-assets.ts` 导出。
 - **[剧场版《魔法使之夜》最终预告的开头](https://x.com/mahoyo_movie/status/2108754403486584867)**（@mahoyo_movie，TYPE-MOON / ufotable）
   - 是什么：官方动画账号发的 30 秒剧场用预告，开头约 1.7 秒是青子伸掌放光炮：掌心冒出一点碎白光，约 0.2 秒长成盖满手掌的白芯淡紫蓝光团，边缘翻滚着停半秒，发射时收成一点、迸出几道不等角的细长光线，再扩出一圈细亮的环。
-  - 取了什么：只取这几帧的形状、配色与时序（24fps 下 f19 点亮、f24 长满、f37 发射，光线射出后整组顺时针转），光团、光线、光环都用 Canvas 2D 画，没用视频里的画面；光团的淡紫蓝在帧上取色，记作 `aoko-fx.json` 的 `pale`。光团在掌前，照亮手掌：手层按轮廓鼓出法线，着色器把光团当点光源算漫反射，分两档硬边色阶，背光面压成冷紫。蓄力与发射的手势照 f24、f39 让 Codex 改手指（拇指、右手、蓝球不动），按节拍硬切。闲置时的手与那团光、蓄力期间的地面、背环、电弧都不变。
+  - 取了什么：只取这几帧的形状、配色与时序（24fps 下 f19 点亮、f24 长满、f37 发射，光线射出后整组顺时针转），光团、光线、光环都用 Canvas 2D 画，没用视频里的画面；光团的淡紫蓝在帧上取色，记作 `aoko-fx.json` 的 `pale`。光团在掌前，照亮手掌：手层按轮廓鼓出法线，着色器把光团当点光源算漫反射，分两档硬边色阶，背光面压成冷紫。蓄力与发射的手势照 f24、f39 让 Codex 改手掌角度和手指（指节往掌心、朝镜头弯；拇指、右手、蓝球不动），按节拍硬切。闲置时的手与那团光、蓄力期间的地面、背环、电弧都不变。
   - 状态：采用。落在 `src/components/space-backdrop/aoko-cannon.ts`（`palmCannon`、`palmLight`、`palmPose`、`PALM_LIT_GLSL`）、`src/components/space-backdrop/aoko.ts` 的手层着色，贴图 `public/mascots/aoko-hands.webp`、`aoko-arm-normal.webp` 由 `scripts/aoko-hand-normals.py` 生成。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
