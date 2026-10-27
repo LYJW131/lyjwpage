@@ -1,21 +1,25 @@
 #!/usr/bin/env node
-// 立绘截图：无头浏览器打开站点（深色模式），可选按科乐美秘技召唤青子，用假时钟定格到指定时刻截图。
-//   node .claude/skills/lyjwpage-character-art/scripts/capture.mjs --out <目录> [--url http://localhost:3211/] [--summon]
-//     [--at 0,2.5,8]               召唤并加载完后第几秒各截一张
-//     [--frames 40 --step 16.7 --from 3]  从第 3 秒起每 16.7ms 一帧，共 40 帧（眨眼、头发逐帧）
-//     [--clip figure|face|viewport]  只截立绘画布、只截 FACE_BOX 那块脸，或整个视口
-//     [--face calm,grin --lid 0,1]   逐个强制表情与眼皮（要先在代码里临时加 __aokoFace / __aokoLid，见 pipeline.md）
-//     [--engine webkit] [--width 1920 --height 1080 --dpr 2] [--reduced-motion] [--video]
-// 结果在 --out 里，最后一行打印页面错误（已滤掉本地连不上后端这类环境噪音）。
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { HIDE_DEV_UI, launchBrowser, resolvePlaywright } from "../../../../scripts/site-verify.ts";
 
+const USAGE = `立绘截图：无头浏览器打开站点（深色模式），可选按科乐美秘技召唤青子，用假时钟定格到指定时刻截图。
+
+  node .claude/skills/lyjwpage-character-art/scripts/capture.mjs --out <目录> [--url http://localhost:3211/] [--summon]
+    [--at 0,2.5,8]                      召唤并加载完后第几秒各截一张
+    [--frames 40 --step 16.7 --from 3]  从第 3 秒起每 16.7ms 一帧，共 40 帧（眨眼、头发逐帧）
+    [--clip figure|face|viewport]       只截立绘画布、只截 FACE_BOX 那块脸，或整个视口
+    [--face calm,grin --lid 0,1]        逐个强制表情与眼皮（先在代码里临时加 __aokoFace / __aokoLid，见 pipeline.md 第 3 节）
+    [--engine webkit] [--width 1920 --height 1080 --dpr 2] [--reduced-motion] [--video]
+
+截图写进 --out；最后一行打印 JSON：是否挂上了立绘、失败的 /mascots/ 请求、页面错误（已滤掉本地连不上后端这类环境噪音）。`;
+
 const { values: a } = parseArgs({
   strict: true,
   options: {
+    help: { type: "boolean", short: "h", default: false },
     url: { type: "string", default: "http://localhost:3211/" },
     out: { type: "string" },
     summon: { type: "boolean", default: false },
@@ -34,8 +38,12 @@ const { values: a } = parseArgs({
     video: { type: "boolean", default: false },
   },
 });
+if (a.help) {
+  console.log(USAGE);
+  process.exit(0);
+}
 if (!a.out) {
-  console.error("要 --out <目录>");
+  console.error(USAGE);
   process.exit(2);
 }
 mkdirSync(a.out, { recursive: true });

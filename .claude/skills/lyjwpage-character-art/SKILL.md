@@ -50,7 +50,7 @@ description: 改站点深色模式里的青子动态立绘，或给站点做新�
 
 ## 工具
 
-脚本在 [scripts/](scripts/)，用法写在各自文件头：
+脚本在 [scripts/](scripts/)，用法看各自的 `--help`（`face-brief.md` 是模板，说明在它开头）：
 
 - `face_patch.py`：裁脸、把 Codex 的输出对齐贴回、按 `FACES` 拼图集。坐标和格序从 `aoko-face.ts` 读，`FACES` 用到但缺图的格会报出来。
 - `matte.py`：BiRefNet 粗抠，再按已知背景色反解透明度。
