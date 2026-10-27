@@ -1,4 +1,5 @@
 import type { ChatSession } from "@/lib/chat-archive";
+import { GOD_CHAT_NEXT_MAX_CHARS } from "@shared/god-chat";
 
 const fold = (text: string) => text.normalize("NFKC").toLowerCase();
 
@@ -26,6 +27,6 @@ export function chatHistoryLines(sessions: readonly ChatSession[]): string[] {
   const lines = [...sessions]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .flatMap((session) => session.messages.filter((message) => message.role === "user" && !message.answers).map((message) => message.content.trim()).reverse())
-    .filter((line) => line && !line.startsWith("/"));
+    .filter((line) => line && !line.startsWith("/") && [...line].length <= GOD_CHAT_NEXT_MAX_CHARS);
   return [...new Set(lines)];
 }
