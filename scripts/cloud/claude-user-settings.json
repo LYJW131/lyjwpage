@@ -5,19 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "r=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; mkdir -p \"$HOME/.claude/skills\"; for s in \"$r\"/.claude/skills/*/; do [ -d \"$s\" ] && ln -sfn \"${s%/}\" \"$HOME/.claude/skills/\"; done; true",
+            "command": "r=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; mkdir -p \"$HOME/.claude/skills\"; for s in \"$r\"/.claude/skills/*/; do [ -d \"$s\" ] && ln -sfn \"${s%/}\" \"$HOME/.claude/skills/\"; done; mkdir -p \"$HOME/.claude/rules\"; for f in \"$r\"/.claude/rules/*.md; do [ -f \"$f\" ] && ln -sf \"$f\" \"$HOME/.claude/rules/\"; done; true",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v tokens >/dev/null && TZ=Asia/Singapore TOKENS_API_TOKEN=\"${TOKENS_API_TOKEN:-egress-proxy}\" timeout 30 tokens cloud submit >/dev/null 2>&1; true",
-            "async": true
           }
         ]
       }
