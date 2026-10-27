@@ -23,11 +23,11 @@ export function useCompletion({ inputRef, draft, setDraft, messages, sessions, b
   const [composing, setComposing] = useState(false);
   // 记下取光标时的草稿：草稿被程序改写（发送后清空、采纳补全）时 select 事件不一定来，这时按光标在末尾算。
   const [caret, setCaret] = useState<{ value: string; atEnd: boolean } | null>(null);
-  const history = useMemo(() => chatHistoryLines(sessions), [sessions]);
+  const candidates = useMemo(() => [...PRESET_LINES, ...chatHistoryLines(sessions)], [sessions]);
   const last = messages[messages.length - 1];
   const next = !blocked && last?.role === "assistant" && last.designAt === undefined ? splitNextSuggestion(last.content).next : undefined;
   const atEnd = caret?.value !== draft || caret.atEnd;
-  const suffix = blocked || composing || !atEnd || dismissed === draft ? "" : chatCompletion(draft, next, [...PRESET_LINES, ...history]);
+  const suffix = blocked || composing || !atEnd || dismissed === draft ? "" : chatCompletion(draft, next, candidates);
 
   function accept() {
     const value = draft + suffix;

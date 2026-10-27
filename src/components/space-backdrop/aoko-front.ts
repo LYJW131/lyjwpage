@@ -3,7 +3,7 @@ import { CylinderGeometry, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, 
 import { BOLT_H, BOLT_W, BOLT_X, BOLT_Y, ORB, type FxState } from "./aoko-fx";
 import { AHEAD, cannon, cannonSince, MUZZLE } from "./aoko-cannon";
 import { ARM_BOX, PALM } from "./aoko-figure";
-import { COLORS, LIGHTER, VERT, plane, quads, shader, texture } from "./aoko-gl";
+import { COLORS, VERT, plane, quads, shader, texture } from "./aoko-gl";
 import { RIM, hash, smooth } from "./aoko-paint";
 import { ARM_AXIS, ARM_SPOTS, FOREARM, GAPS, JAG_ARCS, JAG_POINTS, RING_SQUASH, SHARD, glints, jags, ringGaps, type HandPose } from "./aoko-rings";
 import { atDepth } from "./aoko-stage";
@@ -105,15 +105,9 @@ export function front(images: Sprites, anisotropy: number) {
     squash.add(spin);
     const half = spot.r / RIM;
     const gap = new Float32Array(GAPS * 8);
-    const material = new ShaderMaterial({
-      vertexShader: VERT,
-      fragmentShader: RING_FRAG,
-      uniforms: { map: { value: texture(images[spot.sprite], opts) }, alpha: { value: 1 }, hr: { value: half }, gap: { value: gap } },
-      ...LIGHTER,
-      depthTest: true,
-    });
-    const disc = new Mesh(new PlaneGeometry(2 * half, 2 * half), material);
-    disc.renderOrder = 60;
+    const material = shader(RING_FRAG, { map: { value: texture(images[spot.sprite], opts) }, alpha: { value: 1 }, hr: { value: half }, gap: { value: gap } });
+    material.depthTest = true;
+    const disc = plane(2 * half, 2 * half, material, 60);
     const jag = quads(JAG_ARCS * (JAG_POINTS - 1), SOLID, { alpha: { value: 1 } }, 61);
     jag.material.depthTest = true;
     spin.add(disc, jag.mesh);

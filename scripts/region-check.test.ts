@@ -40,6 +40,7 @@ test("markdown table cells escape every pipe and the backslashes that would unes
   assert.equal(escapeMarkdownTableCell("a\\b"), "a\\\\b");
   assert.equal(escapeMarkdownTableCell("\\|"), "\\\\\\|");
   assert.equal(escapeMarkdownTableCell("end\\"), "end\\\\");
+  assert.equal(escapeMarkdownTableCell("broken art\nsee card\r\nend"), "broken art<br>see card<br>end");
 });
 
 test("goal tells the agent that service error counters on the page are data, not issues", () => {
