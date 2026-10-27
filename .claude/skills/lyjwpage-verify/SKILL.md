@@ -147,6 +147,8 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 只为试验开的 PR（测验证员、测工作流、试方案，不打算合）开好就贴 `do-not-merge` 标签（`scripts/guard-merge-method.ts#DO_NOT_MERGE_LABEL`）：`.github/workflows/do-not-merge.yml` 的检查常红、`pr-gate` 不放行、合并钩子拦下；脚本只认标签，不读标题。试完关掉 PR，不摘标签。
 - 合并方式按 PR 里的非合并提交数：少于 3 个压缩合并（`squash`），3 个及以上用合并提交（`merge`），不用 GitHub 默认的 `Merge pull request #N from …`：在 PR 分支上 `git fetch origin main` 后跑 `pnpm merge-message <PR 号> "<PR 标题>"`，把输出的 `merge_method` / `commit_title` / `commit_message` / `expectedHeadSha` 原样传给合并接口；PreToolUse 钩子 `scripts/guard-merge-method.ts` 拦下方式不对、缺 `expectedHeadSha`、带 `do-not-merge` 标签或读不到标签的合并；回执没按分档等级盖住 head、贴了 `needs-judge` 却没有 PASS 判定、head 上有 FAIL 判定或读不到回执时只提醒、照样放行（`receiptReason`；回执等级不收 `--need`），合了要在汇报里说差哪一项；head 上 `Comment check (Jev)` 列出可能该删的新注释、PR 改了 JS / TS 它却没出现、还在跑、没跑成或读不到时也只提醒（`commentReason`，`pr-gate` 的 `notes` 同样列出），逐条判断，该删的删掉推送后再合。`expectedHeadSha` 是本地验过的 head，PR 上多出没验过的提交时合并会失败，这时拉下新提交重新验证，不去掉这个参数。标题是 `<PR 标题> (#N)`，正文列 PR 内各提交主题，末尾汇总这些提交的 `Co-Authored-By` 与提交作者，去重后只留认得出身份（agent 或 GitHub noreply）且不是仓库主人 lyjw 的，站点「最近提交」靠它显示参与的 agent 与模型；同步 main 的合并不显示（`src/lib/recent-commits.ts#recentCommitsFrom`）。
 - Codex 每次推送自动审一轮，上限 3 轮；到上限或最近一轮没审成（`status: "failed"`，多半是额度用完）就不再等它。Claude review 只审要判定的 PR（`tierOf` 的 `judge` 为真：贴了 `needs-judge` 或作者不是 lyjw 的账号），在开 PR、转为待审或贴上 `needs-judge` 时审一次（认「## Code review」汇总评论，报错或 @claude 问答这类普通评论不算），Devin 每个 PR 也只审一次（认 pull review），它们的 `lastReviewed` 不是 head 不算缺；要判定的 PR 里两家一次都没审过时进 `todo`，等待带上限，超时在汇报里记没跑成。Codex 已审过这个 PR 之后的复审：后续推送只改了文档、注释或 skill 的，不等它复审新 head；改了代码的等它复审，上限 15 分钟（同「等待要有上限」），到点没出现就记一句「Codex 没复审这次推送」，其余门槛过了照常合，不当成没通过、不原地等。Cursor Bugbot lyjw 已关掉：不等它、不报它没跑；它真跑出来的意见照常处理。
+- 先分真问题和边缘（lyjw 定的：来回修边缘情况只会拖慢收敛、徒增复杂度）。按这次改动的用意正常使用就会出错的（功能不对、报错、数据错、回归、安全）才修；要罕见输入、假设的时序、外部服务异常才触发的边缘情况与防御性加固，回一句「边缘情况，不改：<为什么>」，不管评审标的是什么级别；文档、注释、测试名对不上的顺手改，和别的修复同一次推送，不单为它推送。回执明细里验证员写的「另：」同样处理。
+- 评审修复只推一轮：开 PR 后等第一批评审（Codex、Devin、回执）到齐，上限照「等待要有上限」，再把该修的一次修完、推一次。这次推送之后的新发现，只修真问题，其余照上一条回复不改；门槛过了就合，不再等下一轮评审找更罕见的情况。
 - 修一条评审发现前，先给它起个类别名，用 `rg` 在 PR 改到的文件里搜同类，一次修完、放进同一次推送；回复那条线程时写上类别名和其他实例改在哪。Codex 每次推送算一轮，漏修的同类会再花一轮。
 - 评审收敛：任何一家机器评审到第三轮，还在这次改动的代码里报新的阻塞问题，就停止逐条打补丁，重看实现方法，在线程里用一句话告诉 lyjw 方法换不换、为什么。方向不对就关掉或改做（见 `HUMAN.md`「探索与换方向」）。
 
@@ -192,7 +194,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 ## 主线程收到报告后
 
 - 先看回执：等级够、盖住要验的提交才往下走。不重跑回执里的检查，只抽查一条证据：至少打开一张截图看一眼（验证员对视觉判断可能出错，PR 上的截图折叠在回执评论的「截图」里），核对一个 sha 或数值；抽查对不上，在 PR 评论里写明哪条不对、补清单后推送让 Action 重验，并改本文件或 `scripts/verify-action/prompts.ts` 把漏洞补上。
-- 有 FAIL：自己分析根因、修，再推送让 Action 复测（没开 PR 的再派一次验证员）。
+- 有 FAIL：自己分析根因、修，再推送让 Action 复测（没开 PR 的再派一次验证员）。FAIL 的是边缘情况或文档措辞（验证员判错了档）的，照第 3 节「先分真问题和边缘」处理，并改 `scripts/verify-action/prompts.ts` 把口子补上。
 - 全 PASS：按项目规矩汇报。UI 截图：云端会话里 lyjw 看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，lyjw 定的规矩）；lyjw 在看开发服务器时按第 2 节「附图时机」，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
 - 汇报只写实际验到的，「没验到」那一栏原样告诉 lyjw。
 - 要 lyjw 点头的汇报（UI 效果、大方向、基线例外）附一行「这些检查测不到什么」，例如只测了暗色、没测 WebKit 的滚动、没测真实推送。说不出来就是还没验够，先补验再找 lyjw。
