@@ -20,12 +20,14 @@ export function atDepth(x: number, y: number, z: number): [number, number, numbe
 
 export type View = { left: number; ox: number; oy: number; scale: number; dpr: number };
 
-// three 构造 WebGL2 失败会直接抛错，返回 null 交给调用方退回 2D。
+// 没有 WebGL2 时返回 null 交给调用方退回 2D。上下文自己先要：交给 three 去要的话，要不到它会先往控制台打几条错误再抛。
 export function stage(canvas: HTMLCanvasElement) {
   ColorManagement.enabled = false;
+  const context = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false, depth: true, stencil: false, powerPreference: "low-power" });
+  if (!context) return null;
   let renderer: WebGLRenderer;
   try {
-    renderer = new WebGLRenderer({ canvas, alpha: true, premultipliedAlpha: true, antialias: false, powerPreference: "low-power" });
+    renderer = new WebGLRenderer({ canvas, context });
   } catch {
     return null;
   }
