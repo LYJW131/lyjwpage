@@ -25,6 +25,6 @@ run() {
 }
 
 run signing.sh DEVIN_SESSION_TOKEN || exit 1
-run browser-trust.sh AAPAY_SIGN_KEY_B64 DEVIN_SESSION_TOKEN || exit 1
-run devin.sh AAPAY_SIGN_KEY_B64 || echo "WARNING: devin.sh failed (see above); the rest of the setup continues" >&2
-run claude-user.sh AAPAY_SIGN_KEY_B64 DEVIN_SESSION_TOKEN || true
+run browser-trust.sh GIT_SIGN_KEY_B64 DEVIN_SESSION_TOKEN || exit 1
+run devin.sh GIT_SIGN_KEY_B64 || echo "WARNING: devin.sh failed (see above); the rest of the setup continues" >&2
+run claude-user.sh GIT_SIGN_KEY_B64 DEVIN_SESSION_TOKEN || true
