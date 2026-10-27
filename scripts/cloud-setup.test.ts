@@ -56,7 +56,7 @@ function run(extra: Record<string, string>) {
   return { status: result.status, stderr: result.stderr, ran: readFileSync(log, "utf8").split("\n").filter(Boolean) };
 }
 
-test("四份脚本按顺序执行，每份只看到自己需要的机密", () => {
+test("五份脚本按顺序执行，每份只看到自己需要的机密", () => {
   const { status, ran } = run({});
   assert.equal(status, 0);
   assert.deepEqual(ran, [
@@ -64,6 +64,7 @@ test("四份脚本按顺序执行，每份只看到自己需要的机密", () =>
     "browser-trust.sh A= D=",
     "devin.sh A= D=tok",
     "claude-user.sh A= D=",
+    "tokens.sh A= D=",
   ]);
 });
 
@@ -84,5 +85,5 @@ test("devin.sh 失败只告警，claude-user.sh 照跑", () => {
   const { status, stderr, ran } = run({ STUB_RUN_FAIL: "devin.sh" });
   assert.equal(status, 0);
   assert.match(stderr, /WARNING: devin\.sh failed/);
-  assert.equal(ran.at(-1), "claude-user.sh A= D=");
+  assert.deepEqual(ran.slice(-2), ["claude-user.sh A= D=", "tokens.sh A= D="]);
 });
