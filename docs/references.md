@@ -117,6 +117,10 @@
 - **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
   - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
   - 不采用：规范与根 `AGENTS.md`「文档与注释」基本重合；稳定规则只查类型声明与本地链接，`pnpm docs:check` 已覆盖且更多；实验规则在中文文档上误报多。试过整仓接入（PR #428，未合），文档本身没变好，只多一个二进制依赖和一套类型词表。
+- **[Ryugi 流儀](https://github.com/Innei/ryugi)**（Innei，基于 obra/superpowers）
+  - 是什么：一套 coding agent 插件：先问清目标，用画板、文档、HTML 页把方案摆出来给人选，按 spec 逐任务 TDD，最后把成品截图和批准的设计并排、由人逐组通过或打回。
+  - 取了什么：executing-specs 的台账（判断记进文件，压缩后信台账不信记忆），落在 `lyjwpage-delegate`「长任务台账」；artifacts 的 HTML 调参台（滑块调参、重写页面不丢值），落在 `lyjwpage-ui-design`「要凭眼调的参数用调参页」。
+  - 状态：采用这两条。UI 验收逐组通过 / 打回、「借口 → 实情」对照表 lyjw 这次没选；不借整装插件（自动触发与本仓库 skill 冲突）、「从不用合并提交」（与合并分档冲突）、TDD 铁律与先问再做（与 `AGENTS.md` 的验证与不干等规矩冲突）。
 
 ## 模型选择与子代理
 
