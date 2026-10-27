@@ -9,7 +9,7 @@
 - 入口：`src/components/site-webmcp.tsx#SiteWebMcp`（挂在 `src/app/root.tsx`），浏览器有 `document.modelContext` 才注册，卸载时经 `AbortSignal` 注销；没有这个 API 的浏览器什么都不做。
 - 命令式工具：`src/lib/webmcp.ts#siteTools`，目前只有 `get_site_status`：参数 `view` 取 `shared/status-views.ts#STATUS_VIEW_KEYS` 之一，读该视图的公开端点（与页面卡片同一份 JSON，经 `backendUrl`），原样返回文本，超长截断。标 `readOnlyHint` 与 `untrustedContentHint`（窗口标题、歌名等是外部文本）。
 - 不做 `/mcp` 那套摘要、分页与本地时间换算：那些在 ai Worker 里，站点侧不复制。
-- 声明式工具 `ask_homepage_chat`：首页对话的表单带 `src/lib/webmcp.ts#CHAT_FORM_TOOL`，输入框带 `CHAT_MESSAGE_PARAM`。不加 `toolautosubmit`，agent 只能把消息填进输入框，发送要访客自己点；发送键因此用 `aria-disabled` 而不是 `disabled`（Chrome 要找到可用的提交按钮）。访客点发送时表单 `preventDefault`，`answerAgentSubmit` 经 `respondWith` 把「已发送」回给 agent，否则 Chrome 判这次调用失败。
+- 声明式工具 `ask_homepage_chat`：首页对话的表单带 `src/lib/webmcp.ts#CHAT_FORM_TOOL`，输入框带 `CHAT_MESSAGE_PARAM`。不加 `toolautosubmit`，agent 只能把消息填进输入框，发送要访客自己点；发送键因此用 `aria-disabled` 而不是 `disabled`（Chrome 要找到可用的提交按钮）。访客点发送时表单 `preventDefault`，`answerAgentSubmit` 经 `respondWith` 回给 agent 一句结果，否则 Chrome 判这次调用失败；这句由 `src/lib/webmcp.ts#chatSubmitResult` 给：框空或上一条回复还在输出时说没发出，其余说已提交。
 
 ## 发现清单
 
