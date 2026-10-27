@@ -1,9 +1,8 @@
 import { type FxState, SCENE, hash, smooth, tone } from "./aoko-paint";
 import type { HandPose } from "./aoko-rings";
 
-// 掌心光炮，复刻剧场版最终预告开头（@mahoyo_movie 2026-10-10 的帖子）：掌心先冒出一点碎白光，约 0.2 秒长满手掌，
-// 边缘翻滚着停一会儿，发射时收成一点、迸出几道不等角的细长光线，再扩出一圈细亮的环。
-// 时间都相对 aoko-fx.ts 的 FIRE（since < 0 是发射前），只管光球本身：power 照旧喂给地面、背环、电弧和重打光。
+// 掌心光炮照剧场版最终预告开头复刻（源：docs/references.md）。时间都相对 aoko-fx.ts 的 FIRE（since < 0 是发射前），
+// 只管光球本身，不改 power：地面、背环、电弧和重打光照旧跟 power 走。
 // 参考帧 24fps：f19 点亮、f24 长满、f37 发射，换成秒就是 LIGHT、GROWN。
 const LIGHT = 0.75;
 const GROWN = 0.55;
@@ -128,7 +127,6 @@ export function palmCannon(ctx: CanvasRenderingContext2D, { flash, t, still }: F
     const pulse = still ? 1 : 1 + 0.03 * Math.sin(t * 9);
     blob(ctx, size * pulse, 0.75 + 0.25 * grow, tick);
   } else {
-    // 发射：光团一下收紧、褪掉，核心剩一个亮点，光线在两三帧内射满，环紧跟着扩出去。
     const fade = 1 - smooth(0, 0.3, at);
     if (fade > 0) blob(ctx, R * (0.6 - 0.2 * smooth(0, 0.1, at)), fade, tick);
     glow(ctx, 30, [
