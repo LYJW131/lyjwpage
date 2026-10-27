@@ -7,6 +7,7 @@
     "core": "#78d2ff",
     "white": "#ebf8ff",
     "brick": "#6b57d6",
+    "brickDark": "#2b2840",
     "pale": "#b6ccfc"
   },
   "bokeh": [

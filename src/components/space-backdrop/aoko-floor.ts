@@ -5,7 +5,7 @@ import { COLORS, OVER, shader, texture } from "./aoko-gl";
 import { RIM, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 
 // 脚下的地面法阵就是 img0609（俯视）里那面：外圈 img0640（符文带、星形弦线、印章环）套内盘 img1627（旋刃、中心四枚印章、粗亮边），
-// 底下是被法阵照成紫色的砖地。现在是一块真的水平面，透视、近大远小由 aoko-stage.ts 的相机给。
+// 底下是砖地：本身是暗灰紫，紫色是法阵照出来的，法阵暗了、熄了，那层紫跟着淡，只剩暗底。砖地是一块真的水平面，透视、近大远小由 aoko-stage.ts 的相机给。
 const BRICK_TEX = 1280;
 const BRICK_R = BRICK_TEX / 2 / EXTENT;
 // 法阵单独一张纹理，边长与 floor-outer 贴图一致（须与 scripts/aoko-fx-assets.ts 同步）。砖地是柔和的渐变和砖缝，低一档的分辨率就够。
@@ -21,7 +21,7 @@ const TAU = Math.PI * 2;
 // 原片那面法阵就是内盘 img1627，把原片每一帧按透视拉正回 img1627 的贴图坐标，按半径分圈、对细线与宽块两层做回归，量出每一圈每一刻的亮度：
 // 法阵从头到尾是原尺寸、不转，从触地点往外显现（软前沿）；细线与靠中心的宽块跟着前沿出来，外半圈的宽刃先只有三四成亮，
 // 等第二道波从半径 0.45 推到外缘才填满；整面糊在光里亮几秒、微微起伏；收尾细线和中心一带暗下去再亮回清晰版。
-// 下面的关键帧除 BLUR 外就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；到 FLOOR_UNFOLD_S 都回到平时的完整法阵。
+// 下面的关键帧除 BLUR、GAIN 外就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；7.75 秒以后都是平时的完整法阵，只剩 GAIN 往下回落。
 // 原片没有 img0640 外圈，显现前沿过了内盘外缘就接着往外推，把外圈也显出来。
 type Keys = [number, number][];
 // 显现前沿（亮到一半处）的半径。过了内盘外缘照原片末段的速度（约每秒一个内盘半径）接着往外推。
@@ -40,6 +40,8 @@ const FILL: Keys = [[0, 1], [6.75, 1], [7.25, 0.65], [7.75, 1]];
 // 糊的程度（1 = 整面换成糊的那份）与额外泛光。原片糊到 6.75 秒，lyjw 嫌长，宽刃填满后就对焦。
 const BLUR: Keys = [[0, 1], [3.2, 1], [4, 0], [7.75, 0]];
 const BLOOM: Keys = [[0, 0], [0.5, 0.25], [2.75, 0.25], [4.5, 0.2], [6, 0.22], [6.6, 0.28], [7.1, 0], [7.75, 0]];
+// 整面的增益：展开时比平时亮（lyjw 要的），定格后用 1.5 秒回落到平时亮度。
+const GAIN: Keys = [[0, 1.5], [7.75, 1.5], [9.25, 1]];
 // 原片没有外圈；泛光那几秒外圈先压暗，免得粗亮环抢了内盘。
 const OUTER: Keys = [[0, 0.6], [6.75, 0.6], [7.75, 1]];
 const SPARK_S = 0.5;
@@ -60,22 +62,28 @@ const at = (keys: Keys, t: number) => {
   return keys[keys.length - 1][1];
 };
 
-function floorTextures(outer: HTMLImageElement) {
+function brickTexture(color: string) {
   const bricks = document.createElement("canvas");
   bricks.width = bricks.height = BRICK_TEX;
   const b = bricks.getContext("2d")!;
   const lit = b.createRadialGradient(BRICK_TEX / 2, BRICK_TEX / 2, 0, BRICK_TEX / 2, BRICK_TEX / 2, BRICK_TEX / 2);
   // 四成半径内保持亮，往外按 smoothstep 落到零，到边上斜率也归零；线性收尾在透视压扁的远端会显出一道硬边。
-  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(SCENE.brick, 0.85 * (1 - smooth(0.4, 1, i / 16))));
+  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(color, 0.85 * (1 - smooth(0.4, 1, i / 16))));
   b.fillStyle = lit;
   b.fillRect(0, 0, BRICK_TEX, BRICK_TEX);
   b.globalCompositeOperation = "destination-out";
-  b.fillStyle = tone(SCENE.brick, 0.6);
+  b.fillStyle = tone(color, 0.6);
   const row = BRICK_R * 0.09;
   for (let y = 0, i = 0; y < BRICK_TEX; y += row, i++) {
     b.fillRect(0, y, BRICK_TEX, 4);
     for (let x = (i % 2) * row; x < BRICK_TEX; x += row * 2.1) b.fillRect(x, y, 3, row);
   }
+  return bricks;
+}
+
+function floorTextures(outer: HTMLImageElement) {
+  const bricks = brickTexture(SCENE.brick);
+  const dark = brickTexture(SCENE.brickDark);
 
   const tex = document.createElement("canvas");
   tex.width = tex.height = CIRCLE_TEX;
@@ -90,13 +98,14 @@ function floorTextures(outer: HTMLImageElement) {
   c.fill();
   c.globalCompositeOperation = "lighter";
   circle(c, outer, R);
-  return { bricks, tex };
+  return { bricks, dark, tex };
 }
 
 // 平时（u=1）：外圈随 spin 转、内盘以 1.6 倍反转，法阵叠在砖地上（source-over）。
 // 展开中（u<1）：外圈和内盘的「细线」「宽块」两层（宽块由 fill 遮罩拆出，两层 alpha 互补）各按自己的径向前沿显现，
-// 中心冒一团光和几颗火星；BLUR 那几秒整面换成取粗 mip 的糊的那份。砖地亮度不低于 ground：召唤时跟着前沿出来，平时重放不熄。
-const FRAG = `${COLORS}uniform sampler2D bricks,tex,inner,fillMask;uniform float spin,alpha,u,ground;
+// 中心冒一团光和几颗火星；BLUR 那几秒整面换成取粗 mip 的糊的那份，整面再乘 GAIN。
+// 砖地是暗底上叠法阵照出的紫：紫按法阵亮度（alpha×gain）与前沿到了几成叠；暗底不低于 ground，召唤时跟着前沿出来，平时重放不熄。
+const FRAG = `${COLORS}uniform sampler2D bricks,dark,tex,inner,fillMask;uniform float spin,alpha,u,ground,gain;
 uniform vec4 k0;uniform vec4 k1;uniform vec2 spark;uniform vec3 sparks[${SPARKS}];varying vec2 v;
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
 vec2 rot(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}
@@ -120,7 +129,7 @@ vec4 disc(vec2 q,float lod){
 void main(){
   vec2 q=(v*2.-1.)/${CIRCLE_SPAN.toFixed(5)};
   vec4 c=disc(q,0.);
-  float lit=1.;
+  float reach=1.;
   if(u<1.){
     float soft=k1.y,bloom=k1.z;
     if(soft>0.||bloom>0.)c=c*(1.-soft)+disc(q,${BLUR_LOD[0].toFixed(1)})*soft*${BLUR_GAIN[0]}+disc(q,${BLUR_LOD[1].toFixed(1)})*(soft*${BLUR_GAIN[1]}+bloom);
@@ -133,15 +142,16 @@ void main(){
       for(int i=0;i<${SPARKS};i++){float d=length(s-sparks[i].xy)/(2.*sparks[i].z);g+=vec4(WHITE,1.)*fade*max(1.-d,0.);}
       c+=g;
     }
-    c=min(c,vec4(1.));
-    lit=max(ground,k1.w);
+    c=min(c*gain,vec4(1.));
+    reach=k1.w;
   }
-  vec4 b=texture2D(bricks,v)*lit;
+  vec4 l=texture2D(bricks,v)*min(1.,alpha*gain)*reach;
+  vec4 b=l+texture2D(dark,v)*max(ground,reach)*(1.-l.a);
   gl_FragColor=c+b*(1.-c.a);
 }`;
 
 export function floor(outer: HTMLImageElement, inner: HTMLImageElement, innerFill: HTMLImageElement, anisotropy: number) {
-  const { bricks, tex } = floorTextures(outer);
+  const { bricks, dark, tex } = floorTextures(outer);
   const opts = { mip: true, anisotropy };
   const sparks = new Float32Array(SPARKS * 3);
   for (let i = 0; i < SPARKS; i++) sparks.set([0, 0, 0.01 * R * (1 + hash(i + 110))], i * 3);
@@ -149,6 +159,7 @@ export function floor(outer: HTMLImageElement, inner: HTMLImageElement, innerFil
     FRAG,
     {
       bricks: { value: texture(bricks, opts) },
+      dark: { value: texture(dark, opts) },
       tex: { value: texture(tex, opts) },
       inner: { value: texture(inner, opts) },
       fillMask: { value: texture(innerFill, opts) },
@@ -156,6 +167,7 @@ export function floor(outer: HTMLImageElement, inner: HTMLImageElement, innerFil
       alpha: { value: 1 },
       u: { value: 1 },
       ground: { value: 1 },
+      gain: { value: 1 },
       k0: { value: [0, 0, 1, 1] },
       k1: { value: [1, 0, 0, 1] },
       spark: { value: [0, 0] },
@@ -171,15 +183,17 @@ export function floor(outer: HTMLImageElement, inner: HTMLImageElement, innerFil
   mesh.renderOrder = 0;
   return {
     mesh,
-    // unfold 是展开进度（召唤时、平时重新点亮时），1 就是完整法阵；砖地亮度不低于 ground（召唤时 0、平时 1）。
+    // unfold 是展开进度（召唤时、平时重新点亮时），1 就是完整法阵；alpha 是法阵亮度；砖地暗底不低于 ground（召唤时 0、平时 1）。
     update(spin: number, alpha: number, unfold: number, ground: number) {
       const u = material.uniforms;
       u.spin.value = spin;
       u.alpha.value = alpha;
       u.u.value = unfold;
       u.ground.value = ground;
+      u.gain.value = 1;
       if (unfold >= 1) return;
       const t = unfold * FLOOR_UNFOLD_S;
+      u.gain.value = at(GAIN, t);
       const edge = at(REVEAL, t);
       u.k0.value = [edge, at(WAVE, t), at(LINES, t), at(FILL, t)];
       u.k1.value = [at(OUTER, t), at(BLUR, t), at(BLOOM, t), Math.max(0, Math.min(1, (INNER_R * edge) / R))];

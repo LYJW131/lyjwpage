@@ -38,8 +38,10 @@ export function fxState(t: number): FxState {
 
 export const STILL: FxState = { power: 0.55, flash: 0, t: 0, still: true };
 
-// 地面法阵展开从触地到定格的时长，关键帧在 aoko-floor.ts。
-export const FLOOR_UNFOLD_S = 7.75;
+// 地面法阵展开从触地到回落成平时亮度的时长：原片那段 7.75 秒加上增益回落的 1.5 秒，关键帧在 aoko-floor.ts。
+export const FLOOR_UNFOLD_S = 9.25;
+// 平时法阵的亮度，蓄力时升到 1；展开时另有增益（aoko-floor.ts#GAIN），定格后落回这里。
+export const FLOOR_IDLE = 0.65;
 
 // 平时法阵不定期熄灭再重新展开：约四成的轮次里，在蓄力之前的空档随机挑一刻淡出，暗一会儿再从中心长出来。
 // 第一轮不熄，召唤时刚展开过；贴图来得慢时召唤展开会拖进后面的轮次，起点在召唤展开结束前的那次整段跳过，免得两段展开互相卡住或召唤一结束就跳进暗段。
@@ -50,7 +52,7 @@ const RELIGHT_S = RELIGHT_FADE_S + RELIGHT_DARK_S + FLOOR_UNFOLD_S;
 
 export function floorRelight(t: number, summonedAt: number) {
   const n = Math.floor(t / CYCLE);
-  const at = 2 + hash(n + 60) * (CHARGE - 2 - RELIGHT_S);
+  const at = 1 + hash(n + 60) * (CHARGE - 1 - RELIGHT_S);
   const c = (t % CYCLE) - at;
   if (n < 1 || n * CYCLE + at <= summonedAt || hash(n + 50) >= RELIGHT_CHANCE || c < 0 || c > RELIGHT_S) return { alpha: 1, unfold: 1 };
   if (c < RELIGHT_FADE_S) return { alpha: 1 - smooth(0, RELIGHT_FADE_S, c), unfold: 1 };
