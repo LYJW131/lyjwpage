@@ -64,7 +64,7 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
   let blinkAt = 1.5 + Math.random() * 2;
   // 贴图都到了才开始计时，不然头几段渐显落在空画布上。
   let revealAt: number | null = null;
-  let scene: { fig: ReturnType<typeof figure>; bk: ReturnType<typeof back>; fr: ReturnType<typeof front> } | null = null;
+  let scene: { fig: ReturnType<typeof figure>; bk: ReturnType<typeof back> | null; fr: ReturnType<typeof front> | null } | null = null;
   let flat: (() => void) | null = null;
 
   const draw = (t: number, closed = 0) => {
@@ -76,8 +76,8 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     const pose = handPose(t);
     const lamp = [...muzzle(pose), palmLight(cannonSince(state)) * show.front];
     scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), lamp);
-    scene.bk.update(state, show);
-    scene.fr.update(state, pose, show.front);
+    scene.bk?.update(state, show);
+    scene.fr?.update(state, pose, show.front);
     gl.render(BLOOM * (1 + state.power + 2 * state.flash));
     if (p >= 1) revealAt = null;
   };
@@ -144,14 +144,22 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     layout();
   };
 
-  void Promise.all([loadAll({ art: ART.src, rig: ART.rig, faces: ART.faces, arm: ART.arm, fill: ART.fill, normal: ART.normal }), loadAll(Object.fromEntries(Object.entries(FX).map(([k, v]) => [k, FX_ASSET(v)])) as Record<keyof typeof FX, string>)]).then(
-    ([art, fx]) => {
+  // 立绘那几张缺一张就不挂；特效贴图缺一张只是不画特效，法线图缺了手就按朝前的法线打光，立绘照常挂。
+  const fxSrcs = Object.fromEntries(Object.entries(FX).map(([k, v]) => [k, FX_ASSET(v)])) as Record<keyof typeof FX, string>;
+  void Promise.all([
+    loadAll({ art: ART.src, rig: ART.rig, faces: ART.faces, arm: ART.arm, fill: ART.fill }),
+    loadImage(ART.normal).catch(() => null),
+    loadAll(fxSrcs).catch(() => null),
+  ]).then(
+    ([art, normal, fx]) => {
       if (stopped) return;
       if (!gl) return fallback(art.art);
       try {
-        scene = { fig: figure(art), bk: back(fx, gl.anisotropy), fr: front({ ...fx, arm: art.arm }, gl.anisotropy) };
-        gl.root.add(scene.bk.group, scene.fig.shadow, scene.fig.mesh);
-        gl.fore.add(scene.fr.group);
+        const fig = figure({ ...art, normal });
+        scene = { fig, bk: fx && back(fx, gl.anisotropy), fr: fx && front({ ...fx, arm: art.arm }, gl.anisotropy) };
+        if (scene.bk) gl.root.add(scene.bk.group);
+        gl.root.add(fig.shadow, fig.mesh);
+        if (scene.fr) gl.fore.add(scene.fr.group);
         gl.warm();
         if (summon && !reducedMotion) revealAt = (performance.now() - t0) / 1000;
         layout();
@@ -161,7 +169,6 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
       if (gl.failed()) return fallback(art.art);
       if (!reducedMotion) raf = requestAnimationFrame(frame);
     },
-    // 贴图缺一张就不挂，和原来一样不报错。
     () => undefined,
   );
 

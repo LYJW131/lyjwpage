@@ -157,7 +157,7 @@ ${REFRACT}
 const SHADOW_FRAG = `uniform sampler2D map;uniform float appear,alpha,h,top;varying vec2 v;
 void main(){float y=v.y*h-top;float front=appear*1.3-.15-(1.-y/${SRC_H}.);gl_FragColor=vec4(0.,0.,0.,texture2D(map,v).a*alpha*smoothstep(0.,.08,front));}`;
 
-type Images = Record<"art" | "rig" | "faces" | "arm" | "fill" | "normal", HTMLImageElement>;
+type Images = Record<"art" | "rig" | "faces" | "arm" | "fill", HTMLImageElement> & { normal: HTMLImageElement | null };
 
 export function figure(images: Images) {
   const riftData = new Float32Array(RIFTS * 3);
@@ -170,7 +170,8 @@ export function figure(images: Images) {
       faces: { value: texture(images.faces) },
       arm: { value: texture(images.arm) },
       fill: { value: texture(images.fill) },
-      armN: { value: texture(images.normal, { premultiply: false }) },
+      // 法线图缺了就给一张透明的 1×1：着色器见 alpha 为 0 当朝前的法线。
+      armN: { value: texture(images.normal ?? document.createElement("canvas"), { premultiply: false }) },
       lamp: { value: [0, 0, 0] },
       t: { value: 0 },
       lid: { value: 0 },
