@@ -21,7 +21,7 @@ done
 name="$(basename "$url")"
 if [ "$name" = "\${STUB_TRUNCATE:-}" ]; then echo 'echo partial' > "$out"; exit 18; fi
 cat > "$out" <<PART
-echo "$name A=\\\${AAPAY_SIGN_KEY_B64:-} D=\\\${DEVIN_SESSION_TOKEN:-}" >> "\\\$STUB_LOG"
+echo "$name A=\\\${AAPAY_SIGN_KEY_B64:-} D=\\\${DEVIN_SESSION_TOKEN:-}" >> "\\$STUB_LOG"
 [ "\\\${STUB_RUN_FAIL:-}" = "$name" ] && exit 1
 exit 0
 PART
@@ -41,8 +41,10 @@ function run(extra: Record<string, string>) {
   const result = spawnSync("bash", [setup], {
     encoding: "utf8",
     env: {
+      ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
       TMPDIR: dir,
+      HOME: dir,
       STUB_LOG: log,
       AAPAY_SIGN_KEY_B64: "key",
       DEVIN_SESSION_TOKEN: "tok",
