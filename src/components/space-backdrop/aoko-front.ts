@@ -1,7 +1,7 @@
 import { CylinderGeometry, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, ShaderMaterial, SphereGeometry, Vector3, type Texture } from "three";
 
 import { BOLT_H, BOLT_W, BOLT_X, BOLT_Y, ORB, type FxState } from "./aoko-fx";
-import { cannon, cannonSince, MUZZLE } from "./aoko-cannon";
+import { AHEAD, cannon, cannonSince, MUZZLE } from "./aoko-cannon";
 import { ARM_BOX, PALM } from "./aoko-figure";
 import { COLORS, LIGHTER, VERT, plane, quads, shader, texture } from "./aoko-gl";
 import { RIM, hash, smooth } from "./aoko-paint";
@@ -15,6 +15,7 @@ const AXIS = new Vector3(Math.cos(ARM_AXIS) * Math.sqrt(1 - RING_SQUASH ** 2), M
 const ARM_LEN = Math.hypot(FOREARM.to[0] - FOREARM.from[0], FOREARM.to[1] - FOREARM.from[1]) / Math.sqrt(1 - RING_SQUASH ** 2);
 // 前臂中点在 z=0，手腕在镜头这边。
 const depthAlong = (at: number) => -AXIS.z * ARM_LEN * (0.5 - at);
+const HAND_Z = depthAlong(0);
 // 环的局部 x 是环面里朝镜头翻起来的那个方向（画面上投成沿前臂、压扁），y 是画面里垂直前臂的方向。
 const E1 = new Vector3(RING_SQUASH * Math.cos(ARM_AXIS), RING_SQUASH * Math.sin(ARM_AXIS), Math.sqrt(1 - RING_SQUASH ** 2));
 const E2 = new Vector3(-Math.sin(ARM_AXIS), Math.cos(ARM_AXIS), 0);
@@ -52,8 +53,11 @@ const BOLT = `uniform sampler2D map;uniform float alpha;varying vec2 v;
 void main(){vec2 e=vec2(min(v.x/.12,1.)*min((1.-v.x)/.12,1.),min(v.y/.12,1.)*min((1.-v.y)/.12,1.));gl_FragColor=texture2D(map,v)*alpha*e.x*e.y;}`;
 const ORB_FRAG = `${COLORS}uniform float a0,a1;varying vec2 v;void main(){float r=length(v*2.-1.);vec4 c=r<.35?mix(vec4(WHITE,1.)*a0,vec4(CORE,1.)*a1,r/.35):mix(vec4(CORE,1.)*a1,vec4(0.),clamp((r-.35)/.65,0.,1.));gl_FragColor=c;}`;
 
-// 炮口跟着手层摆：与立绘着色器里的 dh、上面的手挡板同一个变换。
-export const muzzle = ({ dx, dy, zoom }: HandPose) => [PALM[0] + zoom * (MUZZLE[0] + dx - PALM[0]), PALM[1] + zoom * (MUZZLE[1] + dy - PALM[1])] as const;
+// 炮口跟着手层摆：与立绘着色器里的 dh、上面的手挡板同一个变换。光团在炮口前方 AHEAD 处；光炮画在这里，照人的光源也在这里（aoko-figure.ts 的 lamp）。
+export function orbAt({ dx, dy, zoom }: HandPose) {
+  const [x, y, z] = atDepth(PALM[0] + zoom * (MUZZLE[0] + dx - PALM[0]), PALM[1] + zoom * (MUZZLE[1] + dy - PALM[1]), HAND_Z);
+  return [x, y, z + AHEAD] as const;
+}
 
 type Sprites = Record<"ring" | "octa" | "runes" | "bolt" | "boltFine" | "arm", HTMLImageElement>;
 
@@ -88,7 +92,6 @@ export function front(images: Sprites, anisotropy: number) {
   occluders.add(hand);
   for (const o of occluders.children) o.renderOrder = -1;
   group.add(occluders);
-  const handDepth = depthAlong(0);
 
   const rings = ARM_SPOTS.map((spot, k) => {
     const [x, y, z, s] = atDepth(spot.x, spot.y, depthAlong(spot.at));
@@ -141,7 +144,7 @@ export function front(images: Sprites, anisotropy: number) {
       const { power, flash, t, still } = state;
       // 手层摆动跟 aoko-figure.ts 着色器里的 dh 同一套：平移 d，再以掌心为中心放大 zoom。
       const [hx, hy] = [PALM[0] + pose.zoom * (ARM_BOX[0] + ARM_BOX[2] / 2 + pose.dx - PALM[0]), PALM[1] + pose.zoom * (ARM_BOX[1] + ARM_BOX[3] / 2 + pose.dy - PALM[1])];
-      const [x, y, z, s] = atDepth(hx, hy, handDepth);
+      const [x, y, z, s] = atDepth(hx, hy, HAND_Z);
       hand.position.set(x, y, z);
       hand.scale.setScalar(pose.zoom * s);
 
@@ -195,8 +198,7 @@ export function front(images: Sprites, anisotropy: number) {
 
       orb.material.uniforms.a0.value = 0.3 * show;
       orb.material.uniforms.a1.value = 0.18 * show;
-      const [mx, my] = muzzle(pose);
-      gun.update(state, cannonSince(state), mx, my, show);
+      gun.update(state, cannonSince(state), orbAt(pose), show);
     },
   };
 }

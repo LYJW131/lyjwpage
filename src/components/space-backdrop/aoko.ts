@@ -3,7 +3,7 @@ import { ART, FX_ASSET, loadImage, type AokoOptions } from "./aoko-entry";
 import { faceDirector, STILL_FACE } from "./aoko-face";
 import { figure, PAD, SRC_H, SRC_W } from "./aoko-figure";
 import { cannonSince, palmLight } from "./aoko-cannon";
-import { front, muzzle } from "./aoko-front";
+import { front, orbAt } from "./aoko-front";
 import { FLOOR_UNFOLD_S, fxState, SHOWN, STILL, type FxState } from "./aoko-fx";
 import { dispose } from "./aoko-gl";
 import { smooth } from "./aoko-paint";
@@ -77,7 +77,7 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     const unfold = revealAt === null ? 1 : (p * REVEAL_S - SUMMON_FLASH_S) / FLOOR_UNFOLD_S;
     const show = revealAt === null ? SHOWN : { floor: Math.max(0, Math.min(1, unfold)), ring: smooth(0.55, 0.85, p), front: smooth(0.7, 1, p) };
     const pose = handPose(t);
-    const lamp = [...muzzle(pose), palmLight(cannonSince(state)) * show.front];
+    const lamp = [...orbAt(pose), palmLight(cannonSince(state)) * show.front];
     scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), lamp);
     scene.bk?.update(state, show);
     scene.fr?.update(state, pose, show.front);

@@ -211,7 +211,7 @@
   - 状态：采用。落在 `src/components/space-backdrop/aoko-floor.ts#floor` 与 `src/components/space-backdrop/aoko-fx.ts#FLOOR_UNFOLD_S`、`floorRelight`。
 - **[剧场版《魔法使之夜》最终预告的开头](https://x.com/mahoyo_movie/status/2108754403486584867)**（@mahoyo_movie，TYPE-MOON / ufotable）
   - 是什么：官方动画账号发的 30 秒剧场用预告，开头约 1.7 秒是青子伸掌放光炮：掌心冒出一点碎白光，约 0.2 秒长成盖满手掌的白芯淡紫蓝光团，边缘翻滚着停半秒，发射时收成一点、迸出几道不等角的细长光线，再扩出一圈细亮的环；手被光团照成淡紫白，受光处一块块发亮。
-  - 取了什么：只取这几帧的形状、配色与时序（24fps 下 f19 点亮、f24 长满、f37 发射，光线射出后整组顺时针转），数值沿用 PR #722 在帧上量的；光团、光线、光环画成着色器四边形，没用视频里的画面。光团的淡紫蓝记作 `aoko-fx.json` 的 `pale`。光团在掌前当点光源照人：手层按轮廓鼓出法线（`scripts/aoko-hand-normals.py`，同样借自 #722），受光分两档硬边、整只手冲一层淡紫；脸和袖子拿立绘透明度的梯度当法线柔和补光。
+  - 取了什么：只取这几帧的形状、配色与时序（24fps 下 f19 点亮、f24 长满、f37 发射，光线射出后整组顺时针转），数值沿用 PR #722 在帧上量的；光团、光线、光环画成着色器四边形，没用视频里的画面。光团的淡紫蓝记作 `aoko-fx.json` 的 `pale`。光团悬在掌心前方当点光源照人（离掌心多远按游戏演出层 img0660/0661 的侧面镜头量：约一个「头到手」的距离；立绘掌心正对镜头，只朝镜头前移，见 `aoko-cannon.ts#AHEAD`）：手层按轮廓鼓出法线（`scripts/aoko-hand-normals.py`，同样借自 #722），受光分两档硬边、整只手冲一层淡紫；脸和袖子拿立绘透明度的梯度当法线柔和补光。
   - 状态：采用。落在 `src/components/space-backdrop/aoko-cannon.ts`（`cannon`、`palmLight`）、`src/components/space-backdrop/aoko-figure.ts` 的光炮照人，贴图 `public/mascots/aoko-arm-normal.webp`。
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。

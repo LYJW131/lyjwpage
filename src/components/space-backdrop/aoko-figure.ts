@@ -1,6 +1,6 @@
 import { Mesh, PlaneGeometry, ShaderMaterial, type Texture } from "three";
 
-import { MUZZLE } from "./aoko-cannon";
+import { AHEAD, MUZZLE } from "./aoko-cannon";
 import { ORB } from "./aoko-fx";
 import { FACE_BOX, FACE_COLS, FACE_ROWS, type Face } from "./aoko-face";
 import { OVER, VERT, texture } from "./aoko-gl";
@@ -27,14 +27,13 @@ const REFRACT = ARM_RING_SHAPES.rings
   })
   .join("\n");
 
-// 光炮照人：光源在炮口正前方 LAMP_Z（原图像素），随距离按 FALLOFF 衰减（照法与参数取自 PR #722）。
+// 光炮照人：光源就是掌心前方的光团（aoko-cannon.ts#AHEAD），随距离按 FALLOFF 衰减（照法取自 PR #722）。
 // 手用法线图（scripts/aoko-hand-normals.py），受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；整只手先冲一层淡紫（原片里背光面也是亮的淡紫，不是暗紫）。
 // 手以外（脸、袖子、头发）拿立绘透明度的梯度当法线，朝光的轮廓边先亮，按更远的 BODY_FALLOFF 柔和地补一层，不分档。
-const LAMP_Z = 34;
-const HAND_FALLOFF = 170;
-const BODY_FALLOFF = 210;
+const HAND_FALLOFF = 300;
+const BODY_FALLOFF = 260;
 
-const FRAG = `uniform sampler2D img,rig,faces,arm,fill,armN;uniform vec3 lamp;uniform float t,lid,glow,flash,appear,shutTile;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
+const FRAG = `uniform sampler2D img,rig,faces,arm,fill,armN;uniform vec4 lamp;uniform float t,lid,glow,flash,appear,shutTile;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
 const vec3 FILL=vec3(.42,.46,.78),LAVENDER=vec3(.62,.6,.98);
@@ -118,21 +117,21 @@ ${REFRACT}
   float near=texture2D(img,s+vec2(px.x,0.)).a+texture2D(img,s-vec2(px.x,0.)).a+texture2D(img,s+vec2(0.,px.y)).a+texture2D(img,s-vec2(0.,px.y)).a;
   float rim=clamp((c.a-near*.25)*2.,0.,1.);
   base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
-  if(lamp.z>0.){
+  if(lamp.w>0.){
     vec4 nm=texture2D(armN,clamp(au,0.,1.))*inside(au);
     vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
-    vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-(Q0-dh),${LAMP_Z}.);
+    vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-(Q0-dh),${AHEAD}.);
     float dl=length(l);
-    float e=max(dot(n,l/dl),0.)/(1.+dl*dl/${HAND_FALLOFF ** 2}.)*lamp.z;
+    float e=max(dot(n,l/dl),0.)/(1.+dl*dl/${HAND_FALLOFF ** 2}.)*lamp.w;
     float band=smoothstep(.16,.2,e)*.6+smoothstep(.4,.44,e)*.4;
-    vec3 wash=mix(base,LAVENDER*(.55+.45*dot(base,vec3(.299,.587,.114))),.6*min(lamp.z,1.));
+    vec3 wash=mix(base,LAVENDER*(.55+.45*dot(base,vec3(.299,.587,.114))),.6*min(lamp.w,1.));
     vec3 lit=mix(wash,max(base,vec3(.9,.91,1.)),band);
-    base=mix(base,lit,ar.a*min(lamp.z,1.));
+    base=mix(base,lit,ar.a*min(lamp.w,1.));
     vec2 ga=vec2(texture2D(img,s+vec2(px.x,0.)).a-texture2D(img,s-vec2(px.x,0.)).a,texture2D(img,s+vec2(0.,px.y)).a-texture2D(img,s-vec2(0.,px.y)).a);
     vec3 nb=normalize(vec3(-ga*1.5,1.));
-    vec3 lb=vec3(lamp.xy-P,${LAMP_Z * 2}.);
+    vec3 lb=vec3(lamp.xy-P,lamp.z);
     float db=length(lb);
-    base+=FILL*max(dot(nb,lb/db),0.)/(1.+db*db/${BODY_FALLOFF ** 2}.)*lamp.z*(1.-ar.a);
+    base+=FILL*max(dot(nb,lb/db),0.)/(1.+db*db/${BODY_FALLOFF ** 2}.)*lamp.w*(1.-ar.a);
   }
   c.rgb=base*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
@@ -172,7 +171,7 @@ export function figure(images: Images) {
       fill: { value: texture(images.fill) },
       // 法线图缺了就给一张透明的 1×1：着色器见 alpha 为 0 当朝前的法线。
       armN: { value: texture(images.normal ?? document.createElement("canvas"), { premultiply: false }) },
-      lamp: { value: [0, 0, 0] },
+      lamp: { value: [0, 0, 0, 0] },
       t: { value: 0 },
       lid: { value: 0 },
       glow: { value: 0 },
@@ -225,7 +224,7 @@ export function figure(images: Images) {
       shadowMat.uniforms.top.value = PAD + margin;
       shadowTex.needsUpdate = true;
     },
-    // lamp：光炮炮口跟手摆动后的位置与照在人身上的强度 [x, y, k]。
+    // lamp：光团在场景里的位置与照在人身上的强度 [x, y, z, k]（aoko-front.ts#orbAt）。
     update(t: number, closed: number, face: Face, light: number, flash: number, appear: number, lamp: readonly number[]) {
       const u = material.uniforms;
       u.lamp.value = lamp;

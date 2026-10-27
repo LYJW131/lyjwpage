@@ -10,6 +10,9 @@ const LIGHT = 0.75;
 const GROWN = 0.55;
 // 掌心在立绘原图里的位置；原图画好的蓝色球在 aoko-fx.ts 的 ORB（掌根），这里是光炮的炮口。
 export const MUZZLE = [339, 298] as const;
+// 光团悬在掌心前方、不贴在手上：img0660/0661 的侧面镜头里，光团离手约一个「头到手」的距离（0.8–1.1 倍），换到立绘里约 180 原图像素。
+// 立绘的掌心正对镜头（同 img0628），所以只往镜头方向挪，正面看仍落在掌心；单位是原图像素。
+export const AHEAD = 180;
 const R = 70;
 const TAU = Math.PI * 2;
 // 动画「一拍二」的翻滚：轮廓每 1/12 秒换一次。
@@ -86,9 +89,9 @@ export function cannon(order: number) {
 
   return {
     group,
-    // x, y 是炮口跟着手层摆动后的位置；show 是前景整层的渐显。
-    update({ flash, t, still }: FxState, at: number, x: number, y: number, show: number) {
-      group.position.set(x, y, 0);
+    // [x, y, z] 是光团在场景里的位置（aoko-front.ts#orbAt）；show 是前景整层的渐显。
+    update({ flash, t, still }: FxState, at: number, [x, y, z]: readonly number[], show: number) {
+      group.position.set(x, y, z);
       group.visible = at >= -LIGHT && show > 0;
       if (!group.visible) return;
       const fired = at >= 0;
