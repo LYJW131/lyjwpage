@@ -61,6 +61,9 @@ export const SITE_ASSET_ROUTES: ReadonlyMap<string, SiteAssetRoute> = new Map([
   ["/opengraph-image", { asset: `${SITE_ASSETS_PREFIX}/opengraph.png`, cacheControl: GENERATED_ASSET_CACHE_CONTROL }],
   ["/pwa/icon-192.png", { asset: `${SITE_ASSETS_PREFIX}/icon-192.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
   ["/pwa/icon-512.png", { asset: `${SITE_ASSETS_PREFIX}/icon-512.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
+  // ARD 1.0 的路径是 ard.json；MCP 的发现文档与 Lighthouse 仍找前身 ai-catalog.json，两处给同一份。
+  ["/.well-known/ard.json", { asset: "/agents/ard.json", cacheControl: GENERATED_ASSET_CACHE_CONTROL }],
+  ["/.well-known/ai-catalog.json", { asset: "/agents/ard.json", cacheControl: GENERATED_ASSET_CACHE_CONTROL }],
 ]);
 
 // 讲解片的配乐与成片视频也放在这里，键由 scripts/explainer-score.mjs 生成（scripts/explainer-score.test.mjs 核对）

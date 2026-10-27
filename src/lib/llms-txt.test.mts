@@ -5,6 +5,8 @@ import test from "node:test";
 import { MCP_PATH } from "@shared/ai-paths";
 import { STATUS_VIEWS } from "@shared/status-views";
 
+import { SITE_ASSET_ROUTES } from "./site-policy.ts";
+
 const text = readFileSync(new URL("../../public/llms.txt", import.meta.url), "utf8");
 const links = [...text.matchAll(/\]\((https:\/\/[^)\s]+)\)/g)].map((match) => new URL(match[1]));
 
@@ -20,6 +22,7 @@ test("every site path llms.txt links to still exists", () => {
   for (const url of links.filter((link) => link.hostname === "lyjw.me")) {
     if (url.pathname.startsWith("/api/")) assert.ok(statusPaths.has(url.pathname), url.pathname);
     else if (url.pathname === MCP_PATH) continue;
+    else if (SITE_ASSET_ROUTES.has(url.pathname)) continue;
     else assert.ok(["/", "/explainer/"].includes(url.pathname), url.pathname);
   }
 });

@@ -1,0 +1,26 @@
+{
+  "specVersion": "1.0",
+  "entries": [
+    {
+      "identifier": "urn:air:lyjw.me:mcp:site",
+      "displayName": "LYJW's Homepage MCP",
+      "type": "application/mcp-server-card+json",
+      "description": "Live, public data from LYJW's homepage: music, coding agents, games, shows, devices and site health.",
+      "representativeQueries": [
+        "What is LYJW listening to right now?",
+        "Which coding agents has LYJW been using today?",
+        "How much did LYJW code in the past 24 hours?"
+      ],
+      "data": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+        "name": "me.lyjw/site",
+        "version": "1.0.0",
+        "title": "LYJW's Homepage",
+        "description": "Read-only live status from LYJW's homepage; public, no auth.",
+        "websiteUrl": "https://lyjw.me",
+        "repository": { "url": "https://github.com/LYJW131/lyjwpage", "source": "github", "subfolder": "workers/ai" },
+        "remotes": [{ "type": "streamable-http", "url": "https://lyjw.me/mcp" }]
+      }
+    }
+  ]
+}

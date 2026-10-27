@@ -334,6 +334,10 @@
   - 是什么：页面用 `document.modelContext.registerTool` 把能力注册成浏览器内 agent 可调的工具，Chrome 149 起有开关与 origin trial，DevTools Application 面板可查看和手动运行。
   - 取了什么：把公开状态视图注册成一个只读工具，标 `readOnlyHint` 与 `untrustedContentHint`，经 `AbortSignal` 注销；报错写清怎么改。
   - 状态：采用（试验）。落在 `src/lib/webmcp.ts`、`src/components/site-webmcp.tsx` 与 [WebMCP 试验](./webmcp.md)。
+- **[Agentic Resource Discovery 1.0](https://agenticresourcediscovery.org/spec/)** 与 **[MCP Server Cards（SEP-2127）](https://modelcontextprotocol.io/seps/2127-mcp-server-cards)**
+  - 是什么：在 `/.well-known/ard.json` 列出站点给 agent 用的资源；MCP 服务器用 Server Card 描述连接方式，可内联进清单。
+  - 取了什么：一份清单只放一条内联 Server Card 指向 `/mcp`，前身路径 `/.well-known/ai-catalog.json` 给同一份；Server Card 不写工具列表与协议版本，那些以运行时 `server/discover` 为准。
+  - 状态：采用。落在 `public/agents/ard.json`、`src/lib/site-policy.ts#SITE_ASSET_ROUTES` 与 [WebMCP 试验](./webmcp.md)「发现清单」。
 - **[TypeScript 7.0 RC 公告](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)**（Microsoft）与 **[Nx 的 TypeScript 7 指南](https://nx.dev/docs/kb/typescript-7)**
   - 是什么：Go 实现的原生 TypeScript 编译器，以及迁移办法。
   - 取了什么：`tsc` 换成 TypeScript 7；typescript-eslint 还要旧的 JS API，所以按指南两版并装；Worker 的 tsconfig 去掉 7 不再支持的 `baseUrl`。
