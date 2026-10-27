@@ -133,6 +133,9 @@ def atlas(args):
         k, _, v = pair.partition("=")
         names[int(k)] = v
     used = {i for t, s in faces.values() for i in (t, s) if i >= 0}
+    over = sorted(i for i in used if i >= cols * rows)
+    if over:
+        sys.exit(f"格号 {over} 超出 {cols}×{rows} 的图集：先加大 FACE_ROWS 或 FACE_COLS")
     tiles = Path(args.tiles)
     missing = [f"{i}={names.get(i, '?')}" for i in sorted(used) if i not in names or not (tiles / f"{names[i]}.png").exists()]
     if missing:

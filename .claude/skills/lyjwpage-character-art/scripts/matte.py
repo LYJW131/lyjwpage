@@ -38,7 +38,7 @@ def bg_like(img, rule):
     if rule == "blue":
         return (b - np.maximum(r, g) > 45) & (g < 130)
     hex_, _, tol = rule.partition(":")
-    ref = np.array(bytes.fromhex(hex_), np.float32)
+    ref = np.array(list(bytes.fromhex(hex_)), np.float32)
     return np.linalg.norm(img - ref, axis=-1) < float(tol or 40)
 
 

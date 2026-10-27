@@ -2,7 +2,7 @@
 
 目录：[1 素材](#1-素材超分去色带精细抠图) · [2 绑定图](#2-绑定图与位移场) · [3 表情与眨眼](#3-表情与眨眼) · [4 手部分层](#4-局部分层只拆手) · [5 场景特效](#5-场景特效与召唤贴图) · [6 验收](#6-验收与交付)
 
-命令里的 `SK` 指 `.claude/skills/lyjwpage-character-art/scripts`，在仓库根目录跑。Python 一律 `uv run -q --with … python -I`。
+命令都在仓库根目录跑，先设好 `SK=.claude/skills/lyjwpage-character-art/scripts`。Python 一律 `uv run -q --with … python -I`。
 
 ## 1 素材：超分、去色带、精细抠图
 
@@ -123,7 +123,8 @@ lyjw 改过的地方，再动这些元素时照着来：
 node $SK/capture.mjs --url http://localhost:3211/ --out shots --summon --at 0,6
 # 眨眼逐帧：60 fps 连拍 40 帧，再合成视频给 lyjw
 node $SK/capture.mjs --url http://localhost:3211/ --out blink --summon --frames 40 --step 16.7 --from 3 --clip face
-ffmpeg -framerate 30 -i blink/f%03d.png -pix_fmt yuv420p blink.mp4
+# -framerate 要和 --step 对上（16.7 ms 一帧就是 60）才是原速；想慢放再调低
+ffmpeg -framerate 60 -i blink/f%03d.png -pix_fmt yuv420p blink.mp4
 # 375 px WebKit：不挂立绘，按秘技也不报错
 node $SK/capture.mjs --url http://localhost:3211/ --out narrow --engine webkit --width 375 --height 812 --summon --clip viewport --at 2
 ```

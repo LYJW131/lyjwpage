@@ -8,14 +8,16 @@ import { HIDE_DEV_UI, launchBrowser, resolvePlaywright } from "../../../../scrip
 const USAGE = `立绘截图：无头浏览器打开站点（深色模式），可选按科乐美秘技召唤青子，用假时钟定格到指定时刻截图。
 
   node .claude/skills/lyjwpage-character-art/scripts/capture.mjs --out <目录> [--url http://localhost:3211/] [--summon]
-    [--at 0,2.5,8]                      召唤并加载完后第几秒各截一张
+    [--at 0,2.5,8]                      第几秒各截一张；0 秒是召唤后 /mascots/ 请求停下之后，比显形起点晚零点几秒
+                                        （要看显形从头开始，从 0 起用 --frames 连拍）
     [--frames 40 --step 16.7 --from 3]  从第 3 秒起每 16.7ms 一帧，共 40 帧（眨眼、头发逐帧）
     [--clip figure|face|viewport]       只截立绘画布、只截 FACE_BOX 那块脸，或整个视口
     [--face calm,grin --lid 0,1]        逐个强制表情与眼皮（先在代码里临时加 __aokoFace / __aokoLid，见 pipeline.md 第 3 节）
     [--engine webkit] [--width 1920 --height 1080 --dpr 2] [--reduced-motion] [--video]
 
 截图写进 --out；最后一行打印 JSON：mounted 是否挂上了立绘（左侧留白太窄时本来就不挂），reloads 中途整页重载了几次（重载后已自动从头再按），
-失败的 /mascots/ 请求，页面错误（已滤掉本地连不上后端这类环境噪音）。宽屏按了秘技 mounted 仍是 false，截出来的图就不能用。`;
+失败的 /mascots/ 请求（非 2xx 的响应和根本没拿到响应的都算），页面错误（已滤掉本地连不上后端这类环境噪音）。
+宽屏按了秘技 mounted 仍是 false，或 mascots 非空，截出来的图就不能用。`;
 
 const { values: a } = parseArgs({
   strict: true,
@@ -78,6 +80,10 @@ const mascots = new Set();
 page.on("response", (r) => {
   if (r.url().includes("/mascots/")) mascots.add(`${r.status()} ${new URL(r.url()).pathname}`);
 });
+// 连不上、DNS 失败这类请求没有响应，只会走到这里；立绘画布在贴图到齐前就已插入，光看画布在不在会把空图当成挂上了。
+page.on("requestfailed", (r) => {
+  if (r.url().includes("/mascots/")) mascots.add(`failed ${new URL(r.url()).pathname} ${r.failure()?.errorText ?? ""}`);
+});
 
 let loads = 0;
 page.on("domcontentloaded", () => loads++);
@@ -88,7 +94,6 @@ const advance = async (ms) => {
   for (let left = ms; left > 0; left -= 250) await page.clock.runFor(Math.min(250, left));
 };
 const prepare = async () => {
-  mascots.clear();
   await page.addStyleTag({ content: HIDE_DEV_UI });
   await page.clock.runFor(4000);
   await page.waitForTimeout(1500);
@@ -112,6 +117,8 @@ const prepare = async () => {
 let reloads = 0;
 for (let attempt = 0; attempt < 3; attempt++) {
   const before = loads;
+  // 旧页面被重载打断的请求会记成失败，重来前清掉。
+  if (attempt > 0) mascots.clear();
   try {
     await prepare();
   } catch (e) {
