@@ -87,7 +87,7 @@ export default function AppImage({
   // 访客网络连不上第三方图床时，直连图改走一次站点代理；代理也失败就藏起图，露出容器底色而不是 alt 文字。
   const proxyFallback =
     !optimizable && !inline && parseImageSource(src) !== null
-      ? optimizerImagePath(src, numericWidth === undefined ? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1] : imageWidthBucket(numericWidth * 2), q)
+      ? optimizerImagePath(src, displayWidth === undefined ? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1] : imageWidthBucket(displayWidth * 2), q)
       : null;
   const retrying = failures > 0 && proxyFallback !== null;
   const hidden = proxyFallback !== null && failures > 1;

@@ -1,9 +1,9 @@
-import { Mesh, PlaneGeometry, ShaderMaterial, type Texture } from "three";
+import { PlaneGeometry } from "three";
 
 import { AHEAD, MUZZLE } from "./aoko-cannon";
 import { ORB } from "./aoko-fx";
 import { FACE_BOX, FACE_COLS, FACE_ROWS, type Face } from "./aoko-face";
-import { OVER, VERT, texture } from "./aoko-gl";
+import { OVER, plane, shader, texture } from "./aoko-gl";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
 
 // 着色器坐标系：位置与摆幅都按原图像素写，与贴图实际分辨率无关。
@@ -160,10 +160,9 @@ type Images = Record<"art" | "rig" | "faces" | "arm" | "fill", HTMLImageElement>
 
 export function figure(images: Images) {
   const riftData = new Float32Array(RIFTS * 3);
-  const material = new ShaderMaterial({
-    vertexShader: VERT,
-    fragmentShader: FRAG,
-    uniforms: {
+  const material = shader(
+    FRAG,
+    {
       img: { value: texture(images.art) },
       rig: { value: texture(images.rig, { premultiply: false }) },
       faces: { value: texture(images.faces) },
@@ -181,25 +180,17 @@ export function figure(images: Images) {
       face: { value: [-1, -1, 0] },
       rift: { value: riftData },
     },
-    ...OVER,
-  });
+    OVER,
+  );
   const W = SRC_W + 2 * PAD;
   const H = SRC_H + 2 * PAD;
-  const mesh = new Mesh(new PlaneGeometry(W, H), material);
+  const mesh = plane(W, H, material, 50);
   mesh.position.set(SRC_W / 2, SRC_H / 2, 0);
-  mesh.renderOrder = 50;
 
   // 影子照 CSS drop-shadow 的算法，糊半径按 CSS 像素给，换算成原图像素要知道当前缩放，所以布局变了重画。
   const silhouette = document.createElement("canvas");
-  const shadowTex: Texture = texture(silhouette);
-  const shadowMat = new ShaderMaterial({
-    vertexShader: VERT,
-    fragmentShader: SHADOW_FRAG,
-    uniforms: { map: { value: shadowTex }, appear: { value: 1 }, alpha: { value: 0.52 }, h: { value: H }, top: { value: PAD } },
-    ...OVER,
-  });
-  const shadow = new Mesh(new PlaneGeometry(W, H), shadowMat);
-  shadow.renderOrder = 49;
+  const shadowMat = shader(SHADOW_FRAG, { map: { value: texture(silhouette) }, appear: { value: 1 }, alpha: { value: 0.52 }, h: { value: H }, top: { value: PAD } }, OVER);
+  const shadow = plane(W, H, shadowMat, 49);
   let shadowScale = 0;
 
   return {
@@ -222,7 +213,9 @@ export function figure(images: Images) {
       shadow.position.set(SRC_W / 2, SRC_H / 2 + 12 / scale, 0);
       shadowMat.uniforms.h.value = H + 2 * margin;
       shadowMat.uniforms.top.value = PAD + margin;
-      shadowTex.needsUpdate = true;
+      // three 首次上传后贴图尺寸就定死了，画布换了尺寸只能换一张新贴图。
+      shadowMat.uniforms.map.value.dispose();
+      shadowMat.uniforms.map.value = texture(silhouette);
     },
     // lamp：光团在场景里的位置与照在人身上的强度 [x, y, z, k]（aoko-front.ts#orbAt）。
     update(t: number, closed: number, face: Face, light: number, flash: number, appear: number, lamp: readonly number[]) {

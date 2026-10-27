@@ -50,7 +50,7 @@ export function judgeRegion(state: string, resultJson: string | undefined, scree
 }
 
 export function escapeMarkdownTableCell(text: string): string {
-  return text.replace(/[|\\]/g, "\\$&");
+  return text.replace(/[|\\]/g, "\\$&").replace(/\r?\n/g, "<br>");
 }
 
 async function checkRegion(client: Client, url: string, region: string, outDir: string): Promise<RegionResult> {
