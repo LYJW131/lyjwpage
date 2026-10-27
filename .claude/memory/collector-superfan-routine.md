@@ -16,3 +16,5 @@ lyjw said 开 (2026-10-13 18:36Z) to the "superfan" idea from Anthropic's Scion 
 **Scope:** read-only on production, finds what core's `freshness-watch` misses (fresh timestamp, wrong content). Report goes to `/mnt/project-files/superfan-collector/<date>.md` for the morning report. It replies in the thread only for new alert-level findings or a warn open 24h. State lives in `state.json` (lastRunAt, snapshots, ledger).
 
 First finding while building it (2026-10-13 18:40Z): the core Worker's cron had 0 scheduled events since the api→core rename (api's last run 12:53Z), and the heartbeat was down. Reported to the coordinator, outside the superfan's own scope.
+
+**Moved 2026-10-28 06:33 SGT** to a new thread/session and new trigger id (old signing key revoked); current ids and branch: [[routine-bindings]]. Ids above are the old, disabled ones.
