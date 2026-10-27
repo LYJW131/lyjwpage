@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { STATUS_VIEWS } from "@shared/status-views";
 
-import { registerSiteTools, siteTools, type ModelContextTool } from "./webmcp.ts";
+import { chatSubmitResult, registerSiteTools, siteTools, type ModelContextTool } from "./webmcp.ts";
 
 process.env.PUBLIC_BACKEND_URL = "https://lyjw.me";
 
@@ -40,4 +40,10 @@ test("get_site_status truncates oversized views", async (t) => {
   const text = String(await statusTool().execute({ view: "codingYear" }, { signal: new AbortController().signal }));
   assert.match(text, /\[truncated: view is 30000 chars\]$/);
   assert.ok(text.length < 21_000);
+});
+
+test("the chat form tells the agent nothing was sent when the box is empty or a reply is still streaming", () => {
+  assert.match(chatSubmitResult("  ", false), /^Nothing was sent: the message box is empty/);
+  assert.match(chatSubmitResult("hi", true), /^Nothing was sent: the chat is still writing/);
+  assert.match(chatSubmitResult("hi", false), /^The visitor submitted the message/);
 });
