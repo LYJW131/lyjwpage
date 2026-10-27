@@ -38,9 +38,10 @@ export const LIGHTER = {
 // 2D 画布的 source-over（预乘）。
 export const OVER = { ...LIGHTER, blendDst: OneMinusSrcAlphaFactor, blendDstAlpha: OneMinusSrcAlphaFactor } as const;
 
-export const rgb = (hex: string) => `vec3(${[1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(4)).join(",")})`;
+// aoko-fx.json 的颜色拆成 0–1 的三个分量；COLORS 是着色器里按名字取的常量（SKY、WHITE…）。
+export const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 export const COLORS = Object.entries(SCENE)
-  .map(([name, hex]) => `const vec3 ${name.toUpperCase()}=${rgb(hex)};`)
+  .map(([name, hex]) => `const vec3 ${name.toUpperCase()}=vec3(${channels(hex).map((c) => c.toFixed(4)).join(",")});`)
   .join("\n");
 
 export const VERT = `varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;

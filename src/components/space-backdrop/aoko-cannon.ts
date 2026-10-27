@@ -1,7 +1,7 @@
 import { Group } from "three";
 
 import { CYCLE, FIRE, type FxState } from "./aoko-fx";
-import { COLORS, plane, quads, rgb, shader } from "./aoko-gl";
+import { COLORS, channels, plane, quads, shader } from "./aoko-gl";
 import { SCENE, hash, smooth } from "./aoko-paint";
 
 // 掌心光炮照剧场版最终预告开头复刻（源：docs/references.md），节奏与形状沿用 PR #722 在参考帧上量的：
@@ -73,12 +73,6 @@ const RAY = `void main(){float w=1.-v.x;float m=smoothstep(w+.08,w-.08,abs(v.y*2
 const RING = `${COLORS}uniform float r,a,span;varying vec2 v;void main(){float d=abs(length((v*2.-1.)*span)-r);gl_FragColor=(vec4(SKY,1.)*.4*smoothstep(9.,7.,d)+vec4(WHITE,1.)*.9*smoothstep(1.5,.5,d))*a;}`;
 const BLOOM = `${COLORS}uniform float a;varying vec2 v;void main(){gl_FragColor=vec4(WHITE,1.)*a*(1.-min(length(v*2.-1.),1.));}`;
 
-const RGB = (hex: string) =>
-  rgb(hex)
-    .slice(5, -1)
-    .split(",")
-    .map(Number);
-
 export function cannon(order: number) {
   const group = new Group();
   const outer = new Float32Array(LOBES * 2);
@@ -90,8 +84,8 @@ export function cannon(order: number) {
   const ring = plane(2 * span, 2 * span, shader(RING, { r: { value: 0 }, a: { value: 0 }, span: { value: span } }), order + 3);
   const bloom = plane(1280, 1280, shader(BLOOM, { a: { value: 0 } }), order + 4);
   group.add(blob, core, rays.mesh, ring, bloom);
-  const sky = RGB(SCENE.sky);
-  const white = RGB(SCENE.white);
+  const sky = channels(SCENE.sky);
+  const white = channels(SCENE.white);
 
   return {
     group,

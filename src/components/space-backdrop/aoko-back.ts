@@ -1,7 +1,7 @@
 import { Group, type Mesh, type PlaneGeometry, type ShaderMaterial } from "three";
 
 import { FLOOR, RING_R, RING_SWELL, RING_SWELL_S, RING_X, RING_Y, RUNE_R, type FxState, type Reveal } from "./aoko-fx";
-import { COLORS, plane, quads, rgb, shader, sprite, texture } from "./aoko-gl";
+import { COLORS, channels, plane, quads, shader, sprite, texture } from "./aoko-gl";
 import { BOKEH, RIM, hash } from "./aoko-paint";
 import { floor } from "./aoko-floor";
 
@@ -15,6 +15,8 @@ const BOKEH_FRAG = `void main(){float r=length(v*2.-1.);float a=r<.7?mix(1.,.7,r
 const HALO = `${COLORS}uniform float a;varying vec2 v;void main(){float r=length(v*2.-1.)*1.2;float k=clamp((r-.8)/.38,0.,1.);gl_FragColor=vec4(SKY,1.)*a*(1.-abs(k*2.-1.))*step(.8,r)*step(r,1.18);}`;
 // 穿过圆心的一横一竖两道细线：往两头淡掉。
 const LINE = `${COLORS}uniform float a;varying vec2 v;void main(){gl_FragColor=vec4(WHITE,1.)*a*(1.-abs(v.x*2.-1.));}`;
+
+const BOKEH_RGB = BOKEH.map(channels);
 
 export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInner", HTMLImageElement>, anisotropy: number) {
   const group = new Group();
@@ -94,10 +96,3 @@ export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInne
     },
   };
 }
-
-const BOKEH_RGB = BOKEH.map((hex) =>
-  rgb(hex)
-    .slice(5, -1)
-    .split(",")
-    .map(Number),
-);
