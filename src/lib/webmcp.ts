@@ -42,6 +42,12 @@ export function answerAgentSubmit(event: Event, result: string): void {
   if (submit.agentInvoked) submit.respondWith?.(Promise.resolve(result));
 }
 
+export function chatSubmitResult(draft: string, streaming: boolean): string {
+  if (!draft.trim()) return "Nothing was sent: the message box is empty.";
+  if (streaming) return "Nothing was sent: the chat is still writing its previous reply. The message stays in the box; the visitor can send it once that reply finishes.";
+  return "The visitor submitted the message. A first-time visitor must accept the privacy notice before it is sent; the reply then appears in the chat on the page.";
+}
+
 const READ_TIMEOUT_MS = 10_000;
 // 结果整段进浏览器里模型的上下文；codingYear 这类大视图截掉尾部，不分页。
 const MAX_RESULT_CHARS = 20_000;

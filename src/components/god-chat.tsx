@@ -17,7 +17,7 @@ import { textLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { CHAT_FORM_TOOL, CHAT_MESSAGE_PARAM, answerAgentSubmit } from "@/lib/webmcp";
+import { CHAT_FORM_TOOL, CHAT_MESSAGE_PARAM, answerAgentSubmit, chatSubmitResult } from "@/lib/webmcp";
 import { SessionList, savedSessions } from "@/components/god-chat/session-list";
 import { GOD_CHAT_LIMITS, GOD_CHAT_PATH, GOD_CHAT_PRESETS, type GodChatEvent, type GodChatMessage, fitHistory, readGodChatRoute, GOD_CHAT_ANTHROPIC_CONSENT } from "@shared/god-chat";
 import type { GodChatLineup, GodChatUsage } from "@shared/god-chat-tiers";
@@ -671,7 +671,7 @@ function Conversation({ className, archive, session: conversation }: { className
           className="relative flex items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            answerAgentSubmit(event.nativeEvent, "The visitor submitted the message. A first-time visitor must accept the privacy notice before it is sent; the reply then appears in the chat on the page.");
+            answerAgentSubmit(event.nativeEvent, chatSubmitResult(draft, streaming));
             submit(draft);
           }}
         >
