@@ -39,13 +39,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("src")
     ap.add_argument("out")
-    ap.add_argument("--tiles", type=int, default=0)
+    ap.add_argument("--tiles", type=int)
     try:
         a = ap.parse_args()
     except SystemExit:
         sys.exit(2)
+    if a.tiles is not None and a.tiles < 1:
+        print(f"--tiles 要是正整数，收到 {a.tiles}", file=sys.stderr)
+        sys.exit(2)
     rgba = np.asarray(Image.open(a.src).convert("RGBA")).astype(np.float32) / 255
-    if a.tiles > 0:
+    if a.tiles:
         w = rgba.shape[1] // a.tiles
         if w * a.tiles != rgba.shape[1]:
             print(f"宽 {rgba.shape[1]} 不能整分成 {a.tiles} 格", file=sys.stderr)
