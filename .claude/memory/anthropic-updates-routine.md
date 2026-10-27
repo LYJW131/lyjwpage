@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Created 2026-10-14 at lyjw's request ("每天定时去拉 Anthropic 官方博客，新文档这些的…在晨报中给我总结，并且研究一下能否吸收"). Routine `trig_018iJkbi7mFUooibqwrbW7N8` ("lyjwpage Anthropic 官方动态"), cron `CRON_TZ=Asia/Shanghai 41 8 * * *`, fires into the project thread "Anthropic 官方动态日更 + collector 盯防". Thin prompt: each run reads `origin/main:.claude/skills/lyjwpage-anthropic-updates/SKILL.md` and runs its `fetch.py`.
+Created 2026-10-14 at lyjw's request ("每天定时去拉 Anthropic 官方博客，新文档这些的…在晨报中给我总结，并且研究一下能否吸收"). Routine `trig_01AkxcodeNefhYzfdZ7zmpz4` ("lyjwpage Anthropic 官方动态"), cron `CRON_TZ=Asia/Shanghai 41 8 * * *`, fires into the project thread "Anthropic 官方动态 · 定时任务" (<internal id>, has the LYJW MCP Portal connector). Moved there 2026-10-27 (lyjw「换新会话吧」); old `trig_018iJkbi7mFUooibqwrbW7N8` in <internal id> lacked the connector and is disabled, not deleted. Thin prompt: each run reads `origin/main:.claude/skills/lyjwpage-anthropic-updates/SKILL.md` and runs its `fetch.py`.
 
 Sources (expanded 2026-10-14 06:32Z at lyjw's request "信息来源可以多一点…土豆…我给你发那个人…再去找一些其他的信息来源", PR #290). The lists live in `fetch.py`: `SET_SOURCES` (anthropic.com news and engineering, claude.dev blog, the claude.com/resources/articles blog, docs, release notes, Simon Willison entries, Latent Space, the Cloudflare changelog filtered by `CLOUDFLARE_PRODUCTS`, and HN stories over 150 points whose title or URL names Claude or Anthropic), `VERSION_SOURCES` (the Claude Code and anthropic-sdk-typescript CHANGELOGs) and `X_ACCOUNTS`:
 - official: AnthropicAI, claudeai, ClaudeDevs
