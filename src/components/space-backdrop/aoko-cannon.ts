@@ -140,12 +140,17 @@ export function palmLight(since: number | null) {
 // 受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；背光面压成冷紫，光越亮压得越深，对比才出得来。
 const LIGHT_Z = 34;
 const FALLOFF = 125;
-export const PALM_LIT_GLSL = `vec3 palmLit(vec3 col,vec3 n,vec2 q,float k){
-  vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-q,${LIGHT_Z}.);
+// col 是该像素的颜色，nm 是法线图采样（a 为 0 时当朝前），hand 是手层的 alpha，q 是手层自己的坐标（扣掉摆动），p 是画面坐标。
+// 手以外、离光团近的地方（脸、胸口）只补一层淡光。
+export const PALM_LIT_GLSL = `vec3 palmLit(vec3 col,vec4 nm,float hand,vec2 q,vec2 p,float k){
+  vec2 m=vec2(${MUZZLE[0]}.,${MUZZLE[1]}.);
+  vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
+  vec3 l=vec3(m-q,${LIGHT_Z}.);
   float d=length(l);
   float e=max(dot(n,l/d),0.)/(1.+d*d/${FALLOFF * FALLOFF}.)*k;
   float band=smoothstep(.2,.24,e)*.6+smoothstep(.48,.52,e)*.4;
-  return mix(col*vec3(.62,.62,.9),max(col,vec3(.88,.9,1.)),band);
+  vec3 lit=mix(col*vec3(.62,.62,.9),max(col,vec3(.88,.9,1.)),band);
+  return mix(col,lit,hand*min(k,1.))+vec3(.55,.6,1.)*smoothstep(260.,0.,length(p-m))*.22*k*(1.-hand);
 }`;
 
 export function palmCannon(ctx: CanvasRenderingContext2D, { flash, t, still }: FxState, since: number, palm: readonly number[] | null, pose: HandPose) {
