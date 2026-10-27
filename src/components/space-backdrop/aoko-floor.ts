@@ -19,53 +19,43 @@ const GLOW_TEX = 160;
 const TAU = Math.PI * 2;
 
 // 展开从触地到定格的时长。
-export const FLOOR_UNFOLD_S = 7;
+export const FLOOR_UNFOLD_S = 7.75;
 
-// 展开照剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md）：原片里那面法阵就是内盘 img1627 这套画，
-// 它从触地点在光里一路放大到铺满整片地面——先只有螺旋细线（根部弯、外面直，放大时就从风车变成辐条），再弹出印、填满宽刃、出外环；
-// 整面糊着亮几秒、微微起伏，暗一下再对焦清楚。站上的法阵外面还套着 img0640 外圈，所以内盘放大到比整个法阵还大，
-// 泛光那几秒过后收拢回原位，外圈各层在它收拢时由内到外露出来。节奏照原片的地面亮度曲线排，区间用秒写，换算成展开进度 0–1。
-type Span = [number, number];
-const sec = (a: number, b: number): Span => [a / FLOOR_UNFOLD_S, b / FLOOR_UNFOLD_S];
-const SPARK = sec(0, 0.7);
-const SPIRAL = sec(0.2, 1.0);
-const ZOOM = sec(0.2, 2.4);
-const SEALS = sec(1.9, 2.9);
-const WEDGES = sec(2.2, 3.2);
-const DISC_RIM = sec(2.6, 3.6);
-const GATHER = sec(4.4, 6.2);
-const POOL = sec(4.2, 5.4);
-const RINGS = sec(4.6, 5.7);
-const CHORDS = sec(4.9, 6.0);
-const RUNES = sec(5.2, 6.3);
-const BLOOM_IN = sec(0.8, 2.8);
-const BLOOM_OUT = sec(5.4, 6.2);
-const DIM = sec(5.4, 6.0);
-const RELIT = sec(6.0, 7.0);
-const LINE_BOOST = 2;
-// 内盘外缘半径（以 R 为 1）：从一点放大到 DISC_BIG（比整个法阵还大，铺满地面），收拢时回到 INNER_R。
-const DISC_FROM = 0.04;
-const DISC_BIG = 1.25;
-// 对焦：前一秒多整面糊在光里，之后半糊着亮几秒，收尾暗下去时对焦到清晰。
-const BLUR_EASE = sec(1.4, 3.4);
-const BLUR_CLEAR = sec(5.4, 6.6);
-// 糊的那两档摊薄了线条，按这个倍数补亮。
-const BLUR_GAIN = [1.2, 1.8];
+// 展开逐帧照剧场版官方账号「魔法陣体験」那段地面投影（docs/references.md）。原片那面法阵就是内盘 img1627，
+// 把原片每一帧按透视拉正回 img1627 的贴图坐标，按半径分圈、对细线与宽块两层做回归，量出每一圈每一刻的亮度：
+// 法阵从头到尾是原尺寸、不转，从触地点往外显现（软前沿）；细线与靠中心的宽块跟着前沿出来，外半圈的宽刃先只有三四成亮，
+// 等第二道波从半径 0.45 推到外缘才填满；整面糊在光里亮几秒、微微起伏；收尾细线和中心一带暗下去再亮回清晰版。
+// 下面的关键帧就是量出来的值，时间是从触地起的秒数、半径以内盘外缘为 1，中间线性插值；到 FLOOR_UNFOLD_S 都回到平时的完整法阵。
+// 原片没有 img0640 外圈，显现前沿过了内盘外缘就接着往外推，把外圈也显出来。
+type Keys = [number, number][];
+// 显现前沿（亮到一半处）的半径。
+// 过了内盘外缘照原片末段的速度（约每秒一个内盘半径）接着往外推。
+const REVEAL: Keys = [[0, -0.1], [0.2, 0.05], [0.55, 0.15], [0.7, 0.25], [0.8, 0.35], [0.88, 0.45], [1.12, 0.55], [1.2, 0.65], [1.35, 0.75], [1.45, 0.85], [1.55, 0.95], [1.62, 1.05], [2.2, 1.7], [2.8, 2.45], [3.1, 3.9]];
+// 软边按原片「最早出现光」比「亮到一半」领先约 0.2 定的。
+const REVEAL_FEATHER = 0.4;
+// 宽刃第二道波的前沿半径；波到之前，半径 FILL_INNER 以外（印以外）的宽块只有 FILL_EARLY 那么亮。
+// 回归里中心一带的宽块偏亮，对照画面看是印的粗边和糊开的细线，宽刃本身这时还没亮。
+const WAVE: Keys = [[0, 0.3], [2.3, 0.3], [3, 0.9], [3.15, 1.2]];
+const WAVE_FEATHER = 0.15;
+const FILL_INNER = 0.3;
+const FILL_EARLY = 0.15;
+// 两层的整体亮度，平时为 1：显现时细线比平稳时亮一截，6–6.6 秒再起一点；收尾细线与宽块暗下去再亮回。
+const LINES: Keys = [[0, 1.6], [2.8, 1.5], [4, 1], [6, 0.97], [6.6, 1.07], [6.75, 1.05], [7.25, 0.25], [7.75, 1]];
+const FILL: Keys = [[0, 1], [6.75, 1], [7.25, 0.65], [7.75, 1]];
+// 糊的程度（1 = 整面换成糊的那份）与额外泛光。
+const BLUR: Keys = [[0, 1], [6.75, 1], [7.2, 0], [7.75, 0]];
+const BLOOM: Keys = [[0, 0], [0.5, 0.25], [2.75, 0.25], [4.5, 0.2], [6, 0.22], [6.6, 0.28], [7.1, 0], [7.75, 0]];
+// 原片没有外圈；泛光那几秒外圈先压暗，免得粗亮环抢了内盘。
+const OUTER: Keys = [[0, 0.6], [6.75, 0.6], [7.75, 1]];
+const SPARK_S = 0.5;
+// 径向亮度分布按这么多段做成渐变，覆盖到内盘半径的 PROFILE_MAX 倍。
+const PROFILE_STEPS = 24;
+const PROFILE_MAX = 1.25;
+// 外圈那张遮罩的渐变半径（以内盘外缘为 1）要盖到整张纹理的角上。
+const OUTER_SPAN = 3.2;
+// 糊的那份由两档各占一半（原片糊得比一档缩放更厉害），摊薄了线条，按这个倍数补亮。
+const BLUR_GAIN = [0.6, 0.75];
 const MID_TEX = 400;
-// 泛光那几秒的起伏：周期与幅度。
-const BREATH_S = 1.6;
-const BREATH = 0.15;
-// 暗下去那一下压到的亮度。
-const DIM_TO = 0.45;
-// img1627 内盘里量的位置（以内盘外缘半径为 1、纹理坐标 y 朝下）：四枚印的圆心半径、方位（按弹出先后）与印的半径，
-// 宽刃到 BLADE_END 为止，再往外是粗外环与菱形印框。
-const SEAL_RHO = 0.283;
-const SEAL_ANGLES = [-2.9, -1.34, 0.235, 1.82];
-const SEAL_SIZE = 0.16;
-const BLADE_END = 0.86;
-// img0640 外圈的分层（以 R 为 1）：内环一组到 OUTER_RINGS，弦线与小印到 OUTER_CHORDS，再往外是符文带。
-const OUTER_RINGS = 0.62;
-const OUTER_CHORDS = 0.84;
 const SPARKS = 14;
 export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, innerFill: HTMLImageElement) {
   const bricks = document.createElement("canvas");
@@ -111,152 +101,88 @@ export function floorTextures(outer: HTMLImageElement, inner: HTMLImageElement, 
   return { bricks, tex, inner, fill: split("destination-in"), lines: split("destination-out") };
 }
 
-const easeOut = (k: number) => 1 - (1 - k) ** 3;
-const ease = ([a, b]: Span, u: number) => easeOut(Math.max(0, Math.min(1, (u - a) / (b - a))));
-// 一层在自己的区间里淡入，同时从略小放大到原位。
-const appear = ([a, b]: Span, u: number) => smooth(a, b, u);
-const settleScale = (span: Span, u: number) => 0.88 + 0.12 * ease(span, u);
-
-// 只留半径 r0–r1 的圆环。
-function ring(c: CanvasRenderingContext2D, r0: number, r1: number) {
-  c.beginPath();
-  c.arc(0, 0, r1, 0, TAU);
-  c.arc(0, 0, r0, TAU, 0, true);
-  c.clip();
-}
-
-// 外圈按半径拆成四圈：池心、内环一组、弦线一带、符文带。相邻两圈在交界 ±BAND_FEATHER 里线性一降一升，
-// lighter 叠回去就是原图；每帧在 work.band 上现做，不预存四张整尺寸的图。
-const BAND_EDGES = [INNER_R, OUTER_RINGS * R, OUTER_CHORDS * R];
-const BAND_FEATHER = 0.04 * R;
-function outerBand(t: CanvasRenderingContext2D, tex: HTMLCanvasElement, i: number) {
-  const half = CIRCLE_TEX / 2;
-  t.setTransform(1, 0, 0, 1, 0, 0);
-  t.globalCompositeOperation = "source-over";
-  t.clearRect(0, 0, CIRCLE_TEX, CIRCLE_TEX);
-  t.drawImage(tex, 0, 0);
-  t.globalCompositeOperation = "destination-in";
-  const g = t.createRadialGradient(half, half, 0, half, half, CIRCLE_TEX);
-  const stop = (r: number, a: number) => g.addColorStop(Math.max(0, Math.min(1, r / CIRCLE_TEX)), tone(SCENE.white, a));
-  const lo = BAND_EDGES[i - 1];
-  const hi = BAND_EDGES[i];
-  if (lo === undefined) stop(0, 1);
-  else {
-    stop(lo - BAND_FEATHER, 0);
-    stop(lo + BAND_FEATHER, 1);
+const at = (keys: Keys, t: number) => {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [b, vb] = keys[i];
+    if (t > b) continue;
+    const [a, va] = keys[i - 1];
+    return va + ((vb - va) * (t - a)) / (b - a);
   }
-  if (hi === undefined) stop(CIRCLE_TEX, 1);
-  else {
-    stop(hi - BAND_FEATHER, 1);
-    stop(hi + BAND_FEATHER, 0);
-  }
-  t.fillStyle = g;
-  t.fillRect(0, 0, CIRCLE_TEX, CIRCLE_TEX);
-  return t.canvas;
+  return keys[keys.length - 1][1];
+};
+
+// 前沿在 edge、软边宽 feather 时，半径 rho 处亮几成。
+const front = (rho: number, edge: number, feather: number) => smooth(0, 1, (edge - rho) / feather + 0.5);
+
+// 以 radius 为 1 的径向渐变，按 f(rho) 给 alpha。
+function profile(c: CanvasRenderingContext2D, radius: number, f: (rho: number) => number) {
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, radius * PROFILE_MAX);
+  for (let i = 0; i <= PROFILE_STEPS; i++) g.addColorStop(i / PROFILE_STEPS, tone(SCENE.white, f((i / PROFILE_STEPS) * PROFILE_MAX)));
+  return g;
 }
 
 type Textures = ReturnType<typeof floorTextures>;
-type Work = { disc: CanvasRenderingContext2D; band: CanvasRenderingContext2D; mid: CanvasRenderingContext2D; glow: CanvasRenderingContext2D; up: CanvasRenderingContext2D };
-
-// 展开中的内盘：各层拼进 work.disc（内盘原尺寸、原点在圆心）。印、宽刃与螺旋线、外环三块区域互不重叠，
-// 全部出齐时用 lighter 叠回去正好是原图。
-function unfoldDisc(d: CanvasRenderingContext2D, { inner, fill, lines }: Textures, u: number) {
-  const n = inner.naturalWidth;
-  const rr = (n / 2) * RIM;
-  d.setTransform(1, 0, 0, 1, 0, 0);
-  d.clearRect(0, 0, n, n);
-  d.translate(n / 2, n / 2);
-  d.globalCompositeOperation = "lighter";
-  const seal = (i: number): [number, number] => [Math.cos(SEAL_ANGLES[i]) * SEAL_RHO * rr, Math.sin(SEAL_ANGLES[i]) * SEAL_RHO * rr];
-
-  // 螺旋细线与宽刃（印以外）各自淡入、从略小放大到原位。
-  for (const [img, span] of [[lines, SPIRAL], [fill, WEDGES]] as const) {
-    const a = appear(span, u);
-    if (a <= 0) continue;
-    d.save();
-    d.globalAlpha = a;
-    // 两层拆自整张内盘、也含外环；外环只归下面的 DISC_RIM，这里先裁到宽刃外缘，不然外环会提前出来、叠两遍。
-    d.beginPath();
-    d.arc(0, 0, BLADE_END * rr, 0, TAU);
-    d.clip();
-    d.beginPath();
-    d.rect(-n / 2, -n / 2, n, n);
-    for (let i = 0; i < SEAL_ANGLES.length; i++) {
-      const [x, y] = seal(i);
-      d.moveTo(x + SEAL_SIZE * rr, y);
-      d.arc(x, y, SEAL_SIZE * rr, 0, TAU);
-    }
-    d.clip("evenodd");
-    d.scale(settleScale(span, u), settleScale(span, u));
-    d.drawImage(img, -n / 2, -n / 2);
-    // 细线原图只有两三个像素宽，放大再糊开就淡得断断续续；对焦之前多叠几遍，当原片里那种粗亮的光带。
-    for (let left = img === lines ? LINE_BOOST * (1 - smooth(BLUR_CLEAR[0], BLUR_CLEAR[1], u)) : 0; left > 0; left--) {
-      d.globalAlpha = a * Math.min(1, left);
-      d.drawImage(img, -n / 2, -n / 2);
-    }
-    d.restore();
-  }
-
-  const step = (SEALS[1] - SEALS[0]) / (SEAL_ANGLES.length + 1);
-  for (let i = 0; i < SEAL_ANGLES.length; i++) {
-    const k = ease([SEALS[0] + i * step, SEALS[0] + (i + 2) * step], u);
-    if (k <= 0) continue;
-    const [x, y] = seal(i);
-    d.save();
-    d.beginPath();
-    d.arc(x, y, SEAL_SIZE * rr, 0, TAU);
-    d.clip();
-    d.globalAlpha = Math.min(1, k * 2);
-    d.translate(x, y);
-    d.scale(0.4 + 0.6 * k, 0.4 + 0.6 * k);
-    d.drawImage(inner, -n / 2 - x, -n / 2 - y);
-    d.restore();
-  }
-
-  const rim = appear(DISC_RIM, u);
-  if (rim > 0) {
-    d.save();
-    d.globalAlpha = rim;
-    ring(d, BLADE_END * rr, n);
-    d.scale(settleScale(DISC_RIM, u), settleScale(DISC_RIM, u));
-    d.drawImage(inner, -n / 2, -n / 2);
-    d.restore();
-  }
-}
+type Work = { disc: CanvasRenderingContext2D; layer: CanvasRenderingContext2D; mid: CanvasRenderingContext2D; glow: CanvasRenderingContext2D; up: CanvasRenderingContext2D };
 
 // 展开中的法阵：都画在 scratch 里（原点在圆心、已按 spin 转好），投影仍由 floorPainter 一行行做。返回砖地该有的亮度。
 function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, spin: number, base: number, u: number) {
-  const { tex } = textures;
+  const { tex, inner, fill, lines } = textures;
   const half = CIRCLE_TEX / 2;
-  const alpha = base * (1 - (1 - DIM_TO) * (smooth(DIM[0], DIM[1], u) - smooth(RELIT[0], RELIT[1], u)));
-  s.globalCompositeOperation = "lighter";
-  for (const [i, span] of [POOL, RINGS, CHORDS, RUNES].entries()) {
-    const a = appear(span, u);
-    if (a <= 0) continue;
-    const k = i ? settleScale(span, u) : 1;
-    s.save();
-    s.globalAlpha = alpha * a;
-    s.scale(k, k);
-    s.drawImage(outerBand(work.band, tex, i), -half, -half);
-    s.restore();
-  }
+  const t = u * FLOOR_UNFOLD_S;
+  const edge = at(REVEAL, t);
+  const wave = at(WAVE, t);
+  const fillGain = at(FILL, t);
 
-  unfoldDisc(work.disc, textures, u);
-  const big = R * (DISC_FROM + (DISC_BIG - DISC_FROM) * smooth(ZOOM[0], ZOOM[1], u));
+  // 外圈与暗池：前沿过了内盘外缘才显出来。
+  s.globalAlpha = base * fillGain * at(OUTER, t);
+  s.drawImage(tex, -half, -half);
   s.save();
-  s.globalCompositeOperation = "source-over";
-  s.globalAlpha = alpha;
-  s.rotate(-2.6 * spin);
-  circle(s, work.disc.canvas, big + (INNER_R - big) * smooth(GATHER[0], GATHER[1], u));
+  s.globalCompositeOperation = "destination-in";
+  s.globalAlpha = 1;
+  s.fillStyle = profile(s, INNER_R * OUTER_SPAN, (x) => front(x * OUTER_SPAN, edge, REVEAL_FEATHER));
+  s.fillRect(-half, -half, CIRCLE_TEX, CIRCLE_TEX);
   s.restore();
 
+  // 内盘两层（alpha 互补）各按自己的径向亮度分布叠进 work.disc，亮度大于 1 时多叠几遍。
+  const n = inner.naturalWidth;
+  const rr = (n / 2) * RIM;
+  const d = work.disc;
+  d.setTransform(1, 0, 0, 1, 0, 0);
+  d.clearRect(0, 0, n, n);
+  const lineShape = (rho: number) => front(rho, edge, REVEAL_FEATHER);
+  const fillShape = (rho: number) => lineShape(rho) * (rho < FILL_INNER ? 1 : FILL_EARLY + (1 - FILL_EARLY) * front(rho, wave, WAVE_FEATHER));
+  for (const [img, shape, gain] of [[lines, lineShape, at(LINES, t)], [fill, fillShape, fillGain]] as const) {
+    const l = work.layer;
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.globalCompositeOperation = "source-over";
+    l.globalAlpha = 1;
+    l.clearRect(0, 0, n, n);
+    l.drawImage(img, 0, 0);
+    l.translate(n / 2, n / 2);
+    l.globalCompositeOperation = "destination-in";
+    l.fillStyle = profile(l, rr, shape);
+    l.fillRect(-n / 2, -n / 2, n, n);
+    d.globalCompositeOperation = "lighter";
+    for (let left = gain; left > 0; left--) {
+      d.globalAlpha = Math.min(1, left);
+      d.drawImage(l.canvas, 0, 0);
+    }
+  }
+  s.save();
+  s.globalAlpha = base;
+  s.rotate(-2.6 * spin);
+  circle(s, d.canvas, INNER_R);
+  s.restore();
+  const reach = INNER_R * edge;
+
   s.globalCompositeOperation = "lighter";
-  const spark = ease(SPARK, u);
   // 进度 0 是还没开始（召唤白闪里、平时熄灭的暗场），光团要等进度动了才亮。
-  const fade = smooth(0, 0.02, u) * (1 - smooth(SPARK[0] + 0.04, SPARK[1], u));
+  const fade = smooth(0, 0.02, u) * (1 - smooth(0.1, SPARK_S, t));
   if (fade > 0) {
+    const spark = 1 - (1 - Math.min(1, t / SPARK_S)) ** 3;
     s.globalAlpha = 1;
-    const core = INNER_R * (0.2 + 0.4 * spark);
+    const core = INNER_R * (0.15 + 0.25 * spark);
     const seed = s.createRadialGradient(0, 0, 0, 0, 0, core);
     seed.addColorStop(0, tone(SCENE.white, fade));
     seed.addColorStop(0.3, tone(SCENE.ice, 0.6 * fade));
@@ -265,23 +191,22 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     s.fillRect(-core, -core, 2 * core, 2 * core);
     for (let i = 0; i < SPARKS; i++) {
       const a = hash(i + 70) * TAU;
-      const d = INNER_R * (0.15 + 1.1 * hash(i + 90)) * spark;
+      const dist = INNER_R * (0.1 + 0.5 * hash(i + 90)) * spark;
       const r = 0.01 * R * (1 + hash(i + 110));
-      const g = s.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d, 0, Math.cos(a) * d, Math.sin(a) * d, r * 2);
+      const x = Math.cos(a) * dist;
+      const y = Math.sin(a) * dist;
+      const g = s.createRadialGradient(x, y, 0, x, y, r * 2);
       g.addColorStop(0, tone(SCENE.white, fade));
       g.addColorStop(1, tone(SCENE.ice, 0));
       s.fillStyle = g;
-      s.fillRect(Math.cos(a) * d - 2 * r, Math.sin(a) * d - 2 * r, 4 * r, 4 * r);
+      s.fillRect(x - 2 * r, y - 2 * r, 4 * r, 4 * r);
     }
   }
 
-  // 对焦：把画好的整面缩成两档糊的，按糊的程度换掉清晰的那份（不是叠在清晰线条上），再叠一层起伏的泛光。
-  const blur = 1 - 0.5 * smooth(BLUR_EASE[0], BLUR_EASE[1], u) - 0.5 * smooth(BLUR_CLEAR[0], BLUR_CLEAR[1], u);
-  const strong = Math.max(0, 2 * blur - 1);
-  const soft = blur > 0.5 ? 1 - strong : 2 * blur;
-  const breath = 1 + BREATH * Math.sin(((u * FLOOR_UNFOLD_S) / BREATH_S) * TAU);
-  const bloom = smooth(BLOOM_IN[0], BLOOM_IN[1], u) * (1 - smooth(BLOOM_OUT[0], BLOOM_OUT[1], u)) * breath;
-  if (soft + strong > 0 || bloom > 0) {
+  // 糊：把画好的整面缩小再放大，按 BLUR 换掉清晰的那份（不是叠在清晰线条上），再叠一层更糊的泛光。
+  const soft = at(BLUR, t);
+  const bloom = at(BLOOM, t);
+  if (soft > 0 || bloom > 0) {
     // 缩放都逐级走：一步从 160 放大到 1600，斜线会放出一格格的台阶。
     const { mid, glow, up } = work;
     mid.clearRect(0, 0, MID_TEX, MID_TEX);
@@ -297,7 +222,7 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
     s.save();
     s.setTransform(1, 0, 0, 1, 0, 0);
     // globalAlpha 为 0 时浏览器直接跳过这次绘制，destination-in 就清不掉，所以全换成糊的时直接清空。
-    const sharp = 1 - soft - strong;
+    const sharp = 1 - soft;
     if (sharp < 0.004) s.clearRect(0, 0, CIRCLE_TEX, CIRCLE_TEX);
     else if (sharp < 1) {
       s.globalCompositeOperation = "destination-in";
@@ -306,20 +231,17 @@ function unfolding(s: CanvasRenderingContext2D, textures: Textures, work: Work, 
       s.fillRect(0, 0, CIRCLE_TEX, CIRCLE_TEX);
     }
     s.globalCompositeOperation = "lighter";
-    for (const [img, a] of [[mid.canvas, soft * BLUR_GAIN[0]], [up.canvas, strong * BLUR_GAIN[1]], [up.canvas, bloom], [up.canvas, bloom]] as const) {
-      if (a <= 0) continue;
-      s.globalAlpha = Math.min(1, a);
-      s.drawImage(img, 0, 0, CIRCLE_TEX, CIRCLE_TEX);
-      if (a > 1) {
-        s.globalAlpha = a - 1;
+    for (const [img, a] of [[mid.canvas, soft * BLUR_GAIN[0]], [up.canvas, soft * BLUR_GAIN[1] + bloom]] as const) {
+      for (let left = a; left > 0; left--) {
+        s.globalAlpha = Math.min(1, left);
         s.drawImage(img, 0, 0, CIRCLE_TEX, CIRCLE_TEX);
       }
     }
     s.restore();
   }
   s.globalCompositeOperation = "source-over";
-  s.globalAlpha = alpha;
-  return smooth(ZOOM[0], ZOOM[1], u);
+  s.globalAlpha = base;
+  return Math.max(0, Math.min(1, reach / R));
 }
 
 export type FloorSpot = { x: number; y: number; r: number; tilt: number; depth: number };
@@ -348,7 +270,7 @@ export function floorPainter() {
     s.rotate(spin);
     let lit = 1;
     if (unfold < 1) {
-      work ??= { disc: canvas2d(inner.naturalWidth), band: canvas2d(CIRCLE_TEX), mid: canvas2d(MID_TEX), glow: canvas2d(GLOW_TEX), up: canvas2d(MID_TEX) };
+      work ??= { disc: canvas2d(inner.naturalWidth), layer: canvas2d(inner.naturalWidth), mid: canvas2d(MID_TEX), glow: canvas2d(GLOW_TEX), up: canvas2d(MID_TEX) };
       lit = unfolding(s, textures, work, spin, alpha, unfold);
     }
     else {
