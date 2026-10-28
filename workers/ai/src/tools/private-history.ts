@@ -54,14 +54,17 @@ export function parseHistoryInput(input: unknown, now: number): PrivateHistoryQu
 // 列名 snake_case 转 camelCase，好让 localTimes 认出 …At 时间列；charging_samples 和 coding_observations 的时间列只叫 t，改叫 observedAt。
 const fieldName = (column: string) => (column === "t" ? "observedAt" : column.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()));
 
-// 截断时的续读：先去掉和最旧一行同一时刻（day 表是同一天）的行，下一页用那一刻作不含的 to 整组重读，
-// 不漏、不重复，也一定往前走。展示用的本地时间只到分钟，所以 to 给无损的值。
+// 截断时的续读：本页去掉和最旧一行同一时刻（day 表是同一天）的整组行，下一页的 to 取刚过那一刻，
+// 整组在下一页重读：不漏、不重复，也一定往前走。展示用的本地时间只到分钟，所以 to 给无损的值。
 function continuation(query: PrivateHistoryQuery, rows: Record<string, unknown>[]): { rows: Record<string, unknown>[]; to: string } | null {
   const { time, unit } = PRIVATE_HISTORY_TABLES[query.table];
   const oldest = rows.at(-1)?.[time];
   const kept = rows.filter((row) => row[time] !== oldest);
   if (!kept.length) return null;
-  return { rows: kept, to: unit === "day" ? String(oldest) : new Date(Number(oldest)).toISOString() };
+  const to = unit === "day"
+    ? new Date(Date.parse(`${String(oldest)}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10)
+    : new Date(Number(oldest) + 1).toISOString();
+  return { rows: kept, to };
 }
 
 export function historyText(query: PrivateHistoryQuery, result: PrivateHistoryResult, now: number): string {
