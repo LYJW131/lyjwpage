@@ -6,7 +6,6 @@ export type Source = { diff(): Promise<string>; tarball(): Promise<Buffer> };
 export type PullTarget = {
   owner: string;
   repo: string;
-  // 还没开 PR 时没有编号。
   number?: number;
   title: string;
   body: string;
@@ -26,11 +25,32 @@ export async function reviewWorkspace(source: Source, target: PullTarget): Promi
   const [diffText, tarball] = await Promise.all([source.diff(), source.tarball()]);
   const files: Record<string, string> = {};
   for (const [path, text] of untarText(tarball)) files[`repo/${path}`] = text;
-  files["pr/diff.patch"] =
-    diffText.length > MAX_DIFF_CHARS ? `${diffText.slice(0, MAX_DIFF_CHARS)}\n…[truncated]\n` : diffText;
+  files["pr/diff.patch"] = fitDiff(diffText);
   files["pr/head.sha"] = target.headSha;
   files["pr/meta.md"] = metaMarkdown(target, changedPaths(diffText));
   return files;
+}
+
+// diff 超过上限时按文件分摊：锁文件与二进制只留文件头，其余从小到大均分预算，超出份额的文件截短并注明，
+// 免得一个大数据文件挤掉后面所有文件的改动。
+export function fitDiff(diff: string, max = MAX_DIFF_CHARS): string {
+  if (diff.length <= max) return diff;
+  const parts = diff.split(/(?=^diff --git )/m).map((text) => {
+    const path = /^diff --git a\/.+? b\/(.+)$/m.exec(text)?.[1] ?? "";
+    if (!SKIP_PATH.test(path) && !SKIP_EXT.test(path)) return text;
+    return `${text.split("\n", 1)[0]}\n…[hunks omitted: lock file or binary]\n`;
+  });
+  const order = parts.map((text, i) => i).sort((a, b) => parts[a].length - parts[b].length);
+  let budget = max;
+  for (const [rank, i] of order.entries()) {
+    const share = Math.floor(budget / (order.length - rank));
+    if (parts[i].length > share) {
+      const path = /^diff --git a\/.+? b\/(.+)$/m.exec(parts[i])?.[1] ?? "";
+      parts[i] = `${parts[i].slice(0, share)}\n…[diff of this file cut here; read repo/${path} for the rest]\n`;
+    }
+    budget -= parts[i].length;
+  }
+  return parts.join("");
 }
 
 export function changedPaths(diff: string): string[] {

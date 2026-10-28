@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gitSource } from "./git-source.js";
-import { type PullTarget, reviewWorkspace } from "./workspace.js";
+import { type PullTarget, fitDiff, reviewWorkspace } from "./workspace.js";
 
 function repoWithChange() {
   const dir = mkdtempSync(join(tmpdir(), "pr-review-test-"));
@@ -36,4 +36,16 @@ test("本地 git 快照：diff 是 merge-base 起的改动，repo/ 是 head 的�
   assert.match(files["pr/meta.md"], /^# Change \(pull request not opened yet\): t$/m);
   assert.match(files["pr/meta.md"], /^ {2}- b\.ts$/m);
   assert.match(files["pr/meta.md"], /intent/);
+});
+
+test("fitDiff 超限时按文件分摊：小文件的改动完整保留，锁文件只留文件头，大文件截短并注明", () => {
+  const file = (path: string, lines: number) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n${"+x\n".repeat(lines)}`;
+  const code = file("src/a.ts", 3);
+  const diff = file("data/cases.json", 5000) + file("pnpm-lock.yaml", 2000) + code;
+  const out = fitDiff(diff, 4000);
+  assert.ok(out.includes(code));
+  assert.match(out, /^diff --git a\/pnpm-lock\.yaml b\/pnpm-lock\.yaml\n…\[hunks omitted/m);
+  assert.match(out, /…\[diff of this file cut here; read repo\/data\/cases\.json for the rest\]/);
+  assert.ok(out.length < 4200);
+  assert.equal(fitDiff(code, 4000), code);
 });
