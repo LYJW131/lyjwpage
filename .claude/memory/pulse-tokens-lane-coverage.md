@@ -28,3 +28,5 @@ Grok, Antigravity, opencode, pi: daily ledgers only.
 OTLP sources do count sessions (per `session.id`) and active days (date union in `shared/coding-usage-view.ts#codingTotals`); verified on prod 2026-10-21 03:2x SGT: OTLP 326 of 2064 sessions, its 23 days all overlap Mac days so ACTIVE DAYS doesn't move. Pre-OTel Mac Devin sessions (118 of 121 in sessions.db) added to mac-otlp `sessionCounts.devin` 2026-10-21 (lyjw OK). OTel `session.id` over-counts Devin (left as is). Per-source ledgers readable via Cloudflare DO query API (core_StateHub `global`, table `fields`, key `lyjwpage:coding:usage:<source>`).
 
 **How to apply:** Devin usage problems → check the Devin otel config and the token for that side (`lyjwpage-mac` / Network secret for cloud), not agents-reporter. Adding another agent to the lane: native OTel into `agents-otlp` if the agent supports it, else per-event parsing in MacTelemetryHub. iOS app not updated (paused).
+
+See [[cloud-otlp-telemetry-audit]] for the 2026-10-29 accuracy audit and the cloud Claude header outage.

@@ -50,6 +50,7 @@
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys, CF config writes, credential reads, remote branch deletes. misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`, never printed: [[cloud-env-gaps]].
 - Egress-injected APIs: OpenRouter ([[openrouter-egress]]), misaka.io (`/v3/mc2/metrics/account-throughput` only; strip email/name), Gemini ([[gemini-video-qa-result]]), Apple Music ([[apple-music-user-api]]), TypeSafe Jev, Exa, Parallel, tokens.ci.
+- **Cloud Claude OTLP needs `OTEL_EXPORTER_OTLP_HEADERS` in env vars** (main process skips the egress proxy); Devin OTLP ~92% accurate: [[cloud-otlp-telemetry-audit]].
 - **tokens.ci Stop hook** at user level via Setup script: [[tokens-ci-cloud-hook]].
 - **Site previews:** `<branch>.preview.lyjw.dev` only, never `*-site.lyjw.workers.dev`: [[preview-access-removed]]. Non-site preview comments auto-minimized (#676).
 - Collector manual run: GitHub Actions "Run Collector Jobs".
@@ -72,7 +73,7 @@
 - Git history slimming parked: [[repo-history-slim]]. Chat tiers/consent/logs: [[chat-tiers]]. DO locations: [[do-physical-locations]].
 - Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn.
 - **Cron late delivery** (Cloudflare): core and collector claim slots (#675, #681): [[core-heartbeat-slot-claim]], [[core-cron-internal-error]].
-- Small settled site decisions: [[site-small-decisions]]. Desktop CLS: [[desktop-cls-scrollbar]].
+- Small settled site decisions: [[site-small-decisions]]. Claude limit forecast backtest, no change until ~4 hourly weeks: [[limit-forecast-backtest]]. Desktop CLS: [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy.
 - iOS app paused; keep only its reporting endpoints.
 - **File-size rule (soft):** [[file-size-rule]]. README short; diagrams from `pnpm docs:diagrams`: [[readme-diagrams]].
