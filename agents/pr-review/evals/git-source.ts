@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { PullTarget, Source } from "../bot/lib/workspace.js";
+import type { PullTarget, Source } from "../lib/workspace.js";
 
 const run = promisify(execFile);
 

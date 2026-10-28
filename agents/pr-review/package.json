@@ -2,15 +2,14 @@
   "name": "lyjwpage-review",
   "private": true,
   "type": "module",
-  "description": "Reviews lyjwpage pull requests for bugs and security issues.",
+  "description": "Reviews lyjwpage pull requests for bugs and security issues with Devin CLI.",
   "scripts": {
     "check": "tsc --noEmit",
-    "dev": "agent-sdk dev",
-    "test": "node --test --experimental-strip-types bot/lib/*.test.ts",
+    "test": "node --test --experimental-strip-types lib/*.test.ts",
+    "eval": "tsx evals/devin-run.ts",
     "judge": "tsx evals/judge.ts"
   },
   "dependencies": {
-    "@grok/agent-sdk": "0.4.0",
     "@octokit/rest": "^21.1.1",
     "zod": "^4.6.5"
   },

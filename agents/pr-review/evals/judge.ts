@@ -1,22 +1,13 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { type PullTarget, reviewWorkspace } from "../bot/lib/workspace.js";
-import { gitSource } from "./git-source.js";
+import type { Finding } from "../lib/review-body.js";
+import { type Case, caseWorkspace, loadCases } from "./cases.js";
 
-type Severity = "high" | "medium" | "low";
-type Finding = { kind: string; severity: Severity; file: string; line: number; title: string; detail: string };
-type Label = { kind: string; path: string; line: number | null; title: string; comment: string; reply?: string; reason?: string };
-type Case = PullTarget & {
-  id: string;
-  split: string;
-  gold: { mustFind: Label[]; shouldNotReport: Label[]; later: Label[]; clean?: boolean };
-};
-// 跑 agent 的那一侧每个 (用例, 轮次) 写一份：findings 为 null 表示没调到 post_findings。
-type Raw = {
+// 跑评审员的那一侧每个 (用例, 轮次) 写一份：findings 为 null 表示没交出能解析的结果。
+export type Raw = {
   case_id: string;
   rep: number;
   findings: Finding[] | null;
@@ -41,15 +32,9 @@ if (!values.variant) {
   throw new Error("usage: judge.ts --variant <flow>/<variant>");
 }
 const VARIANT = values.variant;
-const WORKSPACES = process.env.REVIEW_JUDGE_WORKSPACES ?? join(tmpdir(), "pr-review-judge");
 const JUDGE_TIMEOUT_MS = 15 * 60_000;
 const PROMPT = await readFile(new URL("./judge.md", import.meta.url), "utf8");
-const CASES = new Map<string, Case>(
-  (JSON.parse(await readFile(new URL("./data/cases.json", import.meta.url), "utf8")).cases as Case[]).map((c) => [
-    c.id,
-    c,
-  ]),
-);
+const CASES = await loadCases();
 
 const SCHEMA = JSON.stringify({
   type: "object",
@@ -109,18 +94,6 @@ function message(item: Case, findings: Finding[]) {
     out.push(`[${i}] ${f.kind} ${f.severity} · ${f.file}:${f.line} · ${f.title}`, f.detail, "");
   });
   return out.join("\n");
-}
-
-async function workspace(item: Case) {
-  const dir = join(WORKSPACES, item.id);
-  if (!existsSync(join(dir, "pr/meta.md"))) {
-    const files = await reviewWorkspace(gitSource(item), item);
-    for (const [path, content] of Object.entries(files)) {
-      await mkdir(dirname(join(dir, path)), { recursive: true });
-      await writeFile(join(dir, path), content);
-    }
-  }
-  return dir;
 }
 
 // 裁判走 lyjw 的 Claude 订阅（`claude -p`）；不读任何设置与 CLAUDE.md，只给只读工具。
@@ -235,7 +208,7 @@ async function judgeOne(raw: Raw) {
   let grades: Grade[] = [];
   let judge: Record<string, unknown> = {};
   if (findings.length > 0) {
-    const cwd = await workspace(item);
+    const cwd = await caseWorkspace(item);
     const input = message(item, findings);
     const ids = new Set(labels(item).map((l) => l.id));
     let lastError: unknown;
