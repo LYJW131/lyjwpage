@@ -47,7 +47,7 @@
 浏览器按 id 贴到 coding 卡片的 agent 行上（`src/lib/coding-agents.ts` 的 `codingAgentRows`）；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
 
 `GET /api/status/limits/history` 是限额的历史读数。收下的每封限额按 UTC 整点记进 StateHub（`src/limit-history.ts#stageLimitHours`，同一小时后到的覆盖先到的），端点从这里读：最近 `LIMIT_HISTORY_HOURLY_DAYS` 天每小时一点，更早的每个站点日一点，共 `LIMIT_HISTORY_DAYS` 天，只出 `LIMIT_HISTORY_SERIES` 里要预测的窗口（均在 `shared/limit-history.ts`），不读 D1。
-D1 的 `limit_hours` / `limit_snapshots` 由下文「长期归档」的 `limits` 一路写。站点用它和 `limits` 的当前读数算周限额什么时候用完（`src/lib/limit-forecast.ts`）。
+站点用这份历史和 `limits` 的当前读数算周限额什么时候用完（`src/lib/limit-forecast.ts`）。D1 的 `limit_hours` / `limit_snapshots` 由下文「长期归档」的 `limits` 一路写，只作备份。
 
 ### coding agent 的 token 用量
 
@@ -313,7 +313,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 | `charging_samples` / `charging_sessions` | 过了闸门的瓦数；一次充电的起止、峰值、能量、设备 | `t` / `started_at` |
 | `activity_buckets` | HealthKit 五分钟桶原值；范围替换由 `pulse_archive_state` 里 `activity_buckets` 那行的版本挡住旧快照 | `started_at` |
 | `coding_observations` | Coding 原始观测（agents 为 JSON） | `t` |
-| `coding_usage_days` / `coding_usage_models` | 来源 × agent × 站点日的日行（token 分类、reasoning、合计、API 等值费用、费用是否估全）与当天按来源的模型拆分 | `(date, source, agent)` / `(date, source, agent, model)` |
+| `coding_usage_days` / `coding_usage_models` | 来源 × agent × 站点日的日行（token 分类、reasoning、合计、API 等值费用、费用是否估全）与每天按来源的模型拆分 | `(date, source, agent)` / `(date, source, agent, model)` |
 | `coding_usage_buckets` | 各来源的五分钟 token 桶，agent × 模型（云端 OTLP 的事件数为 NULL） | `(bucket_at, source, agent, model)` |
 | `coding_active_days` | agent 在跑的秒数（来自 Coding 观测），`model = '*'` 是当天合计 | `(date, agent, model)` |
 | `limit_snapshots` / `limit_hours` | 限额每站点日、每 UTC 整点的最后一次读数，水位是收到时刻；上线时从 D1 回填进 StateHub 的行不再写回（迁移 `0005` / `0010`） | `(date, agent, limit_key)` / `(agent, limit_key, hour_at)` |

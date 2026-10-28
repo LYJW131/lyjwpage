@@ -46,7 +46,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `charging_sessions` | 一次充电的起止、峰值、能量、设备 | 状态核心 | `started_at`，还在充时每分钟改写 |
 | `activity_buckets` | HealthKit 五分钟桶原值（步数、活动千卡、锻炼分钟） | 状态核心 | `started_at`，范围替换由版本挡旧快照 |
 | `coding_observations` | Coding 原始观测：前台应用、是否 coding 应用、各 agent 在不在跑 | 状态核心 | `t` |
-| `coding_usage_days` / `coding_usage_models` | 来源 × agent × 站点日的 token 用量与 API 等值费用；当天按来源的模型拆分 | 状态核心 | `(date, source, agent)` / `(date, source, agent, model)` |
+| `coding_usage_days` / `coding_usage_models` | 来源 × agent × 站点日的 token 用量与 API 等值费用；每天按来源的模型拆分 | 状态核心 | `(date, source, agent)` / `(date, source, agent, model)` |
 | `coding_usage_buckets` | 各来源的五分钟 token 桶，agent × 模型 | 状态核心 | `(bucket_at, source, agent, model)` |
 | `coding_active_days` | agent 在跑的秒数（来自 Coding 观测） | 状态核心 | `(date, agent, model)` |
 | `coding_token_buckets` / `agent_usage_days` | 单来源（Mac）时代的桶与每日汇总，冻结不再写（`0008` 把桶和活跃秒数复制进新表） | — | — |
