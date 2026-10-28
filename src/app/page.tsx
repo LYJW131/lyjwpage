@@ -18,6 +18,7 @@ import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
+import { PlaystationNowCard } from "@/components/live/playstation-now-card";
 import { FocusNowCard } from "@/components/live/focus-now-card";
 import { CloudflareOutageRow } from "@/components/live/cloudflare-outage-row";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
@@ -85,6 +86,7 @@ const READS = {
   digest: [DIGEST_PATH, PULSE_PATH, TIMEZONE_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
+  playstationNow: [NOW_PLAYING_PATH, PLAYING_PATH],
   focusNow: [STATUS_VIEWS.focusNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
   activity: [ACTIVITY_PATH, STATUS_VIEWS.workouts.path],
@@ -283,6 +285,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
                 <QuestNowCard nowFallback={loaderData.questNow} />
+              </CardBoundary>
+              <CardBoundary label="Now Playing" silent paths={READS.playstationNow}>
+                <PlaystationNowCard fallback={loaderData.playing} nowFallback={loaderData.playingNow} />
               </CardBoundary>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">

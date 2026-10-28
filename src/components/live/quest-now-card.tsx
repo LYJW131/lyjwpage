@@ -1,76 +1,18 @@
 "use client";
 
 import MetaMono from "@lobehub/icons/es/Meta/components/Mono";
-import { useContext, useEffect, useState } from "react";
 
 import Image from "@/components/app-image";
+import { NowGameRow } from "@/components/live/now-game-row";
 import { NowReveal } from "@/components/live/now-reveal";
 import { Card } from "@/components/ui/card";
-import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
-import { RenderClock } from "@/hooks/use-mounted-at";
 import { useStatus } from "@/hooks/use-status";
 import { STATUS_VIEWS } from "@shared/status-views";
 import type { StatusResponse } from "@shared/types";
-import type { QuestNow, QuestPlaying } from "@shared/quest";
+import type { QuestNow } from "@shared/quest";
 
 const NOW_REFRESH_MS = 60_000;
-
-
-function elapsed(ms: number): string {
-  const minutes = Math.floor(ms / 60_000);
-  const hours = Math.floor(minutes / 60);
-  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
-}
-
-function useNow(enabled: boolean): number | null {
-  const renderClock = useContext(RenderClock);
-  const [now, setNow] = useState<number | null>(renderClock || null);
-  useEffect(() => {
-    if (!enabled) return;
-    const tick = () => setNow(Date.now());
-    tick();
-    const timer = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(timer);
-  }, [enabled]);
-  return now;
-}
-
-function QuestRow({ playing }: { playing: QuestPlaying }) {
-  const now = useNow(playing.startedAt != null);
-  const detail = [playing.details, playing.state].filter(Boolean).join(" · ");
-  return (
-    <div className="flex items-center gap-3 p-4 sm:gap-4 lg:px-5">
-      <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted text-muted-foreground sm:size-16">
-        {playing.largeImageUrl ? (
-          <Image src={playing.largeImageUrl} alt={playing.name} fill sizes="64px" loading="eager" className="object-cover" unoptimized />
-        ) : (
-          <MetaMono size={24} aria-hidden />
-        )}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <StatusDot tone="live" />
-          <span className="label-mono shrink-0 text-live-ink">In Game</span>
-          <span className="label-mono min-w-0 truncate text-muted-foreground">· Meta Quest</span>
-        </div>
-        <div className="truncate text-lg font-semibold leading-tight" title={playing.name}>
-          {playing.name}
-        </div>
-        {detail && (
-          <div className="truncate text-sm text-muted-foreground" title={detail}>
-            {detail}
-          </div>
-        )}
-      </div>
-      {now != null && playing.startedAt != null && (
-        <div className="shrink-0 text-2xl font-medium leading-none sm:text-3xl">
-          {elapsed(Math.max(0, now - playing.startedAt))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function QuestNowCard({ nowFallback }: { nowFallback: StatusResponse<QuestNow> }) {
   useLiveEvents();
@@ -81,7 +23,19 @@ export function QuestNowCard({ nowFallback }: { nowFallback: StatusResponse<Ques
     <NowReveal revealKey="quest-now">
       {playing ? (
         <Card id="now-gaming" className="scroll-mt-28">
-          <QuestRow playing={playing} />
+          <NowGameRow
+            cover={
+              playing.largeImageUrl ? (
+                <Image src={playing.largeImageUrl} alt={playing.name} fill sizes="64px" loading="eager" className="object-cover" unoptimized />
+              ) : (
+                <MetaMono size={24} aria-hidden />
+              )
+            }
+            platform="Meta Quest"
+            title={playing.name}
+            detail={[playing.details, playing.state].filter(Boolean).join(" · ") || null}
+            startedAt={playing.startedAt}
+          />
         </Card>
       ) : null}
     </NowReveal>

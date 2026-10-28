@@ -1,0 +1,24 @@
+{
+  "description": "PlayStation 正在玩：生产快照 readme-base 上让 PS5 在玩游玩列表里的第一款，开局 47 分钟前",
+  "extends": "readme-base",
+  "views": {
+    "/api/status/playing/now": {
+      "ok": true,
+      "data": {
+        "observedAt": "$now",
+        "online": true,
+        "availability": "availableToPlay",
+        "platform": "PS5",
+        "lastOnlineAt": "$now",
+        "playing": {
+          "titleId": "PPSA08560_00",
+          "title": "双影奇境",
+          "format": "PS5",
+          "launchPlatform": "PS5",
+          "iconUrl": "https://image.api.playstation.com/vulcan/ap/rnd/202411/2918/90ad70c1ef581f93454184750cba9e0ca37bc7e30a4d1f55.png",
+          "startedAt": "$now-2820000"
+        }
+      }
+    }
+  }
+}

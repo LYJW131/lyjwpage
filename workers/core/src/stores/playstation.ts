@@ -1,10 +1,8 @@
-import { INGEST_FUTURE_SKEW_MS } from "@shared/freshness";
-import { PLAYING_TAG,TROPHIES_TAG } from "@shared/live-events";
+import { INGEST_FUTURE_SKEW_MS, PLAYSTATION_STALE_MS } from "@shared/freshness";
+import { NOW_PLAYING_TAG, PLAYING_TAG, TROPHIES_TAG } from "@shared/live-events";
 import { getPlaystationPlayedGames, getPlaystationPresence, getPlaystationTrophies } from "../playstation-store";
 import { summarizeTrophies, trophiesContent } from "@shared/trophies";
-import type {
-  PlaystationPresencePayload
-} from "@shared/types";
+import type { PlaystationPresencePayload, PlaystationPresenceReport } from "@shared/types";
 import { fanout, type PendingEvent } from "@core/fanout";
 import { historyArchive, requestStore } from "@core/runtime";
 import { recordStateObservation } from "@core/stores/pulse";
@@ -24,9 +22,24 @@ function presenceContent(payload: PlaystationPresencePayload) {
   };
 }
 
+// 同一款接着上一份在玩、且上一份没过期，就沿用它的开局时刻；换游戏、停过或断流后都从这一封重新算。
+export function withStartedAt(
+  report: PlaystationPresenceReport,
+  previous: PlaystationPresencePayload | null,
+): PlaystationPresencePayload {
+  if (!report.playing) return { ...report, playing: null };
+  const before = previous?.playing;
+  // 旧版存下的在玩没有 startedAt，从这一封起算。
+  const startedAt =
+    previous && before?.titleId === report.playing.titleId && before.startedAt != null && report.observedAt - previous.observedAt < PLAYSTATION_STALE_MS
+      ? before.startedAt
+      : report.observedAt;
+  return { ...report, playing: { ...report.playing, startedAt } };
+}
+
 export async function commitPreparedPlaystationReport(prepared: PreparedPlaystationReport) {
   const {
-    presence: incomingPresence,
+    presence: reportedPresence,
     playedGames: incomingPlayedGames,
     trophies: incomingTrophies,
     receivedAt,
@@ -34,11 +47,12 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
 
   const [previousPresence, previousPlayedGames, previousTrophies, quest] =
     await Promise.all([
-      incomingPresence ? getPlaystationPresence() : null,
+      reportedPresence ? getPlaystationPresence() : null,
       incomingPlayedGames ? getPlaystationPlayedGames() : null,
       incomingTrophies ? getPlaystationTrophies() : null,
-      incomingPresence ? questMirror.get() : null,
+      reportedPresence ? questMirror.get() : null,
     ]);
+  const incomingPresence = reportedPresence && withStartedAt(reportedPresence, previousPresence);
 
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
@@ -63,6 +77,8 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: incomingPresence });
     }
+    // 首页的 PlayStation 正在玩卡随「在玩」有无展开收起，只有这时首屏布局变。
+    if (Boolean(previousPresence?.playing) !== Boolean(incomingPresence.playing)) tags.push(NOW_PLAYING_TAG);
   }
   if (playedGamesFresh && incomingPlayedGames) {
     playedGamesChanged = JSON.stringify(previousPlayedGames?.items ?? null) !== JSON.stringify(incomingPlayedGames.items);
