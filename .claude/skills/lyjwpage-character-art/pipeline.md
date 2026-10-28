@@ -57,7 +57,7 @@ uv run -q --with numpy --with scipy --with pillow python -I $SK/matte.py srdb.pn
 - 立绘本身：
   - `aoko-figure.ts` 片元着色器里直接写成数字的：颈部转轴、头发左右分界（`lft`）、呼吸的胸口和腰线起伏带、胸口中线、眨眼用的两眼椭圆和眼线高度、施法时的眼睛发光椭圆（`eL`、`eR`，和眨眼那组不是一组）、两个眼睛高光点（`glint`）、脚部辉光带的起点。
   - 常量：`CHIN_Y`、`aoko-face.ts` 的 `FACE_BOX`、`aoko-fx.ts` 的 `FLOOR`（地面法阵的圆心，就是脚底）。
-  - 重打光的配色 `SHADE`、`TINT`、`HIGH` 是按青子调的，换角色也要重调：有珠的预览页照搬后，棕靴在重打光下发灰蓝。
+  - 受光：新角色要自己的法线图（Marigold 估出再大幅模糊，做法在 character-art 仓库的 characters/aoko/normals/）；`LIGHTS` 的光源位置、`GROUND` 的地面高度跟着 `FLOOR` 走，颜色和强度按新角色的底色重调。衣褶细节别叠进法线图，受光面会碎成脏斑；黑色衣物按法线受光看不出来，靠 `GROUND` 那层直接叠加的地面光和轮廓光。
 - 施法动作：`ARM_BOX`、`PALM`、`ORB`、手层的窗口 `wg`、手臂三环的 `aoko-rings.ts#FOREARM`。这组绑的是青子伸手放光球的动作，新角色的施法设计定了再量。
 
 清单会跟着代码变，量之前用 `rg -n "[0-9]{3}\.[,)]" src/components/space-backdrop/aoko*.ts` 把着色器里写死的数字扫一遍。量完把这些点和区域画在立绘上，出一张标注图，一眼就能核对。
@@ -159,6 +159,6 @@ node $SK/capture.mjs --url http://localhost:3211/ --out narrow --engine webkit -
 - 至少看三样：1440 和 1920 宽的 2 倍屏、375 px WebKit、开「减少动态效果」（`--reduced-motion`，立绘直接是静止画面）。
 - 回退照现有写法守住，新角色也一样：只在深色模式挂（`space-backdrop.tsx`）；左侧留白窄于 `scene.ts` 的 `AOKO_MIN_GUTTER` 不挂；减少动态效果只画一帧、不开动画循环；没有 WebGL2 或着色器失败时换一张 2D 画布画静态原图（`aoko.ts` 里的 `fallback`）。three 只在按下秘技后动态加载，默认页面的包里不能有它：`pnpm build` 后在 `build/client/assets` 里查 `WebGLRenderer` 只落在召唤时才加载的那一块。
 - 新增或重导的贴图在 PR 里写上 `public/mascots/` 的体积增减；比同类大一截就先降尺寸或质量。
-- 新角色还没定进不进站点、只看效果时，另起一个独立预览页，在真 WebGL 里验：照 `aoko-figure.ts` 着色器里和施法无关的部分（呼吸、头部、头发、裙摆、表情格、眼皮、闲置重打光）搭，常量换成新角色的，用 URL 参数（`?face=`、`lid=`、`t=`）代替临时钩子。手抄的着色器会和 `aoko.ts` 慢慢对不上，用之前对一遍；有珠母图目录的 preview/ 就是一份。
+- 新角色还没定进不进站点、只看效果时，另起一个独立预览页，在真 WebGL 里验：照 `aoko-figure.ts` 着色器里和施法无关的部分（呼吸、头部、头发、裙摆、表情格、眼皮、受光）搭，常量换成新角色的，用 URL 参数（`?face=`、`lid=`、`t=`）代替临时钩子。手抄的着色器会和 `aoko.ts` 慢慢对不上，用之前对一遍；有珠母图目录的 preview/ 就是一份。
 - 接缝、发梢、手腕这些地方放大看；能拼成对照图的（改前改后、各格并排）拼起来一起发。
 - 交付前删掉临时钩子（`rg -n "__aoko" src` 为空），PR 上的验证照 `lyjwpage-verify`。

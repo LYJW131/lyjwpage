@@ -9,7 +9,7 @@ description: 改站点深色模式里的青子动态立绘，或给站点做新�
 
 | 文件 | 管什么 |
 | --- | --- |
-| `aoko-figure.ts` | 立绘着色器：位移场、表情格取样、眨眼眼皮、手部分层、重打光、光炮照人、显形、影子 |
+| `aoko-figure.ts` | 立绘着色器：位移场、表情格取样、眨眼眼皮、手部分层、按法线图受光（`LIGHTS`、`GROUND`）、光炮照手、显形、影子 |
 | `aoko.ts` | 编排：眨眼时序（`lidAt`）、限帧、布局、显形节奏、没有 WebGL2 时退回 2D 原图 |
 | `aoko-face.ts` | 表情图集的格与调度：`FACE_BOX`、`FACES`、`IDLE`、`faceDirector` |
 | `aoko-stage.ts`、`aoko-gl.ts`、`aoko-bloom.ts` | 画布与相机（`atDepth`）、底层与前景离屏层的合成、前景泛光、公共材质 |

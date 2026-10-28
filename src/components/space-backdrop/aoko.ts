@@ -4,7 +4,7 @@ import { faceDirector, STILL_FACE } from "./aoko-face";
 import { figure, PAD, SRC_H, SRC_W } from "./aoko-figure";
 import { cannonSince, palmLight } from "./aoko-cannon";
 import { front, orbAt } from "./aoko-front";
-import { FLOOR_UNFOLD_S, fxState, SHOWN, STILL, type FxState } from "./aoko-fx";
+import { FLOOR_UNFOLD_S, fxState, SHOWN, STILL } from "./aoko-fx";
 import { dispose } from "./aoko-gl";
 import { smooth } from "./aoko-paint";
 import type { HandPose } from "./aoko-rings";
@@ -43,8 +43,6 @@ function handPose(t: number): HandPose {
   return { dx: -0.5 * a + 0.4 * b, dy: -a - 0.3 * b, zoom: 1 / (1 - 0.014 * (0.5 + 0.5 * Math.sin(t * 2.4 - 0.8))) };
 }
 
-// 闲置时也带一层蓝紫重打光：人站在亮着的法阵里，对照 img0611（原色）与 img0612（被法阵照亮）。
-const glowOf = ({ power, flash }: FxState) => 0.32 + 0.55 * power + 0.25 * flash;
 
 const FX = { band: "band", runes: "runes", ring: "ring", octa: "octa", bolt: "bolt", boltFine: "bolt-fine", floorOuter: "floor-outer", floorInner: "floor-inner", floorInnerFill: "floor-inner-fill" } as const;
 const loadAll = <K extends string>(srcs: Record<K, string>) =>
@@ -78,8 +76,9 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     const show = revealAt === null ? SHOWN : { floor: Math.max(0, Math.min(1, unfold)), ring: smooth(0.55, 0.85, p), front: smooth(0.7, 1, p) };
     const pose = handPose(t);
     const lamp = [...orbAt(pose), palmLight(cannonSince(state)) * show.front];
-    scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), glowOf(state), state.flash, smooth(0.12, 0.55, p), lamp);
-    scene.bk?.update(state, show);
+    // 照人的光跟着场景里真的亮着的东西走：法阵、身后光环没加载出来就不照。
+    const lit = scene.bk?.update(state, show) ?? { floor: 0, ring: 0 };
+    scene.fig.update(t, closed, reducedMotion ? STILL_FACE : faces.face(t), { ...lit, front: show.front, power: state.power }, state.flash, smooth(0.12, 0.55, p), lamp);
     scene.fr?.update(state, pose, show.front);
     gl.render(BLOOM * (1 + state.power + 2 * state.flash));
     if (p >= 1 && unfold >= 1) revealAt = null;
@@ -147,18 +146,19 @@ export function aokoStanding(root: HTMLElement, { gutter, reducedMotion = false,
     layout();
   };
 
-  // 立绘那几张缺一张就不挂；特效贴图缺一张只是不画特效，法线图缺了手就按朝前的法线打光，立绘照常挂。
+  // 立绘那几张缺一张就不挂；特效贴图缺一张只是不画特效，法线图缺了就按朝前的法线打光，立绘照常挂。
   const fxSrcs = Object.fromEntries(Object.entries(FX).map(([k, v]) => [k, FX_ASSET(v)])) as Record<keyof typeof FX, string>;
   void Promise.all([
     loadAll({ art: ART.src, rig: ART.rig, faces: ART.faces, arm: ART.arm, fill: ART.fill }),
-    loadImage(ART.normal).catch(() => null),
+    loadImage(ART.armNormal).catch(() => null),
+    loadImage(ART.bodyNormal).catch(() => null),
     loadAll(fxSrcs).catch(() => null),
   ]).then(
-    ([art, normal, fx]) => {
+    ([art, armNormal, bodyNormal, fx]) => {
       if (stopped) return;
       if (!gl) return fallback(art.art);
       try {
-        const fig = figure({ ...art, normal });
+        const fig = figure({ ...art, armNormal, bodyNormal });
         scene = { fig, bk: fx && back(fx, gl.anisotropy), fr: fx && front({ ...fx, arm: art.arm }, gl.anisotropy) };
         if (scene.bk) gl.root.add(scene.bk.group);
         gl.root.add(fig.shadow, fig.mesh);

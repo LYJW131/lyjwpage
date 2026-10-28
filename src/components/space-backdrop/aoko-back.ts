@@ -46,11 +46,14 @@ export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInne
 
   return {
     group,
+    // 返回法阵和身后光环这一帧照人的亮度（0–1），立绘着色器拿去当光源强度。
     update({ power, flash, t, still }: FxState, show: Reveal) {
       // 召唤展开期间砖地跟着显现前沿出来（ground 0）；平时重放只熄法阵和它照出的紫，砖地暗底不动。
       if (show.floor < 1) summonedAt = t;
       const relight = still ? { alpha: 1, unfold: 1 } : floorRelight(t, summonedAt);
-      ground.update(t * 0.03, (FLOOR_IDLE + (1 - FLOOR_IDLE) * power) * relight.alpha, Math.min(show.floor, relight.unfold), show.floor < 1 ? 0 : 1);
+      const floorAlpha = (FLOOR_IDLE + (1 - FLOOR_IDLE) * power) * relight.alpha;
+      const unfold = Math.min(show.floor, relight.unfold);
+      ground.update(t * 0.03, floorAlpha, unfold, show.floor < 1 ? 0 : 1);
 
       threads.begin();
       for (let i = 0; i < 16; i++) {
@@ -93,6 +96,7 @@ export function back(images: Record<"band" | "runes" | "floorOuter" | "floorInne
       alpha(runes, Math.min(1, glow) * show.ring);
       // 在光环以内、往两头淡掉，画到环外硬收尾就像一道划痕。
       for (const line of lines) alpha(line, (0.16 + 0.3 * power + 0.4 * flash) * show.ring);
+      return { floor: floorAlpha * unfold, ring: Math.min(1, glow) * show.ring };
     },
   };
 }
