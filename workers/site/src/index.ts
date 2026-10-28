@@ -8,10 +8,8 @@ import { statusResponse } from "@shared/status-response";
 
 import {
   FIRST_SCREEN_FETCH_TIMEOUT_MS,
-  FIRST_SCREEN_STATUS_TIMEOUT_MS,
   FIRST_SCREEN_UNAVAILABLE,
   type FirstScreen,
-  withDeadline,
 } from "@/lib/first-screen";
 import {
   IMAGE_MAX_BYTES,
@@ -119,7 +117,7 @@ export class StatusSnapshot extends WorkerEntrypoint<Env> implements SiteCacheRp
 
     let upstream: Response;
     try {
-      upstream = await withDeadline(this.readStatus(url.pathname), FIRST_SCREEN_STATUS_TIMEOUT_MS);
+      upstream = await this.readStatus(url.pathname);
     } catch {
       return errorResponse(503, "Status upstream failed");
     }
