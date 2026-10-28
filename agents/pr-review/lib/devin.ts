@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export const MODEL = "swe-2-max";
 
@@ -52,7 +55,7 @@ export function reviewerConfig(denyRead: string[], extra: Record<string, unknown
   };
 }
 
-// 工作区外一律不许读：/proc 下能读到父进程的环境变量（含 GITHUB_TOKEN），家目录里有 Devin 凭据。
+// 工作区外一律不许读：/proc 下能读到父进程的环境变量（含各家 API key），家目录里有 Devin 凭据。
 export const SYSTEM_DENY_READ = [
   "/proc/**",
   "/sys/**",
@@ -68,6 +71,14 @@ export const SYSTEM_DENY_READ = [
   "/var/run/**",
   "/run/**",
 ];
+
+// `--config` 整份替换用户配置；用户配置里的 otel 段照搬过来，Devin 的用量照常上报。
+export function userOtel(): Record<string, unknown> {
+  const path = join(homedir(), ".config/devin/config.json");
+  if (!existsSync(path)) return {};
+  const { otel } = JSON.parse(readFileSync(path, "utf8")) as { otel?: unknown };
+  return otel ? { otel } : {};
+}
 
 // 子进程只拿到跑 CLI 要的环境变量，令牌一类不传下去。
 const ENV_KEEP = /^(PATH|HOME|USER|LANG|LC_\w+|TERM|TMPDIR|XDG_\w+|SSL_CERT_FILE|SSL_CERT_DIR|NODE_EXTRA_CA_CERTS|REQUESTS_CA_BUNDLE|OTEL_\w+|https?_proxy|HTTPS?_PROXY|no_proxy|NO_PROXY|ALL_PROXY|all_proxy)$/;

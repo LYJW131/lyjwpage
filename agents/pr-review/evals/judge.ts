@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import type { Finding } from "../lib/review-body.js";
+import type { Finding } from "../lib/findings.js";
 import { type Case, caseWorkspace, loadCases } from "./cases.js";
 
 // 跑评审员的那一侧每个 (用例, 轮次) 写一份：findings 为 null 表示没交出能解析的结果。

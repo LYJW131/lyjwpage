@@ -38,7 +38,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 > <线程根消息和后来补的要求，原文照贴>
 ```
 
-- 你判断是大改动时，开 PR 前先照 [lyjwpage-swe-loop](../lyjwpage-swe-loop/SKILL.md) 让 swe-2-max 审到双方认可，开 PR 后给它贴 `needs-judge` 标签（`scripts/pr-gate/tier.ts#JUDGE_LABEL`）：Action 派 Opus 判定员、Claude review 审一次，合并要等判定 PASS 与机器评审。小改动不贴（lyjw 定的：要不要叫 Opus 由线程判断）。脚本只看标签，不读描述里的文字。
+- 你判断是大改动时，开 PR 前先照 [lyjwpage-pr-review](../lyjwpage-pr-review/SKILL.md) 让自家评审员审一遍、逐条答复，开 PR 后给它贴 `needs-judge` 标签（`scripts/pr-gate/tier.ts#JUDGE_LABEL`）：Action 派 Opus 判定员、Claude review 审一次，合并要等判定 PASS 与机器评审。小改动不贴（lyjw 定的：要不要叫 Opus 由线程判断）。脚本只看标签，不读描述里的文字。
 
 - 清单写成验证员不看对话也能照做的样子：页面或命令、宽度与主题、预期数值。内容同「派法」简报模板的第 2、3 栏。
 - 清单只写要读代码、开页面或下判断的项：某个行为成立、某段文字与代码一致、某个副作用不存在。CI 的 `check` 会跑的（eslint、typecheck、`docs:check`、`rules:check`、全量单测）不写进清单；覆盖改动行为的单测至多写一项，让验证员拿它定 `unit-test-verified`。

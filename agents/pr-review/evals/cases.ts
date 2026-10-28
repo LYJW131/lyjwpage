@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type PullTarget, reviewWorkspace } from "../lib/workspace.js";
-import { gitSource } from "./git-source.js";
+import { gitSource } from "../lib/git-source.js";
 
 export type Label = { kind: string; path: string; line: number | null; title: string; comment: string; reply?: string; reason?: string };
 export type Case = PullTarget & {

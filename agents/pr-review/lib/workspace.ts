@@ -1,16 +1,13 @@
 import { gunzipSync } from "node:zlib";
 
-type Octokit = {
-  request: (route: string, params: Record<string, unknown>) => Promise<{ data: unknown }>;
-};
-
-// diff 用三点比较（merge-base 到 head），与 PR 页面的 Files changed 一致；tarball 是 head 的源码树。
+// diff 是 merge-base 到 head 的三点比较；tarball 是 head 的源码树。
 export type Source = { diff(): Promise<string>; tarball(): Promise<Buffer> };
 
 export type PullTarget = {
   owner: string;
   repo: string;
-  number: number;
+  // 还没开 PR 时没有编号。
+  number?: number;
   title: string;
   body: string;
   author: string;
@@ -24,25 +21,6 @@ const SKIP_EXT =
   /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|tiff?|psd|mp3|m4a|wav|ogg|flac|mp4|mov|webm|woff2?|ttf|otf|eot|zip|gz|tgz|bz2|xz|7z|wasm|pdf|car|mlmodel|glb|bin|ktx2|exr|hdr)$/i;
 const SKIP_PATH = /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb)$|(^|\/)node_modules\//;
 
-export function githubSource(octokit: Octokit, target: PullTarget): Source {
-  const { owner, repo, baseSha, headSha } = target;
-  return {
-    async diff() {
-      const { data } = await octokit.request("GET /repos/{owner}/{repo}/compare/{basehead}", {
-        owner,
-        repo,
-        basehead: `${baseSha}...${headSha}`,
-        headers: { accept: "application/vnd.github.diff" },
-      });
-      return typeof data === "string" ? data : "";
-    },
-    async tarball() {
-      const { data } = await octokit.request("GET /repos/{owner}/{repo}/tarball/{ref}", { owner, repo, ref: headSha });
-      return toBuffer(data);
-    },
-  };
-}
-
 // 评审只读这份快照：主机在开轮前备好 diff 与 head 的整棵源码树，模型不用自己去 GitHub 取证。
 export async function reviewWorkspace(source: Source, target: PullTarget): Promise<Record<string, string>> {
   const [diffText, tarball] = await Promise.all([source.diff(), source.tarball()]);
@@ -55,12 +33,6 @@ export async function reviewWorkspace(source: Source, target: PullTarget): Promi
   return files;
 }
 
-function toBuffer(data: unknown): Buffer {
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  throw new Error("tarball response is not binary");
-}
-
 export function changedPaths(diff: string): string[] {
   const paths = new Set<string>();
   for (const match of diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)) paths.add(match[2]);
@@ -69,7 +41,7 @@ export function changedPaths(diff: string): string[] {
 
 function metaMarkdown(target: PullTarget, paths: string[]): string {
   return [
-    `# PR #${target.number}: ${target.title}`,
+    target.number ? `# PR #${target.number}: ${target.title}` : `# Change (pull request not opened yet): ${target.title}`,
     "",
     `- Author: ${target.author}`,
     `- Base: ${target.baseSha}`,
@@ -84,7 +56,7 @@ function metaMarkdown(target: PullTarget, paths: string[]): string {
   ].join("\n");
 }
 
-// GitHub 的 tarball 是带 pax 头的 ustar，顶层套一层 `<owner>-<repo>-<sha>/`。
+// `git archive` 出的是带 pax 头的 ustar，顶层套一层 `--prefix` 目录。
 export function* untarText(gzipped: Buffer): Generator<[string, string]> {
   const tar = gunzipSync(gzipped);
   let offset = 0;

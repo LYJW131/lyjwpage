@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { Finding } from "./review-body.js";
 
 const finding = z.object({
   kind: z.enum(["bug", "security"]),
@@ -11,6 +10,8 @@ const finding = z.object({
 });
 
 const review = z.object({ findings: z.array(finding).max(12) });
+
+export type Finding = z.infer<typeof finding>;
 
 // 评审员最后一条消息应当只有一个 JSON 对象；模型偶尔包上代码块或前置一句话，取最后一个能解析的对象。
 export function parseFindings(text: string): Finding[] {

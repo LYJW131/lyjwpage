@@ -1,9 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { MODEL, SYSTEM_DENY_READ, rateLimitReset, reviewerConfig, runDevin } from "../lib/devin.js";
+import { MODEL, SYSTEM_DENY_READ, rateLimitReset, reviewerConfig, runDevin, userOtel } from "../lib/devin.js";
 import { parseFindings } from "../lib/findings.js";
 import { triggerMessage } from "../lib/prompt.js";
 import { type Case, WORKSPACES, caseWorkspace, loadCases } from "./cases.js";
@@ -34,7 +33,6 @@ const picked = [...all.values()].filter(
 );
 const reps = Number(values.reps);
 const prompt = await readFile(values.prompt!, "utf8");
-const otel = JSON.parse(await readFile(join(homedir(), ".config/devin/config.json"), "utf8")).otel;
 
 // 评审员不许读工作区外：仓库检出、别的用例快照（含后来的提交）、凭据和本机配置。
 function denyRead(item: Case) {
@@ -50,7 +48,7 @@ async function runOne(item: Case, rep: number): Promise<Raw> {
   const stem = `${item.id}_rep${rep}`;
   const configPath = join(VARIANT, "cfg", `${stem}.json`);
   const promptPath = join(VARIANT, "cfg", `${stem}.md`);
-  await writeFile(configPath, JSON.stringify(reviewerConfig(denyRead(item), { otel }), null, 1));
+  await writeFile(configPath, JSON.stringify(reviewerConfig(denyRead(item), userOtel()), null, 1));
   await writeFile(promptPath, `${prompt}\n\n---\n\n${triggerMessage(item)}\n`);
   const exportPath = join(VARIANT, "traces", `${stem}.json`);
   const base = { case_id: item.id, rep, model: values.model };
