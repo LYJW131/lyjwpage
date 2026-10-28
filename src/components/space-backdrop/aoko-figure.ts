@@ -1,7 +1,7 @@
 import { PlaneGeometry } from "three";
 
 import { AHEAD, MUZZLE } from "./aoko-cannon";
-import { ORB } from "./aoko-fx";
+import { FLOOR, ORB, RING_X, RING_Y } from "./aoko-fx";
 import { FACE_BOX, FACE_COLS, FACE_ROWS, type Face } from "./aoko-face";
 import { OVER, plane, shader, texture } from "./aoko-gl";
 import { ARM_RING_SHAPES, RIFTS, rifts } from "./aoko-rings";
@@ -27,17 +27,35 @@ const REFRACT = ARM_RING_SHAPES.rings
   })
   .join("\n");
 
-// 光炮照人：光源就是掌心前方的光团（aoko-cannon.ts#AHEAD），随距离按 FALLOFF 衰减（照法取自 PR #722）。
+// 光炮照手：光源就是掌心前方的光团（aoko-cannon.ts#AHEAD），随距离按 FALLOFF 衰减（照法取自 PR #722）。
 // 手用法线图（scripts/aoko-hand-normals.py），受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；整只手先冲一层淡紫（原片里背光面也是亮的淡紫，不是暗紫）。
-// 手以外（脸、袖子、头发）拿立绘透明度的梯度当法线，朝光的轮廓边先亮，按更远的 BODY_FALLOFF 柔和地补一层，不分档。
 const HAND_FALLOFF = 300;
-const BODY_FALLOFF = 260;
 
-const FRAG = `uniform sampler2D img,rig,faces,arm,fill,armN;uniform vec4 lamp;uniform float t,lid,glow,flash,appear,shutTile;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
+// 场景光照人：整张立绘有法线图（aoko-entry.ts#ART 的 bodyNormal），每个光源按位置、颜色、强度算受光，光源在身后的只亮朝它那侧的轮廓。
+// 要的是二次元的打光：原画不压暗，没照到的地方保持原样；受光面一刀切成一块色（不做平滑过渡），沿原来的颜色提亮，
+// 深色的地方只带一点光的颜色。直接按滤色把青光叠上去，红裙会被冲成发灰的粉。
+// 法线图只留大体积、不带衣褶细节，细节一多受光面就碎成一片片的脏斑（lyjw：「褶皱太多了」）。
+// 位置是原图像素（x 右、y 下、z 朝镜头），r 是衰减到一半的距离。
+const LIGHTS = {
+  // 脚下法阵前后两盏：前面那盏从下往上照腿和裙摆，后面那盏只亮轮廓。
+  floorFront: { at: [FLOOR.x, FLOOR.y, 500], rgb: [0.35, 0.75, 1], k: 0.6, r: 700 },
+  floorBack: { at: [FLOOR.x, FLOOR.y, -600], rgb: [0.4, 0.6, 1], k: 0.7, r: 1400 },
+  // 掌心光球跟着手层摆（位置由 lamp 传进来），蓄力时变亮，发射那一下最亮。
+  orb: { rgb: [0.55, 0.9, 1], k: 0.3, r: 220 },
+  halo: { at: [RING_X, RING_Y, -400], rgb: [0.6, 0.55, 1], k: 0.6, r: 900 },
+};
+const v3 = (a: readonly number[]) => `vec3(${a.map(f).join(",")})`;
+
+const FRAG = `uniform sampler2D img,rig,faces,arm,fill,armN,bodyN;uniform vec4 lamp,lv;uniform float t,lid,flash,appear,shutTile,hasN;uniform vec3 face;uniform vec3 rift[${RIFTS}];varying vec2 v;
 const vec2 S=vec2(${SRC_W}.,${SRC_H}.);const float PAD=${PAD}.;
 const vec2 ORB=vec2(${ORB[0]}.,${ORB[1]}.);
-const vec3 FILL=vec3(.42,.46,.78),LAVENDER=vec3(.62,.6,.98);
-const vec3 SHADE=vec3(.06,.055,.19),TINT=vec3(.361,.357,.957),HIGH=vec3(.765,.714,.996),RIM=vec3(.463,.573,.965);
+const vec3 LAVENDER=vec3(.62,.6,.98);
+void lightUp(vec3 N,vec2 P,vec3 at,vec3 rgb,float k,float r,inout vec3 glow){
+  vec3 l=vec3(at.xy-P,at.z);float dl=length(l);vec3 L=l/max(dl,1.);
+  float att=k/(1.+dl*dl/(r*r));
+  glow+=rgb*smoothstep(.12,.22,dot(N,L))*att;
+  if(at.z<0.)glow+=rgb*smoothstep(.45,.6,1.-N.z)*smoothstep(.2,.4,dot(normalize(N.xy+.0001),normalize(L.xy+.0001)))*att*1.6;
+}
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
 vec4 tile(float i,vec2 bu){if(i<0.)return vec4(0.);vec2 o=vec2(mod(i,${FACE_COLS}.),floor(i/${FACE_COLS}.));return texture2D(faces,(o+clamp(bu,0.,1.))/vec2(${FACE_COLS}.,${FACE_ROWS}.))*inside(bu);}
 vec3 over(vec3 c,vec4 p){return mix(c,p.rgb/max(p.a,.001),p.a);}
@@ -111,31 +129,29 @@ ${REFRACT}
   float pulse=.5+.5*sin(t*2.4);
   float cy=clamp((c.b-c.r)*2.2,0.,1.);
   vec3 base=c.rgb/max(c.a,.001);
-  float L=dot(base,vec3(.299,.587,.114));
-  vec3 duo=L<.5?mix(SHADE,TINT,L*2.):mix(TINT,HIGH,L*2.-1.);
-  vec2 px=3./S;
-  float near=texture2D(img,s+vec2(px.x,0.)).a+texture2D(img,s-vec2(px.x,0.)).a+texture2D(img,s+vec2(0.,px.y)).a+texture2D(img,s-vec2(0.,px.y)).a;
-  float rim=clamp((c.a-near*.25)*2.,0.,1.);
-  base=mix(base,duo,min(glow*.65,.7))+GLOW*smoothstep(1350.,${SRC_H}.,P.y)*(.1+.25*glow)+RIM*rim*glow;
+  vec4 nm=texture2D(armN,clamp(au,0.,1.))*inside(au);
+  vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
+  // 立绘法线图是 y 朝上，这里的坐标 y 朝下；伸出的手用手层自己的法线。
+  vec3 nb=hasN>0.?texture2D(bodyN,clamp(s,0.,1.)).xyz*2.-1.:vec3(0.,0.,1.);
+  vec3 N=normalize(mix(vec3(nb.x,-nb.y,nb.z),n,ar.a));
+  vec3 glow=vec3(0.);
+  lightUp(N,P,${v3(LIGHTS.floorFront.at)},${v3(LIGHTS.floorFront.rgb)},${f(LIGHTS.floorFront.k)}*lv.x,${f(LIGHTS.floorFront.r)},glow);
+  lightUp(N,P,${v3(LIGHTS.floorBack.at)},${v3(LIGHTS.floorBack.rgb)},${f(LIGHTS.floorBack.k)}*lv.x,${f(LIGHTS.floorBack.r)},glow);
+  lightUp(N,P,${v3(LIGHTS.halo.at)},${v3(LIGHTS.halo.rgb)},${f(LIGHTS.halo.k)}*lv.y,${f(LIGHTS.halo.r)},glow);
+  lightUp(N,P,lamp.xyz,${v3(LIGHTS.orb.rgb)},${f(LIGHTS.orb.k)}*lv.z*(.55+.45*sin(t*2.4))*(1.+2.5*lv.w)+2.*flash+.6*lamp.w,${f(LIGHTS.orb.r)},glow);
+  vec3 lit=base+glow*(base*1.2+.14);
+  base=mix(lit,.85+.15*(1.-exp(-(lit-.85)*4.)),step(.85,lit));
   if(lamp.w>0.){
-    vec4 nm=texture2D(armN,clamp(au,0.,1.))*inside(au);
-    vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
     vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-(Q0-dh),${AHEAD}.);
     float dl=length(l);
     float e=max(dot(n,l/dl),0.)/(1.+dl*dl/${HAND_FALLOFF ** 2}.)*lamp.w;
     float band=smoothstep(.16,.2,e)*.6+smoothstep(.4,.44,e)*.4;
     vec3 wash=mix(base,LAVENDER*(.55+.45*dot(base,vec3(.299,.587,.114))),.6*min(lamp.w,1.));
-    vec3 lit=mix(wash,max(base,vec3(.9,.91,1.)),band);
-    base=mix(base,lit,ar.a*min(lamp.w,1.));
-    vec2 ga=vec2(texture2D(img,s+vec2(px.x,0.)).a-texture2D(img,s-vec2(px.x,0.)).a,texture2D(img,s+vec2(0.,px.y)).a-texture2D(img,s-vec2(0.,px.y)).a);
-    vec3 nb=normalize(vec3(-ga*1.5,1.));
-    vec3 lb=vec3(lamp.xy-P,lamp.z);
-    float db=length(lb);
-    base+=FILL*max(dot(nb,lb/db),0.)/(1.+db*db/${BODY_FALLOFF ** 2}.)*lamp.w*(1.-ar.a);
+    vec3 hit=mix(wash,max(base,vec3(.9,.91,1.)),band);
+    base=mix(base,hit,ar.a*min(lamp.w,1.));
   }
   c.rgb=base*c.a;
   c.rgb+=smoothstep(60.,12.,length(P-ORB))*cy*(.1+.24*pulse)*GLOW*c.a;
-  c.rgb+=smoothstep(170.,20.,length(P-ORB))*(.05+.09*pulse)*GLOW*c.a;
   vec2 eL=(P-vec2(447.,180.))/vec2(26.,30.);
   vec2 eR=(P-vec2(530.,182.))/vec2(26.,30.);
   float iris=(smoothstep(1.,.6,length(eL))+smoothstep(1.,.6,length(eR)))*cy;
@@ -156,7 +172,9 @@ ${REFRACT}
 const SHADOW_FRAG = `uniform sampler2D map;uniform float appear,alpha,h,top;varying vec2 v;
 void main(){float y=v.y*h-top;float front=appear*1.3-.15-(1.-y/${SRC_H}.);gl_FragColor=vec4(0.,0.,0.,texture2D(map,v).a*alpha*smoothstep(0.,.08,front));}`;
 
-type Images = Record<"art" | "rig" | "faces" | "arm" | "fill", HTMLImageElement> & { normal: HTMLImageElement | null };
+type Images = Record<"art" | "rig" | "faces" | "arm" | "fill", HTMLImageElement> & Record<"armNormal" | "bodyNormal", HTMLImageElement | null>;
+// 法阵与身后光环照人的亮度、光球显出来的程度、蓄力进度，都是 0–1。
+export type Lights = { floor: number; ring: number; front: number; power: number };
 
 export function figure(images: Images) {
   const riftData = new Float32Array(RIFTS * 3);
@@ -169,11 +187,13 @@ export function figure(images: Images) {
       arm: { value: texture(images.arm) },
       fill: { value: texture(images.fill) },
       // 法线图缺了就给一张透明的 1×1：着色器见 alpha 为 0 当朝前的法线。
-      armN: { value: texture(images.normal ?? document.createElement("canvas"), { premultiply: false }) },
+      armN: { value: texture(images.armNormal ?? document.createElement("canvas"), { premultiply: false }) },
+      bodyN: { value: texture(images.bodyNormal ?? document.createElement("canvas"), { premultiply: false }) },
+      hasN: { value: images.bodyNormal ? 1 : 0 },
       lamp: { value: [0, 0, 0, 0] },
+      lv: { value: [0, 0, 0, 0] },
       t: { value: 0 },
       lid: { value: 0 },
-      glow: { value: 0 },
       flash: { value: 0 },
       appear: { value: 1 },
       shutTile: { value: -1 },
@@ -218,14 +238,14 @@ export function figure(images: Images) {
       shadowMat.uniforms.map.value = texture(silhouette);
     },
     // lamp：光团在场景里的位置与照在人身上的强度 [x, y, z, k]（aoko-front.ts#orbAt）。
-    update(t: number, closed: number, face: Face, light: number, flash: number, appear: number, lamp: readonly number[]) {
+    update(t: number, closed: number, face: Face, lights: Lights, flash: number, appear: number, lamp: readonly number[]) {
       const u = material.uniforms;
       u.lamp.value = lamp;
       u.t.value = t;
       u.lid.value = closed;
       u.face.value = [face.from, face.to, face.mix];
       u.shutTile.value = face.shut;
-      u.glow.value = light;
+      u.lv.value = [lights.floor, lights.ring, lights.front, lights.power];
       u.flash.value = flash;
       u.appear.value = appear;
       rifts(t, riftData);
