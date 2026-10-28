@@ -7,7 +7,7 @@ const SEQUENCE = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "
 const IDLE_MS = 2500;
 // 最后一键的闪光里镜头退回原位的时长；宇航员等它退完再起飞，不然换到置顶层时会跳一下大小。
 export const RELEASE_MS = 400;
-// strike-*、swoop、storm 是整帧图层，按铺满整屏画；往里加的图也要是整帧（来源见 scripts/aoko-fx-assets.ts）。
+// strike-*、swoop、storm 是整帧图层，按铺满整屏画；往里加的图也要是整帧（来源见 character-art 仓库 scripts/fx/aoko-fx-assets.ts）。
 const STRIKES = Array.from({ length: 6 }, (_, i) => `strike-${i + 1}`);
 // 最后一键从 STRIKES 里随机取几道和电柱一起劈下；六道全下时整页只剩闪电，看不清立绘在哪显形。
 const FINALE_STRIKES = 2;
