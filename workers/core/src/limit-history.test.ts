@@ -91,3 +91,16 @@ test("limit history: the first cron backfills the window from D1 once, and backf
   await b.archive().run();
   assert.equal(b.changes() - before, 2, "only the live reading is written (one row per table)");
 });
+
+test("limit history: the backfill also finishes when D1 has nothing in the window", async () => {
+  const b = setup();
+  const d1 = { prepare: (query: string) => ({ bind: (...values: unknown[]) => ({ all: async <T>() => ({ results: b.all(query, values) as T[] }) }) }) };
+  let first: number | null = null;
+  let second: number | null = 0;
+  await b.write(async () => {
+    first = await backfillLimitHours(d1, T0);
+    second = await backfillLimitHours(d1, T0);
+  });
+  assert.equal(first, 0);
+  assert.equal(second, null);
+});
