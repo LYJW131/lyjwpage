@@ -143,7 +143,7 @@ ${REFRACT}
   float low=smoothstep(${f(FLOOR.y - GROUND.fade)},${f(FLOOR.y)},P.y);
   float hem=smoothstep(${f(FLOOR.y - GROUND.rim)},${f(FLOOR.y)},P.y);
   // 直接叠加、不按底色缩放：黑靴底色太暗，乘上去就没了。
-  vec3 ground=${v3(GROUND.rgb)}*lv.x*(low*low*${f(GROUND.k)}*(.6+.4*clamp(N.z-N.y,0.,1.))+edge*hem*${f(GROUND.edge)});
+  vec3 ground=${v3(GROUND.rgb)}*lv.x*(low*low*${f(GROUND.k)}*(.6+.4*clamp(N.z+N.y,0.,1.))+edge*hem*${f(GROUND.edge)});
   lightUp(N,P,${v3(LIGHTS.floorBack.at)},${v3(LIGHTS.floorBack.rgb)},${f(LIGHTS.floorBack.k)}*lv.x,${f(LIGHTS.floorBack.r)},glow);
   lightUp(N,P,${v3(LIGHTS.halo.at)},${v3(LIGHTS.halo.rgb)},${f(LIGHTS.halo.k)}*lv.y,${f(LIGHTS.halo.r)},glow);
   lightUp(N,P,lamp.xyz,${v3(LIGHTS.orb.rgb)},${f(LIGHTS.orb.k)}*lv.z*(.55+.45*sin(t*2.4))*(1.+2.5*lv.w)+2.*flash+.6*lamp.w,${f(LIGHTS.orb.r)},glow);
