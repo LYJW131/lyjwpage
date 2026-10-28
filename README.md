@@ -25,7 +25,7 @@
 | **运动** | Apple Watch 三环与最近训练 |
 | **服务器** | 落地节点的速率、流量、CPU、内存、磁盘 |
 | **AI Coding** | 各编码工具的 Token 用量、成本估算、在用的 agent、年度热力图与限额 |
-| **游戏** | Meta Quest 正在玩；PlayStation 在线状态与奖杯 |
+| **游戏** | Meta Quest 与 PlayStation 正在玩；PlayStation 在线状态与奖杯 |
 | **Pulse** | 编码、Token、听、看、玩、充电、运动的 24 小时时间线 |
 | **服务状态** | Claude、ChatGPT、Cursor、GitHub、Cloudflare 等官方状态页汇总 |
 | **站点自身** | 仓库与提交、30 天在线状态、性能分、各 Worker 与上报器指标 |
@@ -74,6 +74,13 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=3">
   <img src="https://lyjw.me/cards/quest.svg?v=3" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
+</picture>
+
+**PlayStation 正在玩**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation-now.svg?theme=dark&amp;v=1">
+  <img src="https://lyjw.me/cards/playstation-now.svg?v=1" alt="PlayStation 正在玩卡片：游戏、主机与已玩时长" width="100%">
 </picture>
 
 **充电头与充电宝**

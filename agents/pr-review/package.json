@@ -1,0 +1,21 @@
+{
+  "name": "lyjwpage-review",
+  "private": true,
+  "type": "module",
+  "description": "Reviews lyjwpage changes for bugs and security issues with Devin CLI before a pull request is opened.",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test lib/*.test.ts",
+    "review": "tsx run.ts",
+    "eval": "tsx evals/devin-run.ts",
+    "judge": "tsx evals/judge.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3"
+  }
+}

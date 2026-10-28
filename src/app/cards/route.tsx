@@ -13,6 +13,7 @@ import { FocusNowCard } from "@/components/live/focus-now-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
+import { PlaystationNowCard } from "@/components/live/playstation-now-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import { PulseCard } from "@/components/live/pulse-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
@@ -43,6 +44,7 @@ import cloudflareOutageFixture from "../../../workers/core/dev-fixtures/agent-st
 import chargerFixture from "../../../workers/core/dev-fixtures/charger-macbook-iphone.json";
 import focusFixture from "../../../workers/core/dev-fixtures/focus-now-sleep.json";
 import questFixture from "../../../workers/core/dev-fixtures/quest-now-playing.json";
+import playingNowFixture from "../../../workers/core/dev-fixtures/playing-now-pragmata.json";
 import listeningFixture from "../../../workers/core/dev-fixtures/listening-now-yoasobi.json";
 import powerBankFixture from "../../../workers/core/dev-fixtures/powerbank-charging.json";
 import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
@@ -170,6 +172,18 @@ const CARDS: Record<string, ReadmeCard> = {
     async render(status, site, now) {
       const { value, sample } = orSample(await status("questNow"), (data) => data.playing != null, questFixture, now);
       return { element: <div style={{ marginTop: -12 }}><QuestNowCard nowFallback={await inlineQuestCover(site, value)} /></div>, sample };
+    },
+  },
+  "playstation-now": {
+    label: "Now Playing",
+    width: FULL_WIDTH,
+    height: QUEST_HEIGHT,
+    annotate: (html, note) => html.replace(/(In Game<\/span><span[^>]*>[\s\S]*?)(<\/span>)/, `$1 · ${note}$2`),
+    async render(status, _site, now) {
+      const { value, sample } = orSample(await status("playingNow"), (data) => data.playing != null, playingNowFixture, now);
+      // 不带游玩列表：卡高按没有时长那一行定死。
+      const list = { ok: false, error: FIRST_SCREEN_UNAVAILABLE } as const;
+      return { element: <div style={{ marginTop: -12 }}><PlaystationNowCard fallback={list} nowFallback={value} /></div>, sample };
     },
   },
   charger: {

@@ -73,7 +73,8 @@
 - Git history slimming parked: [[repo-history-slim]]. Chat tiers/consent/logs: [[chat-tiers]]. DO locations: [[do-physical-locations]].
 - Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn.
 - **Cron late delivery** (Cloudflare): core and collector claim slots (#675, #681): [[core-heartbeat-slot-claim]], [[core-cron-internal-error]].
-- Small settled site decisions: [[site-small-decisions]]. Desktop CLS: [[desktop-cls-scrollbar]].
+- **Stored-but-not-public data inventory + pending GitHub-login MCP plan:** [[private-data-inventory]].
+- Small settled site decisions: [[site-small-decisions]]. Claude limit forecast backtest, no change until ~4 hourly weeks: [[limit-forecast-backtest]]. Desktop CLS: [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy.
 - iOS app paused; keep only its reporting endpoints.
 - **File-size rule (soft):** [[file-size-rule]]. README short; diagrams from `pnpm docs:diagrams`: [[readme-diagrams]].

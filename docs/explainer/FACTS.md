@@ -43,7 +43,7 @@ iPhone 那一站的 App 名按 main a2c6e1c 回代码复核过；apple-recent �
 | Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器；云端环境里的 Devin CLI 也推到这里 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（Claude Code 只收 cumulative，Devin CLI 只发 delta）；状态核心做差，落成和别的来源同形的日行、5 分钟桶、最近一次用量事件（`workers/core/src/stores/agents-otlp.ts`）。Mac 上的 Devin CLI 拿 `lyjwpage-mac` 推同一个入口，入口按凭据的权限记成另一个来源 `mac-otlp`（`workers/ingress/README.md`「OTLP：按凭据分来源」）。几处怎么合并见下文「编码用量」 |
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
-PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN，也不持有 PSN 凭据（`docs/ops-facts.md` 里采集 Worker 那一条）。PS5 电源没有来源上报，站点也不显示：PlayStation 信封带 `power` 字段会被入口拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。状态核心还留着一个没人调用、也没有新数据写入的只读接口 `playstationPower`（契约只加不改，`shared/state-core.ts#StateCoreRpc`），片中不画成活动的链路。
+PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。presence 里有在玩的游戏时首页出现一张 PlayStation 的 Now Playing 卡（`src/components/live/playstation-now-card.tsx`），开局时刻由 core 按同一款连续上报接续（`workers/core/src/stores/playstation.ts#withStartedAt`），上报器不报。采集 Worker 不拉 PSN，也不持有 PSN 凭据（`docs/ops-facts.md` 里采集 Worker 那一条）。PS5 电源没有来源上报，站点也不显示：PlayStation 信封带 `power` 字段会被入口拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。状态核心还留着一个没人调用、也没有新数据写入的只读接口 `playstationPower`（契约只加不改，`shared/state-core.ts#StateCoreRpc`），片中不画成活动的链路。
 
 容器跟 PS5 在同一个局域网里，用 UDP 发现包探测主机状态（`reporters/playstation-reporter/src/probe.ts#probeOnce`），按醒着、没醒两档调整打 PSN 的频率（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`，展开见 §7）。两档对调时立刻打一轮，所以开机后第一探读到醒着，紧跟着问一轮 PSN、寄一封。主机醒没醒只由容器自己探测，只用来定它自己的节奏，不进信封（信封只有 presence、游玩列表、奖杯：`reporters/playstation-reporter/src/site.ts#PlaystationEnvelope`），也不画成 Home Assistant 给的。片中不出间隔的数；第 01 章家里那一站不画探测，只画容器把 presence、游玩列表、奖杯寄到 `/api/ingest/playstation`，PSN 登录态留在本机、只拿来问 Sony。
 
@@ -129,9 +129,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 | 路 | 去向 | 例子 |
 |---|---|---|
-| 实时 | `CORE.commitIngest` → StateHub | desktop、Apple Music、充电、编码、HomePod、PS、Emby、Cursor |
+| 实时 | `CORE.commitIngest` → StateHub | desktop、Apple Music、充电、编码、HomePod、PS、Emby、Cursor、限额整点读数 |
 | 可滞后 | KV `LAG` | server（整封只走可滞后和归档两路）、限额、时区、圆环读数、训练列表、上报器账本 |
-| 归档 | D1 `HISTORY` | 训练、圆环日读数、限额快照、服务器小时汇总 |
+| 归档 | D1 `HISTORY` | 训练、圆环日读数、服务器小时汇总 |
 | 凭据 | KV `CREDENTIALS` | Mac 推来的 Apple Music user token |
 
 - `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总归档进 D1（`shared/ingest/prepare.ts#CoreCommand`；`workers/ingress/src/worker.ts#commitIngest`；`workers/ingress/src/ingest-archive.ts#ingestHistoryStatements`）。
@@ -210,7 +210,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### D1 长期历史 `lyjwpage-history`
 
 - 表见 `workers/core/migrations/` 的 `CREATE TABLE`（片中不说几张），其中记归档水位的是 `pulse_archive_state`，冻结不再写、原样保留的旧表是 `pulse_samples`、`coding_token_buckets`、`agent_usage_days`（`workers/core/README.md`）。长期保存、不按时间清理。写入按自然键 upsert（`shared/history-ingest.ts` 的各 `…Statements`），活动桶会按区间删掉重写（`workers/core/src/pulse-archive-statements.ts#DELETE_ACTIVITY_RANGE`），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
-- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、core（cron 每 5 分钟一轮的 pulse 归档，含编码用量的账本和 5 分钟桶；以及收下奖杯信封后的 `workers/core/src/stores/trophy-history.ts#archiveTrophies`）。
+- 写 D1 的有三方：上报入口（训练、圆环日读数、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、core（cron 每 5 分钟一轮的 pulse 归档，含编码用量的账本和 5 分钟桶、限额快照；以及收下奖杯信封后的 `workers/core/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
 ### core 的 cron（`workers/core/src/cron-round.ts#runCronRound`）

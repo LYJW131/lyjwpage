@@ -63,7 +63,7 @@ export function setup(options: { failStream?: ArchiveStream } = {}) {
   return {
     storage, state, archive, logged, db,
     at: (t: number) => { now = t; },
-    all: (query: string) => d1.prepare(query).all().map((row) => ({ ...row })) as Record<string, unknown>[],
+    all: (query: string, values: unknown[] = []) => d1.prepare(query).all(...(values as (string | number | null)[])).map((row) => ({ ...row })) as Record<string, unknown>[],
     exec: (query: string) => d1.exec(query),
     changes: () => changes,
     watermark: (stream: ArchiveStream) => (hub.prepare("SELECT value FROM metadata WHERE key = ?").get(`pulse-archive:v2:${stream}`) as { value?: string } | undefined)?.value ?? null,

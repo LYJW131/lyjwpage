@@ -1,6 +1,8 @@
 import type { LiveEvent } from "@shared/live-events";
 import { fanout } from "@core/fanout";
 import { recordCursorObservation } from "@core/stores/pulse-source-observations";
+import { stageLimitHours } from "@core/limit-history";
+import { getStorage } from "@shared/storage";
 import type { PreparedAgentLimits } from "@shared/ingest/agents";
 
 import { prepareCodingActivity, readCodingActivities } from "./coding-activity";
@@ -12,6 +14,11 @@ export async function commitPreparedAgentsReport(prepared: PreparedAgentLimits) 
   const writes: Promise<unknown>[] = [];
   const events: LiveEvent[] = [];
   const tags: string[] = [];
+
+  if (limits) {
+    const batch = getStorage().batch();
+    if (stageLimitHours(batch, limits, receivedAt)) writes.push(batch.execute());
+  }
 
   if (codingUsage) {
     const landing = await prepareCodingUsage("agents", codingUsage, receivedAt);

@@ -94,32 +94,60 @@ const UPSERT_LIMIT_HOUR = `INSERT INTO limit_hours(agent, limit_key, hour_at, wi
     used_percent = excluded.used_percent, resets_at = excluded.resets_at, received_at = excluded.received_at
   WHERE excluded.received_at >= limit_hours.received_at`;
 
-export function limitStatements(db: HistoryDb, limits: ParsedAgentLimits, receivedAt: number): HistoryStatement[] {
-  const date = siteDay(receivedAt);
+// 一行是某限额在一个 UTC 整点内的最后一次读数；状态核心从 StateHub 归档时按行写，日表取当天最晚的那行。
+export type LimitHourRow = {
+  agent: string;
+  key: string;
+  hourAt: number;
+  label: string | null;
+  group: string | null;
+  windowMinutes: number | null;
+  usedPercent: number;
+  resetsAt: number | null;
+  plan: string | null;
+  receivedAt: number;
+};
+
+export function limitHourRows(limits: ParsedAgentLimits, receivedAt: number): LimitHourRow[] {
   const hourAt = Math.floor(receivedAt / HOUR_MS) * HOUR_MS;
-  return limits.agents.flatMap((row) => row.limits.flatMap((limit) => [
+  return limits.agents.flatMap((row) => row.limits.map((limit) => ({
+    agent: row.id,
+    key: limit.key,
+    hourAt,
+    label: limit.label,
+    group: limit.group,
+    windowMinutes: limit.windowMinutes,
+    usedPercent: limit.usedPercent,
+    resetsAt: limit.resetsAt,
+    plan: row.plan?.tier ?? null,
+    receivedAt,
+  })));
+}
+
+export function limitStatements(db: HistoryDb, rows: readonly LimitHourRow[]): HistoryStatement[] {
+  return rows.flatMap((row) => [
     db.prepare(UPSERT_LIMIT).bind(
-      date,
-      row.id,
-      limit.key,
-      limit.label,
-      limit.group,
-      limit.windowMinutes,
-      limit.usedPercent,
-      limit.resetsAt,
-      row.plan?.tier ?? null,
-      receivedAt,
+      siteDay(row.receivedAt),
+      row.agent,
+      row.key,
+      row.label,
+      row.group,
+      row.windowMinutes,
+      row.usedPercent,
+      row.resetsAt,
+      row.plan,
+      row.receivedAt,
     ),
     db.prepare(UPSERT_LIMIT_HOUR).bind(
-      row.id,
-      limit.key,
-      hourAt,
-      limit.windowMinutes,
-      limit.usedPercent,
-      limit.resetsAt,
-      receivedAt,
+      row.agent,
+      row.key,
+      row.hourAt,
+      row.windowMinutes,
+      row.usedPercent,
+      row.resetsAt,
+      row.receivedAt,
     ),
-  ]));
+  ]);
 }
 
 const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu_percent_sum, cpu_percent_max,

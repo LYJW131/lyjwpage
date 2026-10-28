@@ -22,6 +22,14 @@ export type PlaystationNowPlaying = {
   format: string | null;
   launchPlatform: string | null;
   iconUrl: string | null;
+  // 同一款连着在玩的首个观测时刻（epoch 毫秒），由 core 跨上报接续；PSN 不给开局时刻，上报器也不报。
+  startedAt: number;
+};
+
+export type PlaystationNowPlayingReport = Omit<PlaystationNowPlaying, "startedAt">;
+
+export type PlaystationPresenceReport = Omit<PlaystationPresencePayload, "playing"> & {
+  playing: PlaystationNowPlayingReport | null;
 };
 
 export type PlaystationPowerPayload = {

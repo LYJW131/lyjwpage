@@ -171,3 +171,23 @@ test("命令行：输出 JSON；缺参数、未知选项、窗口不是正数、
     assert.equal(run(...args).status, 2, args.join(" "));
   }
 });
+
+test("浅克隆没拉到窗口起点之前时报错；照提示的 --shallow-since 补拉一次就能跑", (t) => {
+  const { repo, direct } = history(t);
+  const clone = mkdtempSync(path.join(os.tmpdir(), "rework-candidates-shallow-"));
+  t.after(() => rmSync(clone, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const result = spawnSync("git", args, { cwd: clone, env: GIT_ENV, encoding: "utf8" });
+    assert.equal(result.status, 0, `git ${args.join(" ")}\n${result.stderr}`);
+  };
+  git("clone", "-q", "--single-branch", "--branch", "main", "--shallow-since=2026-10-14T04:00:00Z", `file://${repo.dir}`, ".");
+  const run = () => reworkCandidates({ repo: clone, from: direct, to: "origin/main", windowHours: 48 });
+  let hint = "";
+  assert.throws(run, (error: Error) => {
+    hint = /--shallow-since=(\S+)/.exec(error.message)?.[1] ?? "";
+    return error.message.includes("没覆盖窗口起点 2026-10-14T04:00:00.000Z");
+  });
+  assert.equal(hint, "2026-10-07T04:00:00.000Z");
+  git("fetch", "-q", `--shallow-since=${hint}`, "origin", "main");
+  assert.equal(run().pairs.length, 2);
+});

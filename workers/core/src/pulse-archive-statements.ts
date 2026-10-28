@@ -1,3 +1,4 @@
+import { limitArchiveStatements } from "./limit-history";
 import {
   DAY_MS,
   parsedJson,
@@ -297,6 +298,8 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
         watermark: fresh.at(-1)!.t,
       };
     }
+    case "limits":
+      return limitArchiveStatements(db, snapshot.rows, watermark);
     case "coding-usage": case "coding-buckets": {
       const built = snapshot.stream === "coding-usage" ? usageStatements(db, snapshot.coding) : bucketStatements(db, snapshot.coding);
       return { statements: built.statements, watermark: Math.max(watermark, ...built.revisions) };
