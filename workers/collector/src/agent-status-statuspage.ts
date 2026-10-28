@@ -176,10 +176,11 @@ export function statuspageRow(
   const scheduled = parsed.maintenances.filter(
     (incident) => touches(incident) && incident.status.toLowerCase() === "scheduled",
   );
-  // 页面总灯优先于单个组件；否则常驻的组件故障会把整行误判得更严重。
+  // 页面总灯优先于单个组件和单个事件的 impact；否则常驻的组件故障或事件自标的 major 会把整行误判得比状态页本身更严重。
+  const followPage = wholePage && !!parsed.page;
   const incidentIndicators: AgentIndicator[] = [];
   for (const incident of active) {
-    const impact = rollupIndicator(incident.impact);
+    const impact = followPage ? null : rollupIndicator(incident.impact);
     if (impact) incidentIndicators.push(impact);
     if (incident.status.toLowerCase() === "in_progress" || incident.status.toLowerCase() === "verifying") {
       incidentIndicators.push("maintenance");
