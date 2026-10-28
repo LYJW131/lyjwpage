@@ -1,0 +1,61 @@
+name: PR review
+
+# 替代 Cursor Bugbot 与 Security Review：Devin CLI（swe-2-max）按 agents/pr-review/review.txt 审一次，发一条 PR review。
+# 与 Devin Review 同一时机：PR 打开、重开、转为待审时审一次；草稿和之后的推送不审。
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      DEVIN_VERSION: 3000.11.228
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: agents/pr-review
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install review deps
+        run: npm ci --no-audit --no-fund --prefix agents/pr-review
+      - name: Install Devin CLI
+        run: |
+          curl -fsSL --max-time 120 "https://static.devin.ai/cli/$DEVIN_VERSION/setup.sh" | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # 凭据是 `devin auth login` 生成的 credentials.toml 原文；来自 fork 的 PR 拿不到 Secret，直接跳过。
+      - name: Devin credentials
+        id: auth
+        env:
+          DEVIN_CREDENTIALS: ${{ secrets.DEVIN_CREDENTIALS }}
+        run: |
+          if [ -z "$DEVIN_CREDENTIALS" ]; then
+            echo "::notice::DEVIN_CREDENTIALS is not available to this run; skipping the review"
+            exit 0
+          fi
+          mkdir -p "$HOME/.local/share/devin"
+          umask 077
+          printf '%s\n' "$DEVIN_CREDENTIALS" > "$HOME/.local/share/devin/credentials.toml"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Review
+        if: steps.auth.outputs.ready == 'true'
+        working-directory: agents/pr-review
+        run: npx tsx run.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}

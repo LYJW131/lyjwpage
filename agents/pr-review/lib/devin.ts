@@ -52,6 +52,30 @@ export function reviewerConfig(denyRead: string[], extra: Record<string, unknown
   };
 }
 
+// 工作区外一律不许读：/proc 下能读到父进程的环境变量（含 GITHUB_TOKEN），家目录里有 Devin 凭据。
+export const SYSTEM_DENY_READ = [
+  "/proc/**",
+  "/sys/**",
+  "/dev/**",
+  "/etc/**",
+  "/home/**",
+  "/root/**",
+  "/mnt/**",
+  "/opt/**",
+  "/srv/**",
+  "/usr/**",
+  "/var/lib/**",
+  "/var/run/**",
+  "/run/**",
+];
+
+// 子进程只拿到跑 CLI 要的环境变量，令牌一类不传下去。
+const ENV_KEEP = /^(PATH|HOME|USER|LANG|LC_\w+|TERM|TMPDIR|XDG_\w+|SSL_CERT_FILE|SSL_CERT_DIR|NODE_EXTRA_CA_CERTS|REQUESTS_CA_BUNDLE|OTEL_\w+|https?_proxy|HTTPS?_PROXY|no_proxy|NO_PROXY|ALL_PROXY|all_proxy)$/;
+
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => ENV_KEEP.test(key)));
+}
+
 export type DevinRun = { code: number | null; stdout: string; stderr: string; ms: number };
 
 export function runDevin(opts: {
@@ -78,7 +102,7 @@ export function runDevin(opts: {
   ];
   const started = Date.now();
   return new Promise((resolve, reject) => {
-    const child = spawn(opts.bin ?? "devin", args, { cwd: opts.cwd, timeout: opts.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(opts.bin ?? "devin", args, { cwd: opts.cwd, env: childEnv(), timeout: opts.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));

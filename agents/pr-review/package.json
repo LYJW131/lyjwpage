@@ -5,7 +5,7 @@
   "description": "Reviews lyjwpage pull requests for bugs and security issues with Devin CLI.",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types lib/*.test.ts",
+    "test": "tsx --test lib/*.test.ts",
     "eval": "tsx evals/devin-run.ts",
     "judge": "tsx evals/judge.ts"
   },

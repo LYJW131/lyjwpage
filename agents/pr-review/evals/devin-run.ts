@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { MODEL, rateLimitReset, reviewerConfig, runDevin } from "../lib/devin.js";
+import { MODEL, SYSTEM_DENY_READ, rateLimitReset, reviewerConfig, runDevin } from "../lib/devin.js";
 import { parseFindings } from "../lib/findings.js";
 import { triggerMessage } from "../lib/prompt.js";
 import { type Case, WORKSPACES, caseWorkspace, loadCases } from "./cases.js";
@@ -12,7 +12,7 @@ import type { Raw } from "./judge.js";
 const { values } = parseArgs({
   options: {
     variant: { type: "string" },
-    prompt: { type: "string", default: new URL("../review.md", import.meta.url).pathname },
+    prompt: { type: "string", default: new URL("../review.txt", import.meta.url).pathname },
     split: { type: "string", multiple: true },
     case: { type: "string", multiple: true },
     reps: { type: "string", default: "1" },
@@ -39,9 +39,7 @@ const otel = JSON.parse(await readFile(join(homedir(), ".config/devin/config.jso
 // 评审员不许读工作区外：仓库检出、别的用例快照（含后来的提交）、凭据和本机配置。
 function denyRead(item: Case) {
   return [
-    "/home/**",
-    "/root/**",
-    "/mnt/**",
+    ...SYSTEM_DENY_READ,
     "/tmp/**",
     ...[...all.keys()].filter((id) => id !== item.id).map((id) => `${WORKSPACES}/${id}/**`),
   ];

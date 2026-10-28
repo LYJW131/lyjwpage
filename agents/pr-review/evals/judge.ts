@@ -33,7 +33,7 @@ if (!values.variant) {
 }
 const VARIANT = values.variant;
 const JUDGE_TIMEOUT_MS = 15 * 60_000;
-const PROMPT = await readFile(new URL("./judge.md", import.meta.url), "utf8");
+const PROMPT = await readFile(new URL("./judge.txt", import.meta.url), "utf8");
 const CASES = await loadCases();
 
 const SCHEMA = JSON.stringify({

@@ -6,12 +6,14 @@ export const BOTS: Record<string, string> = {
   "devin-ai-integration[bot]": "devin",
   "claude[bot]": "claude",
   "cursor[bot]": "cursor",
+  // `.github/workflows/pr-review.yml` 用 GITHUB_TOKEN 发的评审。
+  "github-actions[bot]": "pr-review",
 };
 
 export const CODEX_MAX_ROUNDS = 3;
 
-// claude 的评审以「## Code review」汇总评论交付，devin 只交 pull review；报错、@claude 问答这类普通评论不算审过一次。
-const REVIEW_COMMENT: Partial<Record<string, RegExp>> = { claude: /^## Code review/m, devin: /(?!)/ };
+// claude 的评审以「## Code review」汇总评论交付，devin 与 pr-review 只交 pull review（github-actions[bot] 的普通评论来自别的工作流）；报错、@claude 问答这类普通评论不算审过一次。
+const REVIEW_COMMENT: Partial<Record<string, RegExp>> = { claude: /^## Code review/m, devin: /(?!)/, "pr-review": /(?!)/ };
 
 type CodexState = { commit_sha?: string | null; status?: string | null };
 
