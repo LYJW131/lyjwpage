@@ -1,0 +1,21 @@
+{
+  "name": "lyjwpage-review",
+  "private": true,
+  "type": "module",
+  "description": "Reviews lyjwpage pull requests for bugs and security issues.",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "dev": "agent-sdk dev",
+    "test": "node --test --experimental-strip-types bot/lib/*.test.ts"
+  },
+  "dependencies": {
+    "@grok/agent-sdk": "0.4.0",
+    "@octokit/rest": "^21.1.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "1.1.0",
+    "@types/node": "^22.14.0",
+    "typescript": "6.0.3"
+  }
+}
