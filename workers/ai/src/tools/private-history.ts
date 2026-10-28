@@ -54,33 +54,29 @@ export function parseHistoryInput(input: unknown, now: number): PrivateHistoryQu
 // 列名 snake_case 转 camelCase，好让 localTimes 认出 …At 时间列；charging_samples 和 coding_observations 的时间列只叫 t，改叫 observedAt。
 const fieldName = (column: string) => (column === "t" ? "observedAt" : column.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()));
 
-// 截断时给下一次调用的 to：展示用的本地时间只到分钟，照它接着读会漏掉同一分钟里没返回的行，所以给无损的值。
-// 多加 1 毫秒（day 表多一天）让最旧那一刻重复一次，宁可重复不漏：同一时刻、同一天常有多行。
-function nextTo(query: PrivateHistoryQuery, rows: Record<string, unknown>[]): string | null {
+// 截断时的续读：先去掉和最旧一行同一时刻（day 表是同一天）的行，下一页用那一刻作不含的 to 整组重读，
+// 不漏、不重复，也一定往前走。展示用的本地时间只到分钟，所以 to 给无损的值。
+function continuation(query: PrivateHistoryQuery, rows: Record<string, unknown>[]): { rows: Record<string, unknown>[]; to: string } | null {
   const { time, unit } = PRIVATE_HISTORY_TABLES[query.table];
   const oldest = rows.at(-1)?.[time];
-  if (unit === "day") return typeof oldest === "string" ? new Date(Date.parse(`${oldest}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10) : null;
-  return typeof oldest === "number" ? new Date(oldest + 1).toISOString() : null;
+  const kept = rows.filter((row) => row[time] !== oldest);
+  if (!kept.length) return null;
+  return { rows: kept, to: unit === "day" ? String(oldest) : new Date(Number(oldest)).toISOString() };
 }
 
 export function historyText(query: PrivateHistoryQuery, result: PrivateHistoryResult, now: number): string {
   if (!result.ok) return `${clockLine(now)}\n\n${result.error}`;
-  const rows = result.rows.map((row) =>
+  const next = result.truncated ? continuation(query, result.rows) : null;
+  const rows = (next?.rows ?? result.rows).map((row) =>
     Object.fromEntries(Object.entries(row).map(([column, value]) => {
       const key = fieldName(column);
       return [key, localTimes(key, value, now)];
     })),
   );
   const range = `${localTime(query.from)} to ${localTime(query.to)} (${STATUS_TIME_ZONE}, to excluded)`;
-  const notes: string[] = [
-    `${rows.length} rows from ${query.table}, ${range}, newest first.`,
-  ];
-  const next = result.truncated ? nextTo(query, result.rows) : null;
-  if (result.truncated) {
-    notes.push(next
-      ? `More rows exist in this range: call again with to set to "${next}" to continue; the oldest rows above repeat once.`
-      : "More rows exist in this range: narrow it.");
-  }
+  const notes = [`${rows.length} rows from ${query.table}, ${range}, newest first.`];
+  if (next) notes.push(`More rows exist: call again with to set to "${next.to}" to continue.`);
+  else if (result.truncated) notes.push("More rows exist, but every row on this page has the same time, so it cannot continue from here: call again with a higher limit.");
   return [clockLine(now), notes.join(" "), JSON.stringify(rows)].join("\n\n");
 }
 
