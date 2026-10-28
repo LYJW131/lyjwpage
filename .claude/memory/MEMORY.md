@@ -29,7 +29,7 @@
 - **Verify receipt screenshots:** verifier keeps only 1–2 shots that show the change (max 4), folded in `<details>` (lyjw 2026-10-28「很多图片都是没有意义的」). A push that started no build gets rebuilt at once: [[workers-builds-parallel-race]].
 - **Post-merge:** check /api/version only; real prod test only for cache/purge, first-screen SSR, fonts, prod-only bindings.
 - **Bulk record reading → Haiku/Sonnet worker, never Opus:** [[batch-reading-goes-to-haiku]].
-- **Big-change PRs: run skill `lyjwpage-swe-loop` (Devin read-only review loop) first, unasked:** [[swe-loop-auto]].
+- **Big-change PRs: run skill `lyjwpage-pr-review` (own Devin swe-2-max reviewer, in the cloud container, replaced swe-loop) first, unasked:** [[pr-review-auto]].
 - **Verification → Haiku 5.5 high worker** (skill `lyjwpage-verify`), lead spot-checks one: [[verification-haiku-worker]]; first-screen changes also `site-verify reload`: [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; Haiku accepts animation frames (#490).
 - **Verify Action in GitHub Actions:** gaps warn, never block; state (labels, high effort, notes-only reuse, incremental re-verify): [[verify-action-state]]; design: [[verify-in-actions-plan]].
 - **Verify A/B live since 2026-10-26 (#665):** A = Claude Code verifier signs receipts; B = pi SDK verifier (`verify-pi` job, Haiku 5.5 via API key) only stores artifact `verify-ab-pi`, never blocks. Read by comparing `verify-ab-cc` / `verify-ab-pi` result.json via `reconcile`; #665's own 13 rounds counted separately. Duration and switch decision pending lyjw. Daily watch + report due 30 runs or 2026-11-09: [[verify-pi-ab-watch]]. Handoff doc: /mnt/user-data/uploads/hearth/8ba146e0-819b-438f-b75f-39f53f30b29e/8ba146e0-819b-438f-b75f-39f53f30b29e.md
@@ -46,10 +46,11 @@
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
-- **Devin CLI can take work** (skill `lyjwpage-devin-dispatch`): [[devin-free-tier-limit]]. swe-loop Devin reviewer runs `--mode dangerous` (#689).
+- **Devin CLI can take work** (skill `lyjwpage-devin-dispatch`): [[devin-free-tier-limit]].
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys, CF config writes, credential reads, remote branch deletes. misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`, never printed: [[cloud-env-gaps]].
 - Egress-injected APIs: OpenRouter ([[openrouter-egress]]), misaka.io (`/v3/mc2/metrics/account-throughput` only; strip email/name), Gemini ([[gemini-video-qa-result]]), Apple Music ([[apple-music-user-api]]), TypeSafe Jev, Exa, Parallel, tokens.ci.
+- **Cloud Claude OTLP needs `OTEL_EXPORTER_OTLP_HEADERS` in env vars** (main process skips the egress proxy); Devin OTLP ~92% accurate: [[cloud-otlp-telemetry-audit]].
 - **tokens.ci Stop hook** at user level via Setup script: [[tokens-ci-cloud-hook]].
 - **Site previews:** `<branch>.preview.lyjw.dev` only, never `*-site.lyjw.workers.dev`: [[preview-access-removed]]. Non-site preview comments auto-minimized (#676).
 - Collector manual run: GitHub Actions "Run Collector Jobs".
@@ -80,6 +81,7 @@
 - First screen: [[first-screen-perf]], [[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]].
 - [[build-actions-migration]], [[avatar-watch-restored]], [[codeql-policy]], [[pulse-tokens-lane-coverage]].
 - **Not adopting** (don't re-propose; list and reasons): [[not-adopting]]. No reporter OTel migration: [[reporter-otel-decision]].
+- **Own change reviewer `agents/pr-review`** (Devin swe-2-max in the cloud thread, prompt tuned by eval; Cursor Free tier can't run the Agent SDK): [[pr-review-devin-reviewer]].
 - Jev comment check (advisory): [[jev-comment-check]]. Chat prefetch: [[idea-jev-context-prefetch]]. Chat web search: [[chat-web-search]].
 - .mjs→TS; no new `scripts/*.mjs`: [[mjs-to-ts-migration]].
 - **Baselines shrink-only;** only lyjw adds `baseline-exception`.

@@ -12,3 +12,5 @@ The harness Stop hook `~/.claude/stop-hook-git-check.sh` assumes CCR's default k
 **Why:** lyjw asked why #198 was full of unsigned commits.
 
 **How to apply:** never override commit identity or disable signing. When the Stop hook complains, just push; the hook only looks at unpushed commits. PR #304 (merged 2026-10-14) adds a PreToolUse guard, an AGENTS.md line and a docs/ops-facts.md row for this. #198 was re-signed the same day (all 24 commits verified). Put this in briefs for any session that commits.
+
+**Old-container trap (2026-10-28):** a long-lived session whose container predates #717 still signs with the rotated-out `/root/.ssh/aapay_sign` and has no `GIT_SIGN_KEY_B64`, so every commit is `unknown_key` and a merge-commit merge fails 405「Commits must have verified signatures」. Check with the commits API `verification.reason`. Squash merge works (GitHub signs it); the old daily-review session did this for #733, then the routine moved to the new thread「每日代码审查 · 定时任务」with the new key (2026-10-28).
