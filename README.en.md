@@ -25,7 +25,7 @@ What I'm listening to, watching and playing, which apps are in use, how my devic
 | **Activity** | Apple Watch rings and recent workouts |
 | **Server** | Exit node rates, traffic, CPU, memory and disk |
 | **AI Coding** | Token usage per coding tool, cost estimates, the agent in use, a yearly heatmap and limits |
-| **Games** | Now playing on Meta Quest; PlayStation online status and trophies |
+| **Games** | Now playing on Meta Quest and PlayStation; PlayStation online status and trophies |
 | **Pulse** | A 24-hour timeline of coding, tokens, listening, watching, playing, charging and activity |
 | **Provider status** | Official status pages of Claude, ChatGPT, Cursor, GitHub, Cloudflare and more |
 | **The site itself** | Repository and commits, 30-day uptime, performance scores, Worker and reporter metrics |
@@ -74,6 +74,13 @@ The cards below are rendered live by the site as SVG, follow the system light or
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=3">
   <img src="https://lyjw.me/cards/quest.svg?v=3" alt="Meta Quest now playing card: the game, its mode and play time" width="100%">
+</picture>
+
+**Now playing on PlayStation**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation-now.svg?theme=dark&amp;v=1">
+  <img src="https://lyjw.me/cards/playstation-now.svg?v=1" alt="PlayStation now playing card: the game, the console and play time" width="100%">
 </picture>
 
 **Charger and power bank**

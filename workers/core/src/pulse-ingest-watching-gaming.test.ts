@@ -4,6 +4,7 @@ import test from "node:test";
 import { commitPreparedEmbyReport } from "@core/stores/emby";
 import { commitPreparedPlaystationReport } from "@core/stores/playstation";
 import { getPlaying, getPlayingNow } from "./playstation";
+import { PLAYSTATION_STALE_MS } from "@shared/freshness";
 import { powerMirror } from "@shared/playstation-store";
 import { prepareEmbyReport } from "@shared/ingest/emby";
 import { preparePlaystationReport } from "@shared/ingest/playstation";
@@ -53,6 +54,26 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
     ["in-game", "Pragmata", game, off],
   ]);
   assert.equal((await open(storage, "gaming")).state, "offline");
+}));
+
+test("PlayStation 在玩的开局时刻：同一款接续，换游戏、停玩或断流后重算", withStorage(async () => {
+  const presence = (at: number, titleId: string | null) =>
+    ({ version: 1, presence: { observedAt: at, online: true, availability: null, platform: "PS5", lastOnlineAt: null,
+      playing: titleId && { titleId, title: titleId, format: null, launchPlatform: null, iconUrl: null, startedAt: 1 } } });
+  const startedAt = async () => (await getPlayingNow()).playing?.startedAt ?? null;
+  await inRequest(() => recordPlaystationReport(presence(T0, "PPSA01"), T0));
+  assert.equal(await startedAt(), T0, "上报器带来的 startedAt 不认，按 core 自己的接续算");
+  await inRequest(() => recordPlaystationReport(presence(T0 + 60_000, "PPSA01"), T0 + 60_000));
+  assert.equal(await startedAt(), T0);
+  await inRequest(() => recordPlaystationReport(presence(T0 + 120_000, "PPSA02"), T0 + 120_000));
+  assert.equal(await startedAt(), T0 + 120_000);
+  await inRequest(() => recordPlaystationReport(presence(T0 + 180_000, null), T0 + 180_000));
+  assert.equal(await startedAt(), null);
+  await inRequest(() => recordPlaystationReport(presence(T0 + 240_000, "PPSA02"), T0 + 240_000));
+  assert.equal(await startedAt(), T0 + 240_000);
+  const afterGap = T0 + 240_000 + PLAYSTATION_STALE_MS;
+  await inRequest(() => recordPlaystationReport(presence(afterGap, "PPSA02"), afterGap));
+  assert.equal(await startedAt(), afterGap);
 }));
 
 test("迟到的更旧 PlayStation 快照不倒灌在线状态、游玩列表和游戏道", withStorage(async (storage) => {

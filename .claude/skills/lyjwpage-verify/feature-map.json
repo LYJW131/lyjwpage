@@ -50,6 +50,16 @@
       "conditional": true,
       "proves": "Meta Quest 正在玩的游戏名渲染；没在玩不挂载整卡"
     },
+    "now-playstation": {
+      "component": "src/components/live/playstation-now-card.tsx",
+      "selector": "#now-playstation",
+      "endpoints": {
+        "/api/status/playing/now": ["playing-now-pragmata.json"],
+        "/api/status/playing": []
+      },
+      "conditional": true,
+      "proves": "PlayStation 正在玩的游戏名、主机与已玩时长渲染；没在玩、玩的是媒体应用或 presence 过期时不挂载整卡"
+    },
     "charger": {
       "component": "src/components/live/charger-card.tsx",
       "cardLabel": "Charger",

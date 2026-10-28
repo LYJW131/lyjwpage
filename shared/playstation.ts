@@ -2,9 +2,9 @@ import { number, object, text } from "@shared/json";
 import { psnImageUrl } from "@shared/psn-image";
 import type {
   PlaystationGame,
-  PlaystationNowPlaying,
+  PlaystationNowPlayingReport,
   PlaystationPlayingPayload,
-  PlaystationPresencePayload,
+  PlaystationPresenceReport,
 } from "@shared/types";
 
 export function requiredNumber(
@@ -61,7 +61,7 @@ export function requiredBoolean(
   return value;
 }
 
-export function normalizeNowPlaying(value: unknown): PlaystationNowPlaying | null {
+export function normalizeNowPlaying(value: unknown): PlaystationNowPlayingReport | null {
   if (value == null) return null;
   const row = object(value);
   if (!row) throw new Error("PlayStation presence.playing 必须是对象或 null");
@@ -74,7 +74,7 @@ export function normalizeNowPlaying(value: unknown): PlaystationNowPlaying | nul
   };
 }
 
-export function normalizePlaystationPresence(value: unknown): PlaystationPresencePayload {
+export function normalizePlaystationPresence(value: unknown): PlaystationPresenceReport {
   const row = object(value);
   if (!row) throw new Error("PlayStation presence 必须是对象");
   if (typeof row.online !== "boolean") {
