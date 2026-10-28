@@ -35,9 +35,9 @@ const HAND_FALLOFF = 300;
 // 要的是二次元的打光：原画不压暗，没照到的地方保持原样；受光面一刀切成一块色（不做平滑过渡），沿原来的颜色提亮，
 // 深色的地方只带一点光的颜色。直接按滤色把青光叠上去，红裙会被冲成发灰的粉。
 // 法线图只留大体积、不带衣褶细节，细节一多受光面就碎成一片片的脏斑（lyjw：「褶皱太多了」）。
-// 位置是原图像素（x 右、y 下、z 朝镜头），r 是衰减到一半的距离。
+// 位置是原图像素（x 右、y 下、z 朝镜头），r 是衰减到一半的距离。法线图是 y 朝上，着色器里翻成 y 朝下；伸出的手用手层自己的法线。
 // 脚下法阵照腿另算（GROUND）：按法线一刀切的受光落在黑靴上只是一片发灰的哑光，看不出被照；
-// 改成从地面往上渐弱的一层青光，再沿剪影边缘描一圈细的轮廓光，越靠近地面越亮。
+// 改成从地面往上渐弱的一层青光，再沿剪影边缘描一圈细的轮廓光，越靠近地面越亮；直接叠加、不按底色缩放，黑靴底色太暗，乘上去就没了。
 const GROUND = { rgb: [0.35, 0.75, 1], fade: 700, rim: 1100, k: 0.45, edge: 1 };
 const LIGHTS = {
   // 脚下法阵后面那盏只亮朝它那侧的轮廓。
@@ -133,7 +133,6 @@ ${REFRACT}
   vec3 base=c.rgb/max(c.a,.001);
   vec4 nm=texture2D(armN,clamp(au,0.,1.))*inside(au);
   vec3 n=nm.a>.5?normalize(nm.rgb*2.-1.):vec3(0.,0.,1.);
-  // 立绘法线图是 y 朝上，这里的坐标 y 朝下；伸出的手用手层自己的法线。
   vec3 nb=hasN>0.?texture2D(bodyN,clamp(s,0.,1.)).xyz*2.-1.:vec3(0.,0.,1.);
   vec3 N=normalize(mix(vec3(nb.x,-nb.y,nb.z),n,ar.a));
   vec3 glow=vec3(0.);
@@ -142,7 +141,6 @@ ${REFRACT}
   float edge=clamp((c.a-near*.25)*2.5,0.,1.);
   float low=smoothstep(${f(FLOOR.y - GROUND.fade)},${f(FLOOR.y)},P.y);
   float hem=smoothstep(${f(FLOOR.y - GROUND.rim)},${f(FLOOR.y)},P.y);
-  // 直接叠加、不按底色缩放：黑靴底色太暗，乘上去就没了。
   vec3 ground=${v3(GROUND.rgb)}*lv.x*(low*low*${f(GROUND.k)}*(.6+.4*clamp(N.z+N.y,0.,1.))+edge*hem*${f(GROUND.edge)});
   lightUp(N,P,${v3(LIGHTS.floorBack.at)},${v3(LIGHTS.floorBack.rgb)},${f(LIGHTS.floorBack.k)}*lv.x,${f(LIGHTS.floorBack.r)},glow);
   lightUp(N,P,${v3(LIGHTS.halo.at)},${v3(LIGHTS.halo.rgb)},${f(LIGHTS.halo.k)}*lv.y,${f(LIGHTS.halo.r)},glow);
