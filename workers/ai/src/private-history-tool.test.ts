@@ -25,6 +25,8 @@ test("列名转成 camelCase，时间列换成本地时间，截断时提示怎�
   const query = { table: "charging_samples" as const, from: NOW - 3_600_000, to: NOW, limit: 1 };
   const text = historyText(query, { ok: true, rows: [{ t: NOW - 60_000, device_name: "iPhone", watts: 20 }], truncated: true }, NOW);
   assert.match(text, /"observedAt":"2026-10-28 11:59 \(today\)","deviceName":"iPhone","watts":20/);
-  assert.match(text, /More rows exist/);
+  assert.match(text, /call again with to set to "2026-10-28T03:59:00\.001Z"/);
+  const days = { table: "coding_usage_days" as const, from: NOW - 7 * 86_400_000, to: NOW, limit: 1 };
+  assert.match(historyText(days, { ok: true, rows: [{ date: "2026-10-26", tokens: 1 }], truncated: true }, NOW), /to set to "2026-10-27"/);
   assert.match(historyText(query, { ok: false, error: "The history archive is not bound here." }, NOW), /not bound/);
 });
