@@ -16,3 +16,12 @@ npm run check
 ```
 
 模型轮次要 Cursor 凭据（`agent-sdk login`）。评测见 `evals/`：`evals/data/cases.json` 是从历史 PR 的 Codex / Devin 评审里取的标注用例。
+
+## 判分
+
+`npm run judge -- --variant <目录>` 读 `<目录>/raw/<用例>__rep<k>.json`（每份是 agent 一次的 `post_findings` 入参），用 `claude -p`（Opus 5.5，走 lyjw 的 Claude 订阅）对照标注逐条判，写出 `results.jsonl`、`errors.jsonl`、`summary.json` 与 `traces/`，可重复跑、已判的跳过。判法在 `evals/judge.md`，计分在 `evals/judge.ts#score`：
+
+- `recall`：该找到的（M）对上了几成，只算有 M 的用例。
+- `false_alarms`：没对上标注、裁判判成读错了的，加上边缘情况却报成 high / medium 的。
+- `neg_hits`：把回过「不改」的（N，不含 lyjw 定过的安全取舍）报成 high / medium 的次数。
+- `later_hits`、`real_extra`：提前报出后来才修的、标注外裁判核实为真的，只记录不扣分。

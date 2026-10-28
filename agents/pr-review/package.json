@@ -6,7 +6,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "dev": "agent-sdk dev",
-    "test": "node --test --experimental-strip-types bot/lib/*.test.ts"
+    "test": "node --test --experimental-strip-types bot/lib/*.test.ts",
+    "judge": "tsx evals/judge.ts"
   },
   "dependencies": {
     "@grok/agent-sdk": "0.4.0",
@@ -14,8 +15,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "1.1.0",
     "@types/node": "^22.14.0",
+    "tsx": "4.23.15",
     "typescript": "6.0.3"
   }
 }
