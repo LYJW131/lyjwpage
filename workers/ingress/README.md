@@ -14,7 +14,7 @@
 - 根目录 `shared/ingest/`：各来源的 prepare（收敛、逐字段校验、Emby 的 R2 HEAD），产出能结构化复制的命令。
   状态核心只 `import type` 这里的命令类型；PlayStation 上报器通过 `/api/ingest/playstation` 交入原始信封，由本入口 prepare。
 - `src/lag-ingest.ts`：可滞后层那一半（KV `LAG`，格式见 `shared/lag.ts`），布局变了才请状态核心失效首屏。
-- `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总、限额快照。
+- `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总（限额快照由状态核心从 StateHub 归档）。
 - `src/env.ts`：绑定与变量。
 
 ## 端点

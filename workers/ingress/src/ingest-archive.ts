@@ -1,6 +1,5 @@
 import {
   activityDayStatements,
-  limitStatements,
   runHistory,
   serverHourStatements,
   workoutStatements,
@@ -18,8 +17,6 @@ export function ingestHistoryStatements(db: HistoryDb, command: PreparedIngest):
       ];
     case "server":
       return serverHourStatements(db, command.status);
-    case "agents":
-      return command.limits ? limitStatements(db, command.limits, command.receivedAt) : [];
     default:
       return [];
   }

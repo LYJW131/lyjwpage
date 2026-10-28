@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { siteDay, type HistoryDb } from "@shared/history-ingest";
+import type { HistoryDb } from "@shared/history-ingest";
 import type { ReportedServerStatus, ReportedWorkout } from "@shared/types";
 import { archiveIngest } from "./ingest-archive";
 import type { PreparedIngest } from "@shared/ingest/prepare";
@@ -149,45 +149,6 @@ test("ingest archive: the latest ring reading of a local day wins and history-on
   assert.deepEqual(
     world.all("SELECT date, move_kcal, received_at FROM activity_days").map((row) => ({ ...row })),
     [{ date: "2026-09-28", move_kcal: 420, received_at: T0 + 3_600_000 }],
-  );
-});
-
-test("ingest archive: limit snapshots keep the last reading per site day and per UTC hour, and skip failed rows", async () => {
-  const world = historyDb();
-  const send = (usedPercent: number, receivedAt: number) => archiveIngest(world.db, {
-    source: "agents",
-    receivedAt,
-    limits: {
-      collectedAt: new Date(receivedAt).toISOString(),
-      agents: [
-        {
-          id: "codex",
-          plan: { tier: "pro", label: "Pro" },
-          limits: [{ key: "codex.primary", label: null, group: "session", windowMinutes: 300, usedPercent, resetsAt: 1_790_000_000 }],
-          limitsError: null,
-        },
-        { id: "claude", plan: null, limits: [], limitsError: "Unavailable" },
-      ],
-    },
-  } as PreparedIngest);
-
-  await send(10, T0);
-  await send(25, T0 + 600_000);
-  await send(40, T0 + 86_400_000);
-
-  assert.deepEqual(
-    world.all("SELECT date, agent, used_percent, plan FROM limit_snapshots ORDER BY date").map((row) => ({ ...row })),
-    [
-      { date: siteDay(T0), agent: "codex", used_percent: 25, plan: "pro" },
-      { date: siteDay(T0 + 86_400_000), agent: "codex", used_percent: 40, plan: "pro" },
-    ],
-  );
-  assert.deepEqual(
-    world.all("SELECT agent, hour_at, used_percent FROM limit_hours ORDER BY hour_at").map((row) => ({ ...row })),
-    [
-      { agent: "codex", hour_at: T0, used_percent: 25 },
-      { agent: "codex", hour_at: T0 + 86_400_000, used_percent: 40 },
-    ],
   );
 });
 

@@ -1,4 +1,5 @@
 import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
+import { LIMIT_HOURS_TTL_MS, commandSlices, limitHoursKeys, limitSeriesKey } from "./limit-history";
 import {
   ARCHIVE_STREAMS,
   DAY_MS,
@@ -102,6 +103,13 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
           if (changed.length) coding[source] = changed;
         });
         return { rows: [], coding };
+      }
+      case "limits": {
+        const now = this.now();
+        const [index] = this.execute([{ op: "fields", key: limitSeriesKey() }]) as (Record<string, string> | null)[];
+        const keys = limitHoursKeys(Object.keys(index ?? {}), Math.max(watermark, now - LIMIT_HOURS_TTL_MS), now);
+        const hashes = commandSlices(keys).flatMap((slice) => this.execute(slice.map((key): StorageCommand => ({ op: "fields", key })))) as Record<string, string>[];
+        return { rows: hashes.flatMap((hash) => Object.values(hash ?? {})) };
       }
       case "coding-buckets": {
         const values = this.execute(CODING_USAGE_SOURCE_NAMES.map((source): StorageCommand => ({ op: "get", key: codingBucketsKey(source) }))) as (string | null)[];

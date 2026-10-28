@@ -18,6 +18,7 @@ export const ARCHIVE_STREAMS = [
   "coding",
   "coding-usage",
   "coding-buckets",
+  "limits",
 ] as const;
 export type ArchiveStream = (typeof ARCHIVE_STREAMS)[number];
 
