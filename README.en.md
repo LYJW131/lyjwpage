@@ -31,7 +31,7 @@ What I'm listening to, watching and playing, which apps are in use, how my devic
 | **The site itself** | Repository and commits, 30-day uptime, performance scores, Worker and reporter metrics |
 | **Talk to God** | Visitors pick a DeepSeek or Claude lineup and each question goes to a tier by difficulty; it can read every card's live data, search the web, draw cards in its answers and plan site changes |
 
-The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoint (Streamable HTTP, no auth).
+The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoint (Streamable HTTP; public tools need no auth, and LYJW can sign in with GitHub to read the private history).
 
 ## Screenshots
 

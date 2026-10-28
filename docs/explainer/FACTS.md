@@ -15,7 +15,7 @@
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **core**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
 - **collector**：每分钟一响的采集 Worker；Apple Music 的按需查询与「正在听」的补全也在这里，由 site 与上报入口经 Service Binding 调用。
-- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，site 与 core 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径经 Service Binding 原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 core 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中在第 00 章总览、第 07 章「对话」和第 09 章「发布」里出现。
+- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，site 与 core 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径经 Service Binding 原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 core 的公开状态，lyjw 登录 `/mcp` 后另经 `PRIVATE_HISTORY` 只读长期历史（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中在第 00 章总览、第 07 章「对话」和第 09 章「发布」里出现。
 
 数据按层落地：实时层在 DO，可滞后层在 KV `LAG`，长期历史在 D1 `lyjwpage-history`，凭据在 KV `CREDENTIALS`。
 
@@ -384,7 +384,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 工具与盖章
 
 - 站点工具 `workers/ai/src/tools/registry.ts#SITE_TOOLS` 只读公开模型：`get_site_status` 经 `PUBLIC_STATUS.readStatus(path)` 调 core 的 `PublicStatus`，和浏览器看到的同一份（`shared/public-status.ts#PublicStatusRpc`）。`show_card` 只在对话里，用同一份数据在回复里画站点卡片。
-- 同一套 `SITE_TOOLS` 挂在无鉴权的 `POST /mcp` 上给外部 AI 客户端用（`workers/ai/src/mcp.ts`）；要访客确认的、只对对话界面有意义的工具不在 `/mcp`。
+- 同一套 `SITE_TOOLS` 挂在 `POST /mcp` 上给外部 AI 客户端用，不用登录（`workers/ai/src/mcp.ts`）；要访客确认的、只对对话界面有意义的工具不在 `/mcp`。`/mcp` 另有一个 `read_private_history`，要用 lyjw 的 GitHub 账号经 OAuth 登录才能调（`workers/ai/README.md`「MCP 登录」）。
 - 回复正常结束时 Worker 给这一问一答盖章（`workers/ai/src/chat/seal.ts`），浏览器原样带回；下一轮进 Clef 和模型之前先验章，没有章或对不上的整对丢掉。片中把这一步画成一枚章。
 
 ### 设计会话

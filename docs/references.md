@@ -302,6 +302,10 @@
   - 是什么：Workers 内置的流式 HTML 改写器（底层 lol-html，按 HTML 规范切词），用 CSS 选择器挑元素后增删属性和内容；Miniflare 在 Node 里起 workerd 跑 Worker 代码。
   - 取了什么：SSR 出 HTML 后挪 modulepreload、推迟入口模块交给 HTMLRewriter，不再用正则切标签，大小写、结束标签带属性或空白、自定义元素这类边界由规范切词处理；它给的属性值是未解码原文，重拼标签只转义双引号。单测在 Miniflare 里跑同一份源码。
   - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [defer-module-preloads.test.mts](../src/lib/defer-module-preloads.test.mts)。
+- **[MCP Authorization（规范 2026-07-28）](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)** 与 **[workers-oauth-provider](https://github.com/cloudflare/workers-oauth-provider)**（Cloudflare） <!-- allow: 规范版本号 -->
+  - 是什么：MCP 的 OAuth 2.1 授权规范（资源元数据 RFC 9728、受众绑定 RFC 8707、PKCE、首选 CIMD），以及 Cloudflare 在 Workers 上实现授权服务器与资源服务器的库。
+  - 取了什么：同一个 `/mcp` 公开工具不用登录、私有工具没登录时回 401 挑战；ai Worker 兼作授权服务器，上游走站点的 GitHub App，只放行 lyjw 的账号；同意页先于 GitHub 登录（防混淆代理）。
+  - 状态：采用。落在 [workers/ai/src/oauth/](../workers/ai/src/oauth/) 与 [workers/ai/README.md](../workers/ai/README.md)「MCP 登录」。
 
 ## 联网搜索与文档检索
 

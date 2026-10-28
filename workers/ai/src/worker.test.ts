@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
-import { AI_HTTP_PATHS } from "@shared/ai-paths";
+import { AI_HTTP_PATHS, OAUTH_HTTP_PATHS } from "@shared/ai-paths";
 
 import type { Env } from "./runtime.ts";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
-    return { url: "data:text/javascript,export class DurableObject{};export class RpcTarget{}", shortCircuit: true };
+    return { url: "data:text/javascript,export class DurableObject{};export class RpcTarget{};export class WorkerEntrypoint{}", shortCircuit: true };
   },
 });
 const { default: worker } = await import("./worker.ts");
@@ -33,7 +33,8 @@ test("AI Worker 不公开状态、存储、推送和未知路由，包括预检�
 });
 
 test("登记的 AI 路由保留 CORS 预检，MCP 保留协议请求头", async () => {
-  for (const path of AI_HTTP_PATHS) {
+  // OAuth 端点的预检由 workers-oauth-provider 自己回，见 mcp-oauth.test.ts。
+  for (const path of [...AI_HTTP_PATHS].filter((candidate) => !OAUTH_HTTP_PATHS.has(candidate))) {
     const response = await worker.fetch(request(path, "OPTIONS", "https://lyjw.me"), env());
     assert.equal(response.status, 204);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://lyjw.me");

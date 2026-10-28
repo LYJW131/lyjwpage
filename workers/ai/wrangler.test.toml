@@ -1,7 +1,7 @@
 name = "ai"
 main = "src/index.ts"
 compatibility_date = "2026-10-09"
-compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal", "global_fetch_strictly_public"]
 workers_dev = false
 
 [vars]
@@ -21,6 +21,16 @@ binding = "LOADER"
 binding = "PUBLIC_STATUS"
 service = "core"
 entrypoint = "PublicStatus"
+
+# 只读不公开的长期历史，只在 /mcp 带着 lyjw 的 OAuth 令牌时才调（src/oauth/server.ts）。
+[[services]]
+binding = "PRIVATE_HISTORY"
+service = "core"
+entrypoint = "PrivateHistory"
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "00000000000000000000000000000002"
 
 [[durable_objects.bindings]]
 name = "CHAT_QUOTA"
