@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { MODEL, SYSTEM_DENY_READ, rateLimitReset, reviewerConfig, runDevin, userOtel } from "../lib/devin.js";
 import { parseFindings } from "../lib/findings.js";
@@ -22,7 +22,8 @@ const { values } = parseArgs({
 if (!values.variant) {
   throw new Error("usage: devin-run.ts --variant <flow>/<variant> [--split train] [--case id] [--reps N]");
 }
-const VARIANT = values.variant;
+// devin 在用例快照里起，传给它的路径都得是绝对路径。
+const VARIANT = resolve(values.variant);
 const RUN_TIMEOUT_MS = 30 * 60_000;
 // 免费档速率桶全账号共用；重置时间超过这个就记失败，不无限等。
 const MAX_RATE_WAIT_MS = 2 * 60 * 60_000;

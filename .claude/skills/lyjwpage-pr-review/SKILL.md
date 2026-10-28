@@ -22,7 +22,7 @@ description: lyjwpage 里开 PR 前（或开了之后）让自家评审员（`ag
 cd agents/pr-review && npx tsx run.ts --title '<PR 标题>' --intent <意图文件> --out <scratchpad>/pr-review/<task>
 ```
 
-- 放进 Bash `run_in_background`，`timeout` 给 2700000（45 分钟；脚本单次上限 40 分钟）。一次约 5 到 15 分钟。跑的时候不改送审的分支，不轮询，不另起一个。
+- 放进 Bash `run_in_background`，`timeout` 给 4800000（80 分钟：单次评审上限 40 分钟，限流时先等至多 30 分钟再跑一次）。一次约 5 到 15 分钟。跑的时候不改送审的分支，不轮询，不另起一个。
 - 免费档限流时脚本自己等一次（重置在 30 分钟内）。Devin 起不来、限流太久、超时、交不出能解析的结果，都不算通过：汇报里记一句「评审员没跑成」，照常开 PR，不挡合并。
 - 结果：标准输出按 F1、F2……列出每条发现，`<out>/findings.json` 是同一份 JSON，`<out>/export.json` 是 Devin 的完整过程，要看它读了哪些文件时翻这里。
 
