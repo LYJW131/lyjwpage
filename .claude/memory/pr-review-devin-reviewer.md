@@ -9,7 +9,7 @@ metadata:
 
 **Cursor is out (lyjw 2026-10-28 21:54 SGT「算了，你不用 Cursor 了，你用 Devin SWE2 试一下」):** lyjw's Cursor account is Free tier; Agent SDK runs go through Cloud Agents, which need a paid plan. A SuperGrok / X Premium+ link only grants Grok Bot usage. A Cursor API key "agent-sdk (liangyaweideMBP.lan)" was created on the Mac and is still in the Cursor dashboard (revoke is lyjw's call).
 
-**Reviewer:** code in `agents/pr-review/` (branch `claude/project-thread-r45n50`). lyjw 2026-10-28 23:41 SGT: no GitHub Actions; it runs in the thread's cloud container and replaces the swe-loop skill ([[pr-review-auto]]). `run.ts` snapshots merge-base diff + head tree from local git, prints findings F1… and writes `--out`; it posts nothing to GitHub. The Actions workflow and pr-gate wiring were dropped before merge, so no `DEVIN_CREDENTIALS` secret is needed.
+**Reviewer:** code in `agents/pr-review/`, merged in #744 (128625d, 2026-10-29 06:44 SGT); skill `lyjwpage-pr-review` says when and how to run it. lyjw 2026-10-28 23:41 SGT: no GitHub Actions; it runs in the thread's cloud container and replaces the swe-loop skill ([[pr-review-auto]]). `run.ts` snapshots merge-base diff + head tree from local git, prints findings F1… and writes `--out`; it posts nothing to GitHub. The Actions workflow and pr-gate wiring were dropped before merge, so no `DEVIN_CREDENTIALS` secret is needed.
 
 **Devin CLI headless facts (3000.11.228):**
 - `devin --config <cfg> --model swe-2-max --respect-workspace-trust false --export <json> --prompt-file <f> -p`; stdout is the last agent message.
