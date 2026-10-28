@@ -154,7 +154,7 @@ Mac 上 Devin CLI 的 OTLP 以前也记在 `agents-otlp`。第一封 `mac-otlp` 
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies? }`，
 每一项各自可省、缺席表示这次不谈这一项。上报入口 prepare（`shared/ingest/playstation.ts`）
-后经 `StateCore.commitIngest` 交付。`presence`、`playedGames`、`trophies` 各自比已存的 `observedAt`：更旧或同一时刻的重复不落库，也不按这封的 `receivedAt` 改写游戏道。presence 落库前补上 `playing.startedAt`：同一款接着上一份在玩、上一份没超过 `shared/freshness.ts#PLAYSTATION_STALE_MS` 就沿用，否则取这封的 `observedAt`（`src/stores/playstation.ts#withStartedAt`），PSN 不给开局时刻、上报器也不报。首页的 PlayStation Now Playing 卡读 `/api/status/playing/now`，「在玩」有无切换时失效首屏标签 `playing-now`。`StateCore.playstationPower()` 保留在内部 RPC 契约中，
+后经 `StateCore.commitIngest` 交付。`presence`、`playedGames`、`trophies` 各自比已存的 `observedAt`：更旧或同一时刻的重复不落库，也不按这封的 `receivedAt` 改写游戏道。presence 落库前补上 `playing.startedAt`：同一款接着上一份在玩、上一份没超过 `shared/freshness.ts#PLAYSTATION_STALE_MS` 就沿用，否则取这封的 `observedAt`（`src/stores/playstation.ts#withStartedAt`），PSN 不给开局时刻、上报器也不报。首页的 PlayStation Now Playing 卡读 `/api/status/playing/now`，在玩的标题变了（含开始、结束）就失效首屏标签 `playing-now`：媒体应用不出卡、由站点查游玩列表认，直接从媒体应用切到游戏也要重画首屏。`StateCore.playstationPower()` 保留在内部 RPC 契约中，
 当前没有调用者；PlayStation 上报和公开状态都不使用它。奖杯信封收下之后，
 这里把已获得的奖杯 upsert 进 D1 `trophies`（`src/stores/trophy-history.ts` 的 `archiveTrophies`，失败只记日志）。
 

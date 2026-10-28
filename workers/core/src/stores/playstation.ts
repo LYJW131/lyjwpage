@@ -77,8 +77,8 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: incomingPresence });
     }
-    // 首页的 PlayStation 正在玩卡随「在玩」有无展开收起，只有这时首屏布局变。
-    if (Boolean(previousPresence?.playing) !== Boolean(incomingPresence.playing)) tags.push(NOW_PLAYING_TAG);
+    // 首页的 PlayStation 正在玩卡随在玩的游戏展开收起；媒体应用不出卡、要靠站点查游玩列表认，所以换了标题就失效，不只看有无。
+    if (previousPresence?.playing?.titleId !== incomingPresence.playing?.titleId) tags.push(NOW_PLAYING_TAG);
   }
   if (playedGamesFresh && incomingPlayedGames) {
     playedGamesChanged = JSON.stringify(previousPlayedGames?.items ?? null) !== JSON.stringify(incomingPlayedGames.items);
