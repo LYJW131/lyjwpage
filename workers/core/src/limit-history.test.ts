@@ -104,3 +104,29 @@ test("limit history: the backfill also finishes when D1 has nothing in the windo
   assert.equal(first, 0);
   assert.equal(second, null);
 });
+
+test("limit history: many series × days stay within one storage batch's command cap on archive and backfill", async () => {
+  const b = setup();
+  const keys = Array.from({ length: 8 }, (_, i) => `k${i}`);
+  const values = keys.flatMap((limitKey) => Array.from({ length: 20 }, (_, day) =>
+    `('codex', '${limitKey}', ${T0 - (day + 1) * DAY}, 300, ${day}, NULL, ${T0 - (day + 1) * DAY + M})`));
+  b.exec(`INSERT INTO limit_hours(agent, limit_key, hour_at, window_minutes, used_percent, resets_at, received_at) VALUES ${values.join(", ")}`);
+  b.at(T0);
+  await b.write(() => commitPreparedAgentsReport({
+    source: "agents",
+    receivedAt: T0,
+    limits: {
+      collectedAt: new Date(T0).toISOString(),
+      agents: [{ id: "codex", plan: null, limitsError: null,
+        limits: keys.map((limitKey) => ({ key: limitKey, label: null, group: null, windowMinutes: 300, usedPercent: 50, resetsAt: null })) }],
+    } as ParsedAgentLimits,
+  } as never));
+  await b.archive().run();
+  assert.deepEqual(b.logged, []);
+  assert.equal(b.all("SELECT COUNT(*) AS n FROM limit_hours WHERE hour_at = ?", [T0])[0]?.n, 8);
+
+  const d1 = { prepare: (query: string) => ({ bind: (...args: unknown[]) => ({ all: async <T>() => ({ results: b.all(query, args) as T[] }) }) }) };
+  let filled: number | null = null;
+  await b.write(async () => { filled = await backfillLimitHours(d1, T0 + M); });
+  assert.equal(filled, 160);
+});

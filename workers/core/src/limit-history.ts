@@ -9,6 +9,7 @@ import {
 } from "@shared/limit-history";
 import type { ParsedAgentLimits } from "@shared/agent-limits-parse";
 import { getStorage, key, type StorageBatch } from "@shared/storage";
+import { STORAGE_MAX_COMMANDS } from "@shared/storage-contract";
 
 const DAY_MS = 86_400_000;
 // 多留两天：归档失败几轮后补写、跨站点日边界读满 LIMIT_HISTORY_DAYS 天都还在。
@@ -29,23 +30,41 @@ export function limitHoursKeys(series: readonly string[], from: number, to: numb
   return series.flatMap((id) => [...dates].map((date) => limitHoursKey(id, date)));
 }
 
-function stageRows(batch: StorageBatch, rows: readonly StoredLimitHour[]): void {
-  const byKey = new Map<string, Record<string, string>>();
+// StateHub 一次 execute 至多 STORAGE_MAX_COMMANDS 条命令，序列 × 天数会超过，要分批。
+export function commandSlices<T>(items: readonly T[], size = STORAGE_MAX_COMMANDS): T[][] {
+  const slices: T[][] = [];
+  for (let at = 0; at < items.length; at += size) slices.push(items.slice(at, at + size));
+  return slices;
+}
+
+function groupRows(rows: readonly StoredLimitHour[]) {
+  const days = new Map<string, Record<string, string>>();
   const series: Record<string, string> = {};
   for (const row of rows) {
     const day = limitHoursKey(seriesOf(row), siteDay(row.hourAt));
-    byKey.set(day, { ...byKey.get(day), [row.hourAt]: JSON.stringify(row) });
+    days.set(day, { ...days.get(day), [row.hourAt]: JSON.stringify(row) });
     series[seriesOf(row)] = "1";
   }
-  for (const [day, fields] of byKey) batch.patch(day, fields).expire(day, LIMIT_HOURS_TTL_MS);
-  if (rows.length) batch.patch(limitSeriesKey(), series);
+  return { days: [...days], series };
+}
+
+async function readHours(keys: readonly string[]): Promise<StoredLimitHour[]> {
+  const hashes = await Promise.all(commandSlices(keys).map((slice) => {
+    const batch = getStorage().batch();
+    for (const day of slice) batch.fields(day);
+    return batch.execute();
+  }));
+  return parseLimitHours(hashes.flat() as Record<string, string>[]);
 }
 
 // 同一整点按字段覆盖，留下的就是这一小时最后一次读数；提交在 StateHub 里串行，后到的读数不会比先到的旧。
 export function stageLimitHours(batch: StorageBatch, limits: ParsedAgentLimits, receivedAt: number): boolean {
   const rows = limitHourRows(limits, receivedAt);
-  stageRows(batch, rows);
-  return rows.length > 0;
+  if (!rows.length) return false;
+  const { days, series } = groupRows(rows);
+  for (const [day, fields] of days) batch.patch(day, fields).expire(day, LIMIT_HOURS_TTL_MS);
+  batch.patch(limitSeriesKey(), series);
+  return true;
 }
 
 type StoredLimitHour = LimitHourRow & { backfilled?: true };
@@ -96,9 +115,8 @@ export function limitHistoryFromHours(rows: readonly LimitHourRow[], now: number
 }
 
 export async function getLimitHistory(now = Date.now()): Promise<LimitHistoryPayload> {
-  const batch = getStorage().batch();
-  for (const day of limitHoursKeys(LIMIT_HISTORY_SERIES.map(seriesOf), now - LIMIT_HISTORY_DAYS * DAY_MS, now)) batch.fields(day);
-  return limitHistoryFromHours(parseLimitHours(await batch.execute() as Record<string, string>[]), now);
+  const keys = limitHoursKeys(LIMIT_HISTORY_SERIES.map(seriesOf), now - LIMIT_HISTORY_DAYS * DAY_MS, now);
+  return limitHistoryFromHours(await readHours(keys), now);
 }
 
 // 归档按收到时刻做水位；回填进来的行本来就在 D1 里，不再写回去。
@@ -127,12 +145,12 @@ export async function backfillLimitHours(db: BackfillDb, now = Date.now()): Prom
   const storage = getStorage();
   if (await storage.get(backfillMarkerKey())) return null;
   const from = now - LIMIT_HISTORY_DAYS * DAY_MS;
-  const [hours, days] = await Promise.all([
+  const [hours, snapshots] = await Promise.all([
     db.prepare(BACKFILL_HOURS).bind(from).all<BackfillRow>(),
     db.prepare(BACKFILL_DAYS).bind(siteDay(from)).all<BackfillRow>(),
   ]);
   const rows = new Map<string, StoredLimitHour>();
-  for (const raw of [...days.results, ...hours.results]) {
+  for (const raw of [...snapshots.results, ...hours.results]) {
     const row: StoredLimitHour = {
       agent: raw.agent,
       key: raw.limit_key,
@@ -148,14 +166,15 @@ export async function backfillLimitHours(db: BackfillDb, now = Date.now()): Prom
     };
     if (row.hourAt >= from) rows.set(`${seriesOf(row)}|${row.hourAt}`, row);
   }
-  if (rows.size) {
-    const read = storage.batch();
-    for (const day of limitHoursKeys([...new Set([...rows.values()].map(seriesOf))], from, now)) read.fields(day);
-    for (const stored of parseLimitHours(await read.execute() as Record<string, string>[])) rows.delete(`${seriesOf(stored)}|${stored.hourAt}`);
+  const keys = limitHoursKeys([...new Set([...rows.values()].map(seriesOf))], from, now);
+  for (const stored of await readHours(keys)) rows.delete(`${seriesOf(stored)}|${stored.hourAt}`);
+  const { days, series } = groupRows([...rows.values()]);
+  // 每个键一条 patch 一条 expire；中途失败时标记还没写，下一轮重来，已写的行按上面跳过。
+  for (const slice of commandSlices(days, STORAGE_MAX_COMMANDS / 2)) {
+    const write = storage.batch();
+    for (const [day, fields] of slice) write.patch(day, fields).expire(day, LIMIT_HOURS_TTL_MS);
+    await write.execute();
   }
-  const write = storage.batch();
-  stageRows(write, [...rows.values()]);
-  write.set(backfillMarkerKey(), String(now));
-  await write.execute();
+  await storage.batch().patch(limitSeriesKey(), series).set(backfillMarkerKey(), String(now)).execute();
   return rows.size;
 }
