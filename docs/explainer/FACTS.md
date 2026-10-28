@@ -257,7 +257,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - Worker 降级：回 `ok:false` 加 HTTP 200。
 - 404：显示 "Status unavailable"。
-- 5xx 或网络错误：抛出，本次渲染失败回 500 且不缓存；`StatusSnapshot` 上游失败或非法包回 503（`workers/site/src/index.ts#StatusSnapshot`）。
+- 5xx 或网络错误：抛出，本次渲染失败回 500 且不缓存；`StatusSnapshot` 上游失败、非法包或超过 `src/lib/first-screen.ts#FIRST_SCREEN_STATUS_TIMEOUT_MS` 未返回时回 503（`workers/site/src/index.ts#StatusSnapshot`）。
 
 ## 5 浏览器
 
