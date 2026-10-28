@@ -33,6 +33,11 @@ binding = "PRIVATE_HISTORY"
 service = "core"
 entrypoint = "PrivateHistory"
 
+# workers-oauth-provider 的授权、令牌与客户端登记（src/oauth/server.ts）。
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "c17f49a72cff4523ac5e0f38e68f6111"
+
 # 与上报入口同一个站点图片桶：构建截图按内容寻址写入，经站点 /img/<objectKey> 进 PR 评论。
 [[r2_buckets]]
 binding = "IMAGES"
