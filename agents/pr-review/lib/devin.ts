@@ -6,6 +6,7 @@ import { join } from "node:path";
 export const MODEL = "swe-2-max";
 
 // 交给 `devin --config` 的整份用户配置：只留读文件、grep、按名找文件三个工具，不导入任何别家的规则、skill 与 MCP，不开子代理。
+// mcp_* 与 skill 写进 disabled_tools 也摘不掉，导出里仍列着、模型偶尔会调；没接 MCP、没导入 skill，调了拿到的是空的。
 // 被拒的工具调用会让 `-p` 整轮结束，所以不靠 deny 拦工具，而是用 disabled_tools 摘掉。
 // 不能写 tool 级的 allow（如 "read"）：它会压过下面的 Read(...) deny。
 // denyRead 是工作区以外不许读的路径（评测时含其他用例的快照，免得读到后来的修复）。

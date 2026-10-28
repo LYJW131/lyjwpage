@@ -2,7 +2,7 @@
 
 lyjwpage 自己的改动评审员：线程在云端容器里开 PR 前跑一遍，用法见 skill `lyjwpage-pr-review`。评审员是 Devin CLI 无头模式（`devin -p`），模型 `swe-2-max`（免费档）。
 
-- 取证：开轮前从本地 git 取 merge-base 到 head 的 diff 与 head 的整棵文本源码树，连同标题和意图做成快照（`lib/git-source.ts`、`lib/workspace.ts#reviewWorkspace`）。评审员只有读文件、grep、按名找文件三个工具，不导入任何别家的规则、skill 与 MCP，工作区外的路径读不到（`lib/devin.ts#reviewerConfig`）。
+- 取证：开轮前从本地 git 取 merge-base 到 head 的 diff 与 head 的整棵文本源码树，连同标题和意图做成快照（`lib/git-source.ts`、`lib/workspace.ts#reviewWorkspace`）。评审员能用的是读文件、grep、按名找文件三个工具（摘不掉的 `mcp_*` 与 `skill` 调了是空的），不导入任何别家的规则、skill 与 MCP，工作区外的路径读不到（`lib/devin.ts#reviewerConfig`）。
 - 提示词：`review.txt`，后面接上 PR 标识（`lib/prompt.ts`）。按快照里的 `REVIEW.md` 判什么该报，最后一条消息交一个 `{"findings": [...]}`（`lib/findings.ts` 解析）。
 - 输出：`run.ts` 把发现按 F1、F2……打到标准输出，并把同一份 JSON、原始回复和 Devin 的导出写进 `--out` 目录。不发 PR 评论。
 

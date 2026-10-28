@@ -5,7 +5,7 @@ description: lyjwpage 里开 PR 前（或开了之后）让自家评审员（`ag
 
 # 开 PR 前的评审员
 
-评审员在线程自己的云端容器里跑，不进 GitHub Actions：`agents/pr-review/run.ts` 从本地 git 取 head 的源码树和 merge-base 起的 diff 做快照，Devin CLI 的 swe-2-max 只用读文件、grep、按名找文件三个工具，照快照里的 `REVIEW.md` 判，交回一组发现（`agents/pr-review/README.md`）。目的是开 PR 前多一双不同模型的眼睛。什么时候跑和叫不叫 Opus 判定员是同一个判断：线程判为大改动就跑，小改动、文档与 skill 不跑。它不发 PR 评论，不替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
+评审员在线程自己的云端容器里跑，不进 GitHub Actions：`agents/pr-review/run.ts` 从本地 git 取 head 的源码树和 merge-base 起的 diff 做快照，Devin CLI 的 swe-2-max 只有读文件、grep、按名找文件三个能用的工具，照快照里的 `REVIEW.md` 判，交回一组发现（`agents/pr-review/README.md`）。目的是开 PR 前多一双不同模型的眼睛。什么时候跑和叫不叫 Opus 判定员是同一个判断：线程判为大改动就跑，小改动、文档与 skill 不跑。它不发 PR 评论，不替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
 
 为了让评审员满意只做最小的改动。防范范围蔓延，该驳回就驳回。
 
