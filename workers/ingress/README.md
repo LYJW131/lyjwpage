@@ -107,9 +107,12 @@ OTEL_LOGS_EXPORTER=none
 OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative
 OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=https://ingest.homepage.lyjw.llc/api/ingest/agents/otlp
-OTEL_EXPORTER_OTLP_HEADERS="CF-Access-Client-Id=<ACCESS_CLIENT_ID>,CF-Access-Client-Secret=<ACCESS_CLIENT_SECRET>"
+OTEL_EXPORTER_OTLP_HEADERS=CF-Access-Client-Id=<ACCESS_CLIENT_ID>,CF-Access-Client-Secret=<ACCESS_CLIENT_SECRET>
 OTEL_METRIC_EXPORT_INTERVAL=60000
 ```
+
+`OTEL_EXPORTER_OTLP_HEADERS` 不能省：会话主进程出网不经容器的出口代理，Network secret 加不到它的请求上，
+缺了它 Access 回 401。同一把凭据另在 Network secret 里配一份，给不经主进程环境、走出口代理的 Devin CLI 用（见下文与 `docs/ops-facts.md`）。
 
 `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative` 不能省：Claude Code 默认发 delta，状态核心不收 delta 的点
 （没法去重，重发会重复计数），只记一行 `[otlp] delta temporality points skipped` 的 warn。
@@ -117,7 +120,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 只认 JSON（可 gzip），不认 protobuf；只在这条路由解压，按解压后的字节数限制大小。
 鉴权要求专属 OTLP 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
-`[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境，不用配置 Worker secret。
+`[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境（环境变量与 Network secret 各一份），不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
 收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
 

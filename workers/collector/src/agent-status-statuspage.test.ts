@@ -148,3 +148,28 @@ test("状态页不再列出盯着的组件时，不退回整页灯", async () =>
   assert.equal(codex.indicator, "unavailable");
   assert.match(codex.note ?? "", /no longer lists/);
 });
+
+test("整页来源的总灯是 minor 时，事件自标 major 也不把 Cursor 抬成部分中断", async () => {
+  const body = summary({
+    status: { indicator: "minor", description: "Minor Service Outage" },
+    components: [
+      { name: "IDE", status: "operational" },
+      { name: "Cloud Agents", status: "partial_outage" },
+    ],
+    incidents: [
+      {
+        id: "multi",
+        name: "Multiple services degraded",
+        status: "investigating",
+        impact: "major",
+        shortlink: "https://status.cursor.com/incidents/multi",
+        components: [{ name: "Cloud Agents" }],
+        incident_updates: [{ body: "Investigating.", created_at: "2026-10-28T21:39:00Z" }],
+      },
+    ],
+  });
+  const payload = await collectAgentStatus(null, pages({ [AGENT_STATUS_URLS.cursor]: body }));
+  const cursorRow = row(payload, "cursor");
+  assert.equal(cursorRow.indicator, "degraded");
+  assert.equal(cursorRow.incidents[0]?.id, "multi");
+});

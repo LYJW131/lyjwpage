@@ -41,7 +41,7 @@ const FILL: Keys = [[0, 1], [6.75, 1], [7.25, 0.65], [7.75, 1]];
 const BLUR: Keys = [[0, 1], [3.2, 1], [4, 0], [7.75, 0]];
 const BLOOM: Keys = [[0, 0], [0.5, 0.25], [2.75, 0.25], [4.5, 0.2], [6, 0.22], [6.6, 0.28], [7.1, 0], [7.75, 0]];
 // 整面的增益：展开时比平时亮（lyjw 要的），定格后用 1.5 秒回落到平时亮度。
-const GAIN: Keys = [[0, 1.5], [7.75, 1.5], [9.25, 1]];
+const GAIN: Keys = [[0, 1.5], [7.75, 1.5], [FLOOR_UNFOLD_S, 1]];
 // 原片没有外圈；泛光那几秒外圈先压暗，免得粗亮环抢了内盘。
 const OUTER: Keys = [[0, 0.6], [6.75, 0.6], [7.75, 1]];
 const SPARK_S = 0.5;
@@ -62,28 +62,22 @@ const at = (keys: Keys, t: number) => {
   return keys[keys.length - 1][1];
 };
 
-function brickTexture(color: string) {
+function floorTextures(outer: HTMLImageElement) {
   const bricks = document.createElement("canvas");
   bricks.width = bricks.height = BRICK_TEX;
   const b = bricks.getContext("2d")!;
   const lit = b.createRadialGradient(BRICK_TEX / 2, BRICK_TEX / 2, 0, BRICK_TEX / 2, BRICK_TEX / 2, BRICK_TEX / 2);
   // 四成半径内保持亮，往外按 smoothstep 落到零，到边上斜率也归零；线性收尾在透视压扁的远端会显出一道硬边。
-  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(color, 0.85 * (1 - smooth(0.4, 1, i / 16))));
+  for (let i = 0; i <= 16; i++) lit.addColorStop(i / 16, tone(SCENE.brick, 0.85 * (1 - smooth(0.4, 1, i / 16))));
   b.fillStyle = lit;
   b.fillRect(0, 0, BRICK_TEX, BRICK_TEX);
   b.globalCompositeOperation = "destination-out";
-  b.fillStyle = tone(color, 0.6);
+  b.fillStyle = tone(SCENE.brick, 0.6);
   const row = BRICK_R * 0.09;
   for (let y = 0, i = 0; y < BRICK_TEX; y += row, i++) {
     b.fillRect(0, y, BRICK_TEX, 4);
     for (let x = (i % 2) * row; x < BRICK_TEX; x += row * 2.1) b.fillRect(x, y, 3, row);
   }
-  return bricks;
-}
-
-function floorTextures(outer: HTMLImageElement) {
-  const bricks = brickTexture(SCENE.brick);
-  const dark = brickTexture(SCENE.brickDark);
 
   const tex = document.createElement("canvas");
   tex.width = tex.height = CIRCLE_TEX;
@@ -98,14 +92,14 @@ function floorTextures(outer: HTMLImageElement) {
   c.fill();
   c.globalCompositeOperation = "lighter";
   circle(c, outer, R);
-  return { bricks, dark, tex };
+  return { bricks, tex };
 }
 
 // 平时（u=1）：外圈随 spin 转、内盘以 1.6 倍反转，法阵叠在砖地上（source-over）。
 // 展开中（u<1）：外圈和内盘的「细线」「宽块」两层（宽块由 fill 遮罩拆出，两层 alpha 互补）各按自己的径向前沿显现，
 // 中心冒一团光和几颗火星；BLUR 那几秒整面换成取粗 mip 的糊的那份，整面再乘 GAIN。
 // 砖地是暗底上叠法阵照出的紫：紫按法阵亮度（alpha×gain）与前沿到了几成叠；暗底不低于 ground，召唤时跟着前沿出来，平时重放不熄。
-const FRAG = `${COLORS}uniform sampler2D bricks,dark,tex,inner,fillMask;uniform float spin,alpha,u,ground,gain;
+const FRAG = `${COLORS}uniform sampler2D bricks,tex,inner,fillMask;uniform float spin,alpha,u,ground,gain;
 uniform vec4 k0;uniform vec4 k1;uniform vec2 spark;uniform vec3 sparks[${SPARKS}];varying vec2 v;
 float inside(vec2 u){return step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);}
 vec2 rot(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}
@@ -145,13 +139,14 @@ void main(){
     c=min(c*gain,vec4(1.));
     reach=k1.w;
   }
-  vec4 l=texture2D(bricks,v)*min(1.,alpha*gain)*reach;
-  vec4 b=l+texture2D(dark,v)*max(ground,reach)*(1.-l.a);
+  vec4 m=texture2D(bricks,v);
+  vec4 l=m*min(1.,alpha*gain)*reach;
+  vec4 b=l+vec4(BRICKDARK,1.)*m.a*max(ground,reach)*(1.-l.a);
   gl_FragColor=c+b*(1.-c.a);
 }`;
 
 export function floor(outer: HTMLImageElement, inner: HTMLImageElement, innerFill: HTMLImageElement, anisotropy: number) {
-  const { bricks, dark, tex } = floorTextures(outer);
+  const { bricks, tex } = floorTextures(outer);
   const opts = { mip: true, anisotropy };
   const sparks = new Float32Array(SPARKS * 3);
   for (let i = 0; i < SPARKS; i++) sparks.set([0, 0, 0.01 * R * (1 + hash(i + 110))], i * 3);
@@ -159,7 +154,6 @@ export function floor(outer: HTMLImageElement, inner: HTMLImageElement, innerFil
     FRAG,
     {
       bricks: { value: texture(bricks, opts) },
-      dark: { value: texture(dark, opts) },
       tex: { value: texture(tex, opts) },
       inner: { value: texture(inner, opts) },
       fillMask: { value: texture(innerFill, opts) },

@@ -70,6 +70,7 @@ function indicatorDot(indicator: AgentIndicator): string {
     case "maintenance":
       return "bg-[oklch(0.72_0.16_75)]";
     case "partial_outage":
+      return "bg-signal-orange";
     case "major_outage":
       return "bg-[oklch(0.62_0.21_25)]";
     default:
@@ -83,6 +84,7 @@ function indicatorText(indicator: AgentIndicator): string {
     case "maintenance":
       return "text-[oklch(0.72_0.16_75)]";
     case "partial_outage":
+      return "text-signal-orange-ink";
     case "major_outage":
       return "text-[oklch(0.62_0.21_25)]";
     case "unavailable":

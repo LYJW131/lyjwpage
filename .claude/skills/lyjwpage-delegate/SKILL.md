@@ -39,7 +39,7 @@ Agent(
 
 简报五项，子代理看不到对话，每项都写：
 
-1. 禁区：不调用 `mcp__hearthbot__` 的写工具（`reply`、`update_status`、`react`、`set_thread_resolved` 等）；读讨论串的活写明可用 `fetch_thread`、`fetch_messages`、`list_thread_sessions`；不推送、不合并、不在 GitHub 上评论、不改 Cloudflare 与生产。只读的活写明「只读」。
+1. 禁区：不调用 `mcp__hearthbot__` 的写工具（`post_message`、`update_progress_checklist`、`react`、`set_thread_resolved` 等）；读讨论串的活写明可用 `read_thread`、`read_messages_by_id`、`list_threads`；不推送、不合并、不在 GitHub 上评论、不改 Cloudflare 与生产。只读的活写明「只读」。
 2. 要什么：目标一句话，加上做完的判据（「列出全部未回复线程」，不是「看看评审」）。
 3. 材料：仓库、分支、PR 号、文件路径、会话或线程 id、要用的脚本，写全，不让它自己去猜。
 4. 产物：长结果写进 `/mnt/project-files/<主题>/` 或会话 scratchpad 的文件；回报不超过 10 行，写文件路径、结论、没做到的及原因。
