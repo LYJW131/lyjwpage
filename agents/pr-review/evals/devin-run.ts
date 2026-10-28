@@ -44,6 +44,20 @@ function denyRead(item: Case) {
   ];
 }
 
+// 撞上限流后所有 worker 等到同一个重置时刻，再每隔 STAGGER_MS 放一个出去：一起重开会一起再撞。
+const STAGGER_MS = 20_000;
+let blockedUntil = 0;
+let lastStart = 0;
+
+async function gate() {
+  for (;;) {
+    const slot = Math.max(Date.now(), blockedUntil, lastStart + STAGGER_MS);
+    lastStart = slot;
+    await new Promise((r) => setTimeout(r, slot - Date.now()));
+    if (Date.now() >= blockedUntil) return;
+  }
+}
+
 async function runOne(item: Case, rep: number): Promise<Raw> {
   const cwd = await caseWorkspace(item);
   const stem = `${item.id}_rep${rep}`;
@@ -54,13 +68,14 @@ async function runOne(item: Case, rep: number): Promise<Raw> {
   const exportPath = join(VARIANT, "traces", `${stem}.json`);
   const base = { case_id: item.id, rep, model: values.model };
   for (let attempt = 0; attempt < 4; attempt++) {
+    await gate();
     const run = await runDevin({ cwd, promptFile: promptPath, configPath, exportPath, model: values.model, timeoutMs: RUN_TIMEOUT_MS });
     const reset = rateLimitReset(`${run.stdout}\n${run.stderr}`);
     if (reset) {
       const wait = reset.getTime() - Date.now() + 30_000;
       if (wait > MAX_RATE_WAIT_MS) return { ...base, findings: null, error: `rate limit until ${reset.toISOString()}` };
       console.log(`${stem} rate limited, waiting until ${reset.toISOString()}`);
-      await new Promise((r) => setTimeout(r, Math.max(wait, 30_000)));
+      blockedUntil = Math.max(blockedUntil, Date.now() + Math.max(wait, 30_000));
       continue;
     }
     const tool_calls = await countTools(exportPath);
