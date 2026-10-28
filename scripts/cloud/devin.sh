@@ -43,7 +43,7 @@ if [ "$(uname)" = Linux ] && ! { command -v bwrap && command -v socat; } >/dev/n
 fi
 
 # Deny rules for push / sudo / credentials, and the OTLP endpoint. The Ingest key is not
-# needed here: Devin reads OTEL_EXPORTER_OTLP_HEADERS from the thread's environment.
+# needed here: Devin runs as a child process, so the egress proxy adds the Access headers.
 python3 - <<'PY'
 import json, os
 p = os.path.expanduser("~/.config/devin/config.json")
