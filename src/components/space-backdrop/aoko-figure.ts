@@ -36,9 +36,11 @@ const HAND_FALLOFF = 300;
 // 深色的地方只带一点光的颜色。直接按滤色把青光叠上去，红裙会被冲成发灰的粉。
 // 法线图只留大体积、不带衣褶细节，细节一多受光面就碎成一片片的脏斑（lyjw：「褶皱太多了」）。
 // 位置是原图像素（x 右、y 下、z 朝镜头），r 是衰减到一半的距离。
+// 脚下法阵照腿另算（GROUND）：按法线一刀切的受光落在黑靴上只是一片发灰的哑光，看不出被照；
+// 改成从地面往上渐弱的一层青光，再沿剪影边缘描一圈细的轮廓光，越靠近地面越亮。
+const GROUND = { rgb: [0.35, 0.75, 1], fade: 700, rim: 1100, k: 0.45, edge: 1 };
 const LIGHTS = {
-  // 脚下法阵前后两盏：前面那盏从下往上照腿和裙摆，后面那盏只亮轮廓。
-  floorFront: { at: [FLOOR.x, FLOOR.y, 500], rgb: [0.35, 0.75, 1], k: 0.6, r: 700 },
+  // 脚下法阵后面那盏只亮朝它那侧的轮廓。
   floorBack: { at: [FLOOR.x, FLOOR.y, -600], rgb: [0.4, 0.6, 1], k: 0.7, r: 1400 },
   // 掌心光球跟着手层摆（位置由 lamp 传进来），蓄力时变亮，发射那一下最亮。
   orb: { rgb: [0.55, 0.9, 1], k: 0.3, r: 220 },
@@ -135,11 +137,17 @@ ${REFRACT}
   vec3 nb=hasN>0.?texture2D(bodyN,clamp(s,0.,1.)).xyz*2.-1.:vec3(0.,0.,1.);
   vec3 N=normalize(mix(vec3(nb.x,-nb.y,nb.z),n,ar.a));
   vec3 glow=vec3(0.);
-  lightUp(N,P,${v3(LIGHTS.floorFront.at)},${v3(LIGHTS.floorFront.rgb)},${f(LIGHTS.floorFront.k)}*lv.x,${f(LIGHTS.floorFront.r)},glow);
+  vec2 px=2.5/S;
+  float near=texture2D(img,s+vec2(px.x,0.)).a+texture2D(img,s-vec2(px.x,0.)).a+texture2D(img,s+vec2(0.,px.y)).a+texture2D(img,s-vec2(0.,px.y)).a;
+  float edge=clamp((c.a-near*.25)*2.5,0.,1.);
+  float low=smoothstep(${f(FLOOR.y - GROUND.fade)},${f(FLOOR.y)},P.y);
+  float hem=smoothstep(${f(FLOOR.y - GROUND.rim)},${f(FLOOR.y)},P.y);
+  // 直接叠加、不按底色缩放：黑靴底色太暗，乘上去就没了。
+  vec3 ground=${v3(GROUND.rgb)}*lv.x*(low*low*${f(GROUND.k)}*(.6+.4*clamp(N.z-N.y,0.,1.))+edge*hem*${f(GROUND.edge)});
   lightUp(N,P,${v3(LIGHTS.floorBack.at)},${v3(LIGHTS.floorBack.rgb)},${f(LIGHTS.floorBack.k)}*lv.x,${f(LIGHTS.floorBack.r)},glow);
   lightUp(N,P,${v3(LIGHTS.halo.at)},${v3(LIGHTS.halo.rgb)},${f(LIGHTS.halo.k)}*lv.y,${f(LIGHTS.halo.r)},glow);
   lightUp(N,P,lamp.xyz,${v3(LIGHTS.orb.rgb)},${f(LIGHTS.orb.k)}*lv.z*(.55+.45*sin(t*2.4))*(1.+2.5*lv.w)+2.*flash+.6*lamp.w,${f(LIGHTS.orb.r)},glow);
-  vec3 lit=base+glow*(base*1.2+.14);
+  vec3 lit=base+glow*(base*1.2+.14)+ground;
   base=mix(lit,.85+.15*(1.-exp(-(lit-.85)*4.)),step(.85,lit));
   if(lamp.w>0.){
     vec3 l=vec3(vec2(${MUZZLE[0]}.,${MUZZLE[1]}.)-(Q0-dh),${AHEAD}.);
