@@ -47,7 +47,7 @@
 浏览器按 id 贴到 coding 卡片的 agent 行上（`src/lib/coding-agents.ts` 的 `codingAgentRows`）；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
 
 `GET /api/status/limits/history` 是限额的历史读数。收下的每封限额按 UTC 整点记进 StateHub（`src/limit-history.ts#stageLimitHours`，同一小时后到的覆盖先到的），端点从这里读：最近 `LIMIT_HISTORY_HOURLY_DAYS` 天每小时一点，更早的每个站点日一点，共 `LIMIT_HISTORY_DAYS` 天，只出 `LIMIT_HISTORY_SERIES` 里要预测的窗口（均在 `shared/limit-history.ts`），不读 D1。
-D1 的 `limit_hours` / `limit_snapshots` 由下文「长期归档」的 `limits` 一路写。站点用它和 `limits` 的当前读数算周限额什么时候用完（`src/lib/limit-forecast.ts`）。
+站点用这份历史和 `limits` 的当前读数算周限额什么时候用完（`src/lib/limit-forecast.ts`）。D1 的 `limit_hours` / `limit_snapshots` 由下文「长期归档」的 `limits` 一路写，只作备份。
 
 ### coding agent 的 token 用量
 
