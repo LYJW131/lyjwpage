@@ -24,6 +24,7 @@
 - `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
 - `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）。厂商状态、GitHub、站点、Cloudflare、站点健康这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/public-status.ts`：具名入口 `PublicStatus`，只接受公开状态登记表中的精确路径，复用浏览器的公开模型；不提供凭据、写入或按参数查询。契约在 `shared/public-status.ts`。
+- `src/private-history.ts`：具名入口 `PrivateHistory`，按登记的表和时间范围只读 D1 长期历史（实现在 `src/history-read.ts`），契约在 `shared/private-history.ts`。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
 - `src/origin-worker.ts` 的 AI 路由：经 `AI_SERVICE` 转发至 [AI Worker](../ai/README.md)，范围由根目录 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定。
 
@@ -354,6 +355,8 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 首页对话、配额查询、GitHub issue 提交与 MCP 的路径登记在 `shared/ai-paths.ts#AI_HTTP_PATHS`。`src/origin-worker.ts` 经 `AI_SERVICE.fetch(request)` 把请求和响应流交给 [AI Worker](../ai/README.md)，不在 core 执行聊天模型调用、对话配额或 MCP 协议；缺少绑定时回 503。预检与来源校验也由 AI Worker 处理，`CF-Connecting-IP` 随原请求保留。站点域名上的同一组路径由 site Worker 经自己的 `AI_SERVICE` 直接交给 AI Worker，不经过这里。
 
 AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。`src/public-status.ts#readPublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 中的精确路径，复用 `executePublicRequest` 返回浏览器使用的公开模型；查询参数、任意 URL、凭据和写入不在这个接口中。不能为工具方便而把 `StateCore` 或通用存储接口交给 AI Worker。
+
+不公开的长期历史走另一个具名入口 `PrivateHistory`，契约是 `shared/private-history.ts#PrivateHistoryRpc` 的 `readHistory(query)`：`query` 只能点名 `PRIVATE_HISTORY_TABLES` 里登记的一张 D1 表，加一段时间范围和不超过 `PRIVATE_HISTORY_MAX_ROWS` 的条数，按登记的时间列从新到旧返回整行（`src/history-read.ts#readPrivateHistory`）。它读 `HISTORY` 绑定本身，不经 `historyArchive` 的本地与预览停用；没有绑定时回 `ok: false`。这个入口不出现在站点网关，也不进首页对话的工具。
 
 ## 断流告警
 

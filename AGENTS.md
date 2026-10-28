@@ -35,7 +35,7 @@
 
 - 站点与各 Worker 走 Cloudflare Workers Builds 原生 Git 集成（`docs/workers-builds.md`），不在 GitHub Actions 里加发布任务；自动部署失败时修现有流程，不改手工发布。lyjw 要求部署站点时，包含完成提交、PR 与合并。
 - main 有分支保护，只经 PR 合入。合并方式、标题与正文只用 `pnpm merge-message` 的输出并带上 `expectedHeadSha`（`lyjwpage-verify`「3. PR 合并门槛」）；PR 标题写 `type(scope): 描述`；同步 main 进分支用 merge，不改写已推送历史。
-- Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`、`shared/digest.ts`）只加不改，被调用方先发布。
+- Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/private-history.ts`、`shared/collector.ts`、`shared/digest.ts`）只加不改，被调用方先发布。
 - 推送成功不等于部署完成：用 `scripts/deploy-check.ts` 核对（`lyjwpage-verify`「4. 合并后部署与生产核对」）。域名与缓存链路见 `docs/ops-facts.md`，上报器发布见 `.claude/rules/reporters.md`。
 
 # 排查线上错误
