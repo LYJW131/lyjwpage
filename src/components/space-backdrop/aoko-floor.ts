@@ -8,7 +8,7 @@ import { RIM, SCENE, circle, hash, smooth, tone } from "./aoko-paint";
 // 底下是砖地：本身是暗灰紫，紫色是法阵照出来的，法阵暗了、熄了，那层紫跟着淡，只剩暗底。砖地是一块真的水平面，透视、近大远小由 aoko-stage.ts 的相机给。
 const BRICK_TEX = 1280;
 const BRICK_R = BRICK_TEX / 2 / EXTENT;
-// 法阵单独一张纹理，边长与 floor-outer 贴图一致（须与 scripts/aoko-fx-assets.ts 同步）。砖地是柔和的渐变和砖缝，低一档的分辨率就够。
+// 法阵单独一张纹理，边长与 floor-outer 贴图一致（须与 character-art 仓库 scripts/fx/aoko-fx-assets.ts 同步）。砖地是柔和的渐变和砖缝，低一档的分辨率就够。
 const CIRCLE_TEX = 1600;
 const R = (CIRCLE_TEX / 2) * RIM;
 // img0640 圈内 0.43 R 以内是空的，img0609 里内盘的粗亮边正好贴着这一圈。

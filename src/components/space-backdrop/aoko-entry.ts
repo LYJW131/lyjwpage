@@ -8,7 +8,7 @@ export const ART = {
   // 绑定图 RGB 分别是头发、裙摆、头部的权重（0 不动，1 摆幅最大），与立绘同框；离线生成，换立绘要一起重出。
   rig: "/mascots/aoko-rig.png",
   faces: FACE_ATLAS,
-  // 伸出的手、光球和握腕的右手单独一层，FILL 是同一块里 Codex 补出的手背后内容；NORMAL 是这层手的法线（scripts/aoko-hand-normals.py）。
+  // 伸出的手、光球和握腕的右手单独一层，FILL 是同一块里 Codex 补出的手背后内容；NORMAL 是这层手的法线（character-art 仓库 scripts/fx/aoko-hand-normals.py）。
   arm: "/mascots/aoko-arm.webp",
   fill: "/mascots/aoko-fill.webp",
   normal: "/mascots/aoko-arm-normal.webp",

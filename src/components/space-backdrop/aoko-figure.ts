@@ -28,7 +28,7 @@ const REFRACT = ARM_RING_SHAPES.rings
   .join("\n");
 
 // 光炮照人：光源就是掌心前方的光团（aoko-cannon.ts#AHEAD），随距离按 FALLOFF 衰减（照法取自 PR #722）。
-// 手用法线图（scripts/aoko-hand-normals.py），受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；整只手先冲一层淡紫（原片里背光面也是亮的淡紫，不是暗紫）。
+// 手用法线图（character-art 仓库 scripts/fx/aoko-hand-normals.py），受光量分两档硬边色阶，照原片手指上那种一块块的亮斑；整只手先冲一层淡紫（原片里背光面也是亮的淡紫，不是暗紫）。
 // 手以外（脸、袖子、头发）拿立绘透明度的梯度当法线，朝光的轮廓边先亮，按更远的 BODY_FALLOFF 柔和地补一层，不分档。
 const HAND_FALLOFF = 300;
 const BODY_FALLOFF = 260;
