@@ -1,28 +1,9 @@
 "use client";
 
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
+import { elapsed, useNow } from "@/components/live/focus-now-card";
 import { StatusDot } from "@/components/ui/status-dot";
-import { RenderClock } from "@/hooks/use-mounted-at";
-
-function elapsed(ms: number): string {
-  const minutes = Math.floor(ms / 60_000);
-  const hours = Math.floor(minutes / 60);
-  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
-}
-
-function useNow(enabled: boolean): number | null {
-  const renderClock = useContext(RenderClock);
-  const [now, setNow] = useState<number | null>(renderClock || null);
-  useEffect(() => {
-    if (!enabled) return;
-    const tick = () => setNow(Date.now());
-    tick();
-    const timer = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(timer);
-  }, [enabled]);
-  return now;
-}
 
 export function NowGameRow({
   cover,
@@ -37,7 +18,7 @@ export function NowGameRow({
   detail: string | null;
   startedAt: number | null;
 }) {
-  const now = useNow(startedAt != null);
+  const now = useNow();
   return (
     <div className="flex items-center gap-3 p-4 sm:gap-4 lg:px-5">
       <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted text-muted-foreground sm:size-16">
@@ -58,8 +39,8 @@ export function NowGameRow({
           </div>
         )}
       </div>
-      {now != null && startedAt != null && (
-        <div className="shrink-0 text-2xl font-medium leading-none sm:text-3xl">
+      {startedAt != null && (
+        <div className="shrink-0 text-2xl font-medium leading-none sm:text-3xl" suppressHydrationWarning>
           {elapsed(Math.max(0, now - startedAt))}
         </div>
       )}
