@@ -41,6 +41,7 @@
   --alert-surface: color-mix(in oklab, var(--signal-red) 8%, var(--surface));
   --alert-shadow: color-mix(in oklab, var(--signal-red) 35%, transparent);
   --signal-orange: #d66b35;
+  --signal-orange-ink: oklch(0.56 0.16 45);
   --signal-yellow: #d0a22c;
   --signal-green: oklch(0.52 0.1 151);
   /* 白金奖杯的金属描边：两档银灰交替成斜向高光。 */
@@ -106,6 +107,7 @@
   --live-idle-ink: oklch(0.67 0.17 58);
 
   --signal-red: oklch(0.66 0.19 27);
+  --signal-orange-ink: var(--signal-orange);
   --alert-surface: color-mix(in oklab, var(--signal-red) 12%, var(--surface));
   --alert-shadow: color-mix(in oklab, var(--signal-red) 45%, transparent);
   --signal-green: oklch(0.7 0.15 151);
@@ -148,6 +150,7 @@
   --color-claude: var(--claude);
   --color-signal-red: var(--signal-red);
   --color-signal-orange: var(--signal-orange);
+  --color-signal-orange-ink: var(--signal-orange-ink);
   --color-signal-yellow: var(--signal-yellow);
   --color-signal-green: var(--signal-green);
   --color-signal-blue: var(--signal-blue);
