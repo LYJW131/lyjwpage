@@ -12,7 +12,7 @@ const HELP = `用法：node scripts/rework-candidates.ts --from <BASE> --to <NEW
 
 输出 JSON：pairs 每项是返工提交 rework、被返工的提交 reworked、涉及的文件与行数；
 fixes 是区间里 fix / revert 提交的个数，withoutCandidates 是其中一对都没找到的个数。
-根提交与浅克隆边界上 blame 出的行不计；浅克隆的历史没覆盖到窗口起点时报错，先 git fetch --shallow-since 再跑。
+根提交与浅克隆边界上 blame 出的行不计；浅克隆的历史没覆盖到窗口起点时报错，先 git fetch --shallow-since 再 --deepen=1 跑。
 
 退出码：0 正常，1 git 出错或历史不够，2 参数错。`;
 
@@ -129,7 +129,7 @@ export function reworkCandidates({ repo, from, to, windowHours }: { repo: string
     const oldest = Math.min(...chain.map((commit) => commit.time));
     if (oldest > earliest) {
       const since = new Date(earliest * 1000).toISOString();
-      throw new Error(`浅克隆的 first-parent 历史最早到 ${new Date(oldest * 1000).toISOString()}，没覆盖窗口起点 ${since}：先 git fetch --shallow-since=${since} 再跑`);
+      throw new Error(`浅克隆的 first-parent 历史最早到 ${new Date(oldest * 1000).toISOString()}，没覆盖窗口起点 ${since}：先 git fetch --shallow-since=${since} origin main && git fetch --deepen=1 origin main 再跑（只拉到窗口起点之后的第一个提交仍判不出边界前有没有漏，要多拉一层）`);
     }
   }
   const introducedBy = new Map<string, Commit>();
