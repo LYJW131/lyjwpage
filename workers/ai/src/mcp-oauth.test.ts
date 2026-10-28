@@ -57,7 +57,7 @@ class Browser {
     const headers = new Headers(init.headers);
     if (this.#cookies.size) headers.set("Cookie", [...this.#cookies].map(([name, value]) => `${name}=${value}`).join("; "));
     const response = await worker.fetch(new Request(url, { ...init, headers, redirect: "manual" }), env);
-    for (const cookie of response.headers.getSetCookie()) {
+    for (const cookie of (response.headers as Headers & { getSetCookie(): string[] }).getSetCookie()) {
       const [pair] = cookie.split(";");
       const at = pair.indexOf("=");
       this.#cookies.set(pair.slice(0, at), pair.slice(at + 1));
