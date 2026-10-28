@@ -15,6 +15,7 @@ import { cronSlot } from "./cron-heartbeat";
 import { runCronRound } from "./cron-round";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { expireStatusTags, liveRoom } from "./live-platform";
+import { backfillLimitHours } from "./limit-history";
 import { lagStatusTags } from "./lag-repurge";
 import { previewWorkerEnabled } from "./preview";
 import { historyArchive, requestStore, type Env } from "./runtime";
@@ -106,6 +107,12 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
         await recordCheck(db, HEARTBEAT_SERIES, slot, ok)
           .catch((error: unknown) => console.error("[cron-heartbeat]", error));
       }
+    }
+    const archive = historyArchive(this.env);
+    if (archive) {
+      await this.scoped(() => backfillLimitHours(archive)).then((rows) => {
+        if (rows !== null) console.info("[limit-backfill]", rows);
+      }).catch((error: unknown) => console.warn("[limit-backfill]", error instanceof Error ? error.message : String(error)));
     }
     await this.scoped(() => voronoiCardRound()).catch((error: unknown) => {
       if (error instanceof AwaitingReport) console.warn("[voronoi-card]", error.message);

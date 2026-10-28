@@ -210,7 +210,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### D1 长期历史 `lyjwpage-history`
 
 - 表见 `workers/core/migrations/` 的 `CREATE TABLE`（片中不说几张），其中记归档水位的是 `pulse_archive_state`，冻结不再写、原样保留的旧表是 `pulse_samples`、`coding_token_buckets`、`agent_usage_days`（`workers/core/README.md`）。长期保存、不按时间清理。写入按自然键 upsert（`shared/history-ingest.ts` 的各 `…Statements`），活动桶会按区间删掉重写（`workers/core/src/pulse-archive-statements.ts#DELETE_ACTIVITY_RANGE`），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
-- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、core（cron 每 5 分钟一轮的 pulse 归档，含编码用量的账本和 5 分钟桶；以及收下奖杯信封后的 `workers/core/src/stores/trophy-history.ts#archiveTrophies`）。
+- 写 D1 的有三方：上报入口（训练、圆环日读数、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、core（cron 每 5 分钟一轮的 pulse 归档，含编码用量的账本和 5 分钟桶、限额快照；以及收下奖杯信封后的 `workers/core/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
 ### core 的 cron（`workers/core/src/cron-round.ts#runCronRound`）

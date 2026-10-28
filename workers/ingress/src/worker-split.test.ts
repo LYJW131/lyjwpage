@@ -76,5 +76,5 @@ test("split: agents limits land in the lag layer while the coding half still rea
   const [command] = w.calls.commits;
   assert.equal(command?.source === "agents" ? command.codingActivity?.agents[0]?.id : null, "cursor");
   assert.ok((await readLag<{ agents: Record<string, unknown> }>(w.lag, LAG_KEYS.limits))?.data.agents.codex);
-  assert.equal(w.calls.archived.length, 1, "limit snapshots are archived");
+  assert.equal(w.calls.archived.length, 0, "limit history is archived by the state core, not ingress");
 });
