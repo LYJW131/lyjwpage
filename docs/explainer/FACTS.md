@@ -129,9 +129,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 | 路 | 去向 | 例子 |
 |---|---|---|
-| 实时 | `CORE.commitIngest` → StateHub | desktop、Apple Music、充电、编码、HomePod、PS、Emby、Cursor |
+| 实时 | `CORE.commitIngest` → StateHub | desktop、Apple Music、充电、编码、HomePod、PS、Emby、Cursor、限额整点读数 |
 | 可滞后 | KV `LAG` | server（整封只走可滞后和归档两路）、限额、时区、圆环读数、训练列表、上报器账本 |
-| 归档 | D1 `HISTORY` | 训练、圆环日读数、限额快照、服务器小时汇总 |
+| 归档 | D1 `HISTORY` | 训练、圆环日读数、服务器小时汇总 |
 | 凭据 | KV `CREDENTIALS` | Mac 推来的 Apple Music user token |
 
 - `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总归档进 D1（`shared/ingest/prepare.ts#CoreCommand`；`workers/ingress/src/worker.ts#commitIngest`；`workers/ingress/src/ingest-archive.ts#ingestHistoryStatements`）。

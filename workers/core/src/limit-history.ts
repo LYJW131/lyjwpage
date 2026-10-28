@@ -140,7 +140,7 @@ type BackfillRow = {
   window_minutes: number | null; used_percent: number; resets_at: number | null; plan?: string | null; received_at: number;
 };
 
-// 限额历史搬进 StateHub 之前只在 D1 里；第一次跑时把还在窗口内的那段读回来，之后不再读 D1。
+// 只在第一次跑时把还在窗口内的 D1 行读回 StateHub，之后不再读 D1。
 export async function backfillLimitHours(db: BackfillDb, now = Date.now()): Promise<number | null> {
   const storage = getStorage();
   if (await storage.get(backfillMarkerKey())) return null;
