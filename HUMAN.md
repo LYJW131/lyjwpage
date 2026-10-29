@@ -78,7 +78,7 @@
 
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
-  1. CI：大改代码逻辑的要 CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）。文档、skill 与小改动不等 CI，改动涉及的那几项本地跑过就算，合进 main 后 CI 红了当场修；Workers Builds 不看 CI，合进 main 照常部署，挡住坏代码靠的就是这一遍本地检查。CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
+  1. CI：大改代码逻辑的要 CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）。文档、skill 与小改动不等 CI，改动涉及的那几项本地跑过就算，合进 main 后 CI 红了当场修；Workers Builds 不看 CI，合进 main 照常部署，挡住坏代码靠的就是这一遍本地检查。CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，未关闭的告警由每日代码审查定时任务每轮看一遍；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
   2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动过了第 1 条就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。点头用一张决策卡问你，点「OK，合并」就行，要改哪里再打字。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Codex 审过之后再推的，只改文档或注释就不等它复审；改了代码的等它最多 15 分钟，没来就照常合，汇报里说一句。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. 机器评审和回执只抓真问题：按这次改动的用意正常用就会出错的才修；罕见输入、假设的时序、外部服务异常才触发的边缘情况，Claude 回一句「边缘情况，不改」，文档措辞顺手改、不单独推送。评审修复只推一轮：第一批评审到齐后一次修完，之后的新发现只修真问题，门槛过了就合。Codex 每个 PR 最多三轮，之后不再请它看。任何一家机器评审到第三轮还在这次改动里报新的阻塞问题，Claude 不再逐条打补丁，先重看方法，用一句话告诉你换不换。修评审发现时同类一次修完。评审代理报什么、不报什么写在 [REVIEW.md](./REVIEW.md)。
