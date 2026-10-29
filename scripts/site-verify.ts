@@ -81,7 +81,7 @@ skew（模拟 Safari 恢复后台标签时按缓存取回的旧 HTML）：
 
 readme-cards（README 卡片高度；卡片列表取根 README.md 里的 /cards/<卡>.svg）：
   --card <卡[,卡]>    只量这几张    --theme dark|light（默认 light）
-  判据：放开高度后卡片要的高度超过写死的卡高 1px 以上算被裁；卡片底边离写死的卡高 1px 以上算留白
+  判据：放开高度后卡片要的高度比写死的卡高多出超过 1px 算被裁；卡片底边离写死的卡高超过 1px 算留白
   例子  node scripts/site-verify.ts readme-cards --url https://lyjw.me
 
 override（会改本地 Worker 状态；先 pnpm dev:worker + pnpm dev:local，workers/core/.dev.vars 需 DEV_OVERRIDES=true）：
