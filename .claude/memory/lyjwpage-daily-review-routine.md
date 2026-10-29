@@ -23,4 +23,4 @@ Created 2026-10-12 at lyjw's request. Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY` ("
 
 **Moved 2026-10-28 06:33 SGT** to a new thread/session and new trigger id (old signing key revoked); current ids and branch: [[routine-bindings]]. Ids above are the old, disabled ones.
 
-**CodeQL (lyjw 2026-10-29「交给项目自身巡检任务每次看一眼codeql」):** prompt step 2b reads the latest `codeql-alerts` artifact (exported by `.github/workflows/codeql-alerts.yml`, since cloud gets 403 on the alerts API); small real fixes go to the reviewer (step 6c), the rest into「需要你决定」; run record gets a「CodeQL」line. See [[codeql-policy]].
+**CodeQL (lyjw 2026-10-29「交给项目自身巡检任务每次看一眼codeql」):** prompt step 2b reads the lyjw131[bot] draft PR labeled `codeql-alerts` (kept by `.github/workflows/codeql-alerts.yml`, since cloud gets 403 on the alerts API) and checks the latest sync run is success and under 36h; small real fixes go to the reviewer (step 6c) in the review PR, the rest into「需要你决定」; after step 9 it comments dispositions on the draft PR; run record gets a「CodeQL」line. See [[codeql-policy]].
