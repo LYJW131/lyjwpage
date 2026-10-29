@@ -29,6 +29,7 @@ import { handleMcp } from "./mcp";
 import { handleAuthorize, handleGithubCallback } from "./oauth/authorize";
 import { authorizationServer, mcpResourceServer } from "./oauth/server";
 import { mcpCodeModeEnabled, type Env } from "./runtime";
+import type { ReadHistory } from "./tools/private-history";
 import { fetchProjectDoc } from "./tools/project-docs";
 import { sandboxRunner } from "./tools/code-sandbox";
 import type { ToolIO } from "./tools/registry";
@@ -57,9 +58,10 @@ const signedInMcp = mcpResourceServer({
     if (!ctx.auth.scope.includes(MCP_HISTORY_SCOPE)) {
       return handleMcp(request, publicTools(env), mcpVersion(env), () => insufficientScope(ctx.auth, [MCP_HISTORY_SCOPE]));
     }
-    const readHistory = env.PRIVATE_HISTORY
-      ? env.PRIVATE_HISTORY.readHistory.bind(env.PRIVATE_HISTORY)
-      : async () => ({ ok: false as const, error: "The history archive is not bound here." });
+    const archive = env.PRIVATE_HISTORY;
+    const readHistory: ReadHistory = archive
+      ? (query) => archive.readHistory(query)
+      : async () => ({ ok: false, error: "The history archive is not bound here." });
     return handleMcp(request, { ...publicTools(env), readHistory }, mcpVersion(env));
   },
 });

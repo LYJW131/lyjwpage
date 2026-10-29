@@ -34,18 +34,36 @@ function memoryKv(): KVNamespace {
   } as unknown as KVNamespace;
 }
 
+// Service Binding 的 RPC 存根把属性访问都当远端方法：readHistory.bind 也会被发去 core，core 没有这个方法就抛错。
+function rpcStub<T extends object>(target: T): T {
+  return new Proxy(target, {
+    get(object, key) {
+      const value = Reflect.get(object, key);
+      if (typeof value !== "function") return value;
+      return new Proxy(value, {
+        get(fn, inner) {
+          if (inner === "bind" || inner === "call" || inner === "apply") {
+            throw new TypeError(`The RPC receiver does not implement the method "${String(inner)}".`);
+          }
+          return Reflect.get(fn, inner);
+        },
+      });
+    },
+  });
+}
+
 function oauthEnv(queries: PrivateHistoryQuery[] = []): Env {
   return {
     PUBLIC_STATUS: { readStatus: async () => Response.json({ ok: true, data: {} }) },
     ALLOWED_ORIGINS: SITE,
     OAUTH_KV: memoryKv(),
     GITHUB_APP_CLIENT_SECRET: "test-secret",
-    PRIVATE_HISTORY: {
-      readHistory: async (query) => {
+    PRIVATE_HISTORY: rpcStub({
+      readHistory: async (query: PrivateHistoryQuery) => {
         queries.push(query);
-        return { ok: true, rows: [{ started_at: Date.parse("2026-10-27T12:00:00Z"), title: "Song" }], truncated: false };
+        return { ok: true as const, rows: [{ started_at: Date.parse("2026-10-27T12:00:00Z"), title: "Song" }], truncated: false };
       },
-    },
+    }),
   };
 }
 
