@@ -67,8 +67,8 @@ test("无 Origin 的 MCP 客户端通过只读 Service Binding 查询公开状�
   assert.match(body.result.content[0].text, /Asia\/Singapore/);
 });
 
-test("Code Mode 按连接地址的 codemode 参数开，off 与不带都不给 run_site_code", async () => {
-  const loader = { load: () => ({ getEntrypoint: () => ({ run: async () => JSON.stringify({ ok: true, result: 42 }) }) }) } as unknown as WorkerLoader;
+test("Code Mode 按连接地址的 codemode 参数列出 run_site_code，没登录调用回 401 登录挑战、不加载沙箱", async () => {
+  const loader = { load: () => ({ getEntrypoint: () => ({ run: async () => { throw new Error("Unexpected sandbox run"); } }) }) } as unknown as WorkerLoader;
   const call = (query: string, body: object) => worker.fetch(new Request(`https://ai.test/mcp${query}`, {
     method: "POST",
     headers: { "MCP-Protocol-Version": "2025-06-18" },
@@ -82,8 +82,9 @@ test("Code Mode 按连接地址的 codemode 参数开，off 与不带都不给 r
   assert.equal(await names("?codemode=off"), false);
   assert.equal(await names("?codemode=on"), true);
   assert.equal(await names("?codemode"), true);
-  const run = await (await call("?codemode=on", { method: "tools/call", params: { name: "run_site_code", arguments: { code: "return 42;" } } })).json() as { result: { content: { text: string }[] } };
-  assert.equal(run.result.content[0].text, "42");
+  const run = await call("?codemode=on", { method: "tools/call", params: { name: "run_site_code", arguments: { code: "return 42;" } } });
+  assert.equal(run.status, 401);
+  assert.match(run.headers.get("WWW-Authenticate") ?? "", /resource_metadata=/);
 });
 
 test("MCP 按来访 IP 限流，拒绝的请求不进入状态读取", async () => {
