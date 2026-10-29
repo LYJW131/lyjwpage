@@ -1,5 +1,5 @@
-# 云端会话读 code-scanning 告警接口一律 403：main 上的 CodeQL 跑完后，lyjw131[bot] 把未关闭的告警写进一个带 Automation 标签的常驻 issue，
-# 每日代码审查读它、在下面评论处置
+# 云端会话读 code-scanning 告警接口一律 403：main 上的 CodeQL 跑完后，比对未关闭的告警，有新出现或已关闭的，
+# lyjw131[bot] 在常开的 Automation issue（正文以 MARKER 开头，由 lyjw 开）下评论一条，每日代码审查读它
 name: CodeQL Alerts
 
 on:
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # 显式 bash 才带 pipefail：接口报错时任务要红，不能读成一份空数组把清单刷成「没有告警」
+      # 显式 bash 才带 pipefail：接口报错时任务要红，不能读成一份空数组把所有告警报成「已关闭」
       - name: Read open alerts
         shell: bash
         env:
@@ -40,24 +40,35 @@ jobs:
           private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
           permission-issues: write
 
-      - name: Update the alert issue as lyjw131[bot]
+      # 上一次报过的编号存在机器人最近一条评论的隐藏标记里；集合没变就不评论
+      - name: Comment on the alert issue as lyjw131[bot]
         shell: bash
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
+          repo="repos/$GITHUB_REPOSITORY"
           alerts="$RUNNER_TEMP/alerts.json"
-          count=$(jq length "$alerts")
-          {
-            printf '%s\n\n' "$MARKER"
-            printf 'main 上 CodeQL 未关闭的告警共 %s 条（%s 更新）。每日代码审查每轮读这份清单，在下面评论处置，修复走它自己的审查 PR。\n' "$count" "$(TZ=Asia/Singapore date "+%F %R (SGT)")"
-            if [ "$count" -gt 0 ]; then
-              printf '\n| # | 规则 | 级别 | 位置 | 说明 |\n| --- | --- | --- | --- | --- |\n'
-              jq -r '.[] | "| [#\(.number)](\(.html_url)) | `\(.rule.id)` | \(.rule.security_severity_level // .rule.severity) | `\(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)` | \(.most_recent_instance.message.text | gsub("[\r\n]+"; " ") | gsub("\\|"; "\\|")) |"' "$alerts"
-            fi
-          } > "$RUNNER_TEMP/body.md"
-          number=$(gh api "repos/$GITHUB_REPOSITORY/issues?labels=Automation&state=open&per_page=100" --jq "[.[] | select(.pull_request == null and ((.body // \"\") | startswith(\"$MARKER\")))][0].number // empty")
-          if [ -n "$number" ]; then
-            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/body.md"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --label Automation --title "CodeQL 告警清单" --body-file "$RUNNER_TEMP/body.md"
+          number=$(gh api "$repo/issues?labels=Automation&state=open&per_page=100" --jq "[.[] | select(.pull_request == null and ((.body // \"\") | startswith(\"$MARKER\")))][0].number // empty")
+          [ -n "$number" ] || { echo "::error::没有正文以 $MARKER 开头、带 Automation 标签的开着的 issue"; exit 1; }
+          seen=$(gh api --paginate "$repo/issues/$number/comments?per_page=100" --jq '.[] | select(.user.login == "lyjw131[bot]") | .body' \
+            | sed -n 's/^<!-- codeql-alerts-open \(\[.*\]\) -->$/\1/p' | tail -n 1)
+          seen=${seen:-[]}
+          open=$(jq -c '[.[].number] | sort' "$alerts")
+          added=$(jq -c --argjson seen "$seen" '[.[] | select(.number as $n | $seen | index($n) | not)]' "$alerts")
+          closed=$(jq -nc --argjson seen "$seen" --argjson open "$open" '$seen - $open')
+          if [ "$added" = "[]" ] && [ "$closed" = "[]" ]; then
+            echo "告警没变：$open"
+            exit 0
           fi
+          {
+            printf '%s 跑完的 CodeQL：现在开着 %s 条。\n' "$(TZ=Asia/Singapore date "+%F %R (SGT)")" "$(jq length "$alerts")"
+            if [ "$added" != "[]" ]; then
+              printf '\n新出现：\n\n| # | 规则 | 级别 | 位置 | 说明 |\n| --- | --- | --- | --- | --- |\n'
+              jq -r '.[] | "| [#\(.number)](\(.html_url)) | `\(.rule.id)` | \(.rule.security_severity_level // .rule.severity) | `\(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)` | \(.most_recent_instance.message.text | gsub("[\r\n]+"; " ") | gsub("\\|"; "\\|")) |"' <<<"$added"
+            fi
+            if [ "$closed" != "[]" ]; then
+              printf '\n已关闭：%s\n' "$(jq -r 'map("#\(.)") | join(" ")' <<<"$closed")"
+            fi
+            printf '\n<!-- codeql-alerts-open %s -->\n' "$open"
+          } > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"

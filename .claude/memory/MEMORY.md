@@ -13,6 +13,7 @@
 - **Latest stack, no legacy compat** (2026-10-15); exception: iOS reporter endpoints keep working.
 - **Exploring directions is allowed;** raise doubts early, closing a PR is not sunk cost: [[explore-directions]].
 - **Don't over-engineer** (「你过度设计了 提示词改一下就行了」): smallest change that works; small code additions aren't a cost. Asked why something was blocked/red and the cause is the guard or a non-blocking check → explain, let lyjw pick looser or stricter, don't tighten (「太过度防御了」): [[no-edge-case-hardening]].
+- **Copy the nearest existing pattern first** (「先按站点当前类似的实现来做」, 2026-10-29): before a new workflow/state carrier/notification, find the repo equivalent (e.g. standing Automation issues #185/#280) and name it: [[follow-existing-pattern-first]].
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Do it yourself if a tool can** (MCP/API/CLI/RC); ask lyjw only for hands or decisions (2026-10-22).
