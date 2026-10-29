@@ -9,7 +9,7 @@
 - `/mcp` 的 OAuth（`src/oauth/`，`@cloudflare/workers-oauth-provider`）：本 Worker 既是授权服务器也是资源，令牌受众只认 `shared/mcp-auth.ts#MCP_RESOURCE`；上游登录走站点的 GitHub App，GitHub 令牌查完身份即撤销、不进 MCP 令牌（不做令牌透传）；只有 `site.githubId` 能拿到授权码，判断在 `src/oauth/authorize.ts#handleGithubCallback`。不带令牌的 `/mcp` 行为不变。
 - `src/tools/registry.ts#SITE_TOOLS` 同时是 `/mcp`（不用登录的那部分）和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
 - `read_private_history`（`src/tools/private-history.ts`）只挂在 `/mcp`，不进 `SITE_TOOLS` 与首页对话；它总在工具表里，没登录时调用回 HTTP 401 登录挑战（`src/mcp.ts#signInRequired`）。
-- `run_site_code` 执行模型生成的代码，只在客户端连 `/mcp?codemode`（值不是 `off`）时经 `ToolIO.runCode` 暴露给 `/mcp`，不进 `SITE_TOOLS` 与首页对话；沙箱必须保持无网络（`globalOutbound: null`）、无绑定，只通过 `status(view)` 读白名单视图并共用读取账本。
+- `run_site_code` 执行模型生成的代码，只在客户端连 `/mcp?codemode`（值不是 `off`）时经 `ToolIO.runCode` 列在 `/mcp`，调用要 lyjw 登录（`requiresSignIn`），不进 `SITE_TOOLS` 与首页对话；沙箱必须保持无网络（`globalOutbound: null`）、无绑定，只经 `status(view)` 读白名单视图并共用读取账本。
 - 访客触发的付费模型调用前先过 `ChatQuota`；缺配额绑定或历史签名密钥时关闭对话入口。历史只能经 `src/chat/seal.ts#sealedHistory` 验证后进入 Clef 和模型，工具循环共用整条回复的输出预算与读取账本。
 - 设计会话、计划和构建状态令牌各自签名；计划只能被 Start build 消费一次，Open issue 不消费计划；Start build 受理前按 `issueRef` 查一次 GitHub，已有这份计划的 issue 就拒绝。`BuildCoordinator` 只保存 AI 交互配额与构建状态，不保存站点遥测。访客 GitHub token 用完立即撤销，不持久化。
 - 设计会话的 Managed Agents 规划者只读：沙盒只放行 `src/chat/design-hosts.ts#DESIGN_WEB_HOSTS`（github.com 加几个文档站）、不挂凭据，write / edit 关闭，停下等确认的调用一律拒绝；提示词与工具每个会话从 `src/chat/designer.ts` 覆盖，不依赖 Console 上 agent 的配置。挂起的 `ask_visitor` / `propose_build` 只能用 `user.custom_tool_result` 了结。会话不会自己过期，靠 cron 跑的 `src/chat/design-cleanup.ts` 删除；改设计会话期限时同时核对宽限期。

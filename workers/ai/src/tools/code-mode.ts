@@ -37,11 +37,13 @@ export const CODE_TOOL: SiteTool = {
   title: "Query LYJW's live status with code",
   description: [
     "Write JavaScript that queries LYJW's live homepage data and returns only the answer, instead of reading whole views.",
+    "Only LYJW's own GitHub account can sign in to use it; without that sign-in every call fails.",
     "The code is the body of an async function: use `await status(view)` to get a view's full parsed JSON (the same data get_site_status serves, with image fields, unpaged), filter or aggregate it, then `return` a JSON-serializable value.",
     "The sandbox has no network and no other APIs. A run is limited in time and the returned value is truncated, so return only what you need.",
     "Reads count against the same per-reply view limit as get_site_status; reading the same view twice in one run costs once.",
     "Timestamps are epoch milliseconds. View names are listed in get_site_status.",
   ].join("\n"),
+  requiresSignIn: true,
   inputSchema: {
     type: "object",
     properties: {

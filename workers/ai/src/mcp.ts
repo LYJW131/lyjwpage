@@ -36,7 +36,7 @@ const INSTRUCTIONS = [
   `Image paths that start with /img/ are relative to ${site.url}.`,
   `Use read_project_doc for how the site works; its source is open at ${site.repo}.`,
   "Requests are rate-limited per IP, so read only the views you need.",
-  "read_private_history needs sign-in with LYJW's own GitHub account; for anyone else it always fails, so do not offer it to them.",
+  "read_private_history and run_site_code need sign-in with LYJW's own GitHub account; for anyone else they always fail, so do not offer them.",
   'Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA".',
 ].join(" ");
 
