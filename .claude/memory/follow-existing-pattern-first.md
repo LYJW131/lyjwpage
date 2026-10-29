@@ -3,7 +3,6 @@ name: follow-existing-pattern-first
 description: Before designing a new mechanism (workflow, state carrier, notification), copy the closest existing pattern in the repo first; lyjw 2026-10-29 after 4 redesigns of the CodeQL alert carrier
 metadata:
   type: feedback
-  modified: 2026-10-29T06:16:09.199Z
 ---
 
 lyjw 2026-10-29 14:15 SGT「这种操作应该是先按站点当前类似的实现来做呀 你看你今天改了多少次啊」.
