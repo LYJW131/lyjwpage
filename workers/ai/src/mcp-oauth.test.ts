@@ -121,7 +121,7 @@ async function signIn(env: Env, githubUserId: number): Promise<{ redirect: URL; 
   assert.equal(consent.status, 200);
   const page = await consent.text();
   assert.match(page, /Allow Test client to read private history\?/);
-  assert.match(page, /This client registered itself/);
+  assert.match(page, /Self-registered; this name is not verified/);
   const handle = /name="handle" value="([^"]+)"/.exec(page)?.[1];
   assert.ok(handle);
 
