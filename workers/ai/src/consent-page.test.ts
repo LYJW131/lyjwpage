@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { PAGE_TOKENS } from "./oauth/consent-page.ts";
 
-const THEME = readFileSync(new URL("../../../src/app/styles/theme.css", import.meta.url), "utf8");
+const THEME = readFileSync(new URL("../../../src/app/styles/theme.css", import.meta.url).pathname, "utf8");
 
 function block(selector: string): Map<string, string> {
   const start = THEME.indexOf(`${selector} {`);
