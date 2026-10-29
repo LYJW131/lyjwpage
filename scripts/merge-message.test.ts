@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeMessage, mergeMethodFor } from "./merge-message.ts";
+import { mergeMessage, mergeMethodFor, rollbackLines } from "./merge-message.ts";
 
 test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，只收认得出的身份", () => {
   const result = mergeMessage({
     number: "207",
     title: "feat(site): 最近提交不显示同步合并",
     subjects: ["feat(site): 卡片跳过同步合并", "docs: 写合并格式"],
+    rollbacks: [],
     authors: [
       "LYJW131 <153256373+LYJW131@users.noreply.github.com>",
       "Cursor Agent <cursoragent@cursor.com>",
@@ -38,8 +39,22 @@ test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓�
 });
 
 test("标题已带号不重复加；没有协作者时正文只有提交主题", () => {
-  const result = mergeMessage({ number: "9", title: "fix: x (#9) ", subjects: ["fix: x"], authors: [], coAuthors: [], owner: null });
+  const result = mergeMessage({ number: "9", title: "fix: x (#9) ", subjects: ["fix: x"], rollbacks: [], authors: [], coAuthors: [], owner: null });
   assert.deepEqual(result, { commit_title: "fix: x (#9)", commit_message: "- fix: x" });
+});
+
+test("提交正文里的回滚行去重后放在提交主题与协作者之间", () => {
+  const bodies = "加 pulse_power 表\n\n回滚：先发 revert，再 wrangler d1 execute 删 pulse_power 表\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n  回滚：先发 revert，再 wrangler d1 execute 删 pulse_power 表\n说明里提到回滚：不算\n";
+  const rollbacks = rollbackLines(bodies);
+  assert.deepEqual(rollbacks, ["回滚：先发 revert，再 wrangler d1 execute 删 pulse_power 表", "回滚：先发 revert，再 wrangler d1 execute 删 pulse_power 表"]);
+  const result = mergeMessage({ number: 3, title: "feat(core): 存充电功率", subjects: ["feat(core): 存充电功率"], rollbacks, authors: [], coAuthors: ["Claude Opus 5.5 <noreply@anthropic.com>"], owner: null });
+  assert.equal(result.commit_message, [
+    "- feat(core): 存充电功率",
+    "",
+    "回滚：先发 revert，再 wrangler d1 execute 删 pulse_power 表",
+    "",
+    "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+  ].join("\n"));
 });
 
 test("少于 3 个非合并提交压缩合并，3 个及以上留合并提交", () => {

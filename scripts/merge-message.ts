@@ -7,6 +7,11 @@ import { authorFromTrailer } from "../shared/commit-authors.ts";
 // lyjw 定的：少于这么多个非合并提交的 PR 压缩合并，够数的才留合并提交。
 export const MERGE_COMMIT_MIN_COMMITS = 3;
 
+// git revert 撤不回的改动（D1 迁移、shared/ 契约、Cloudflare 侧配置等）在提交正文里写这一行；压缩合并会丢掉提交正文，所以带进合并说明。
+export const ROLLBACK_PREFIX = "回滚：";
+
+export const rollbackLines = (bodies: string) => bodies.split("\n").map((line) => line.trim()).filter((line) => line.startsWith(ROLLBACK_PREFIX));
+
 export const mergeMethodFor = (commits: number) => (commits >= MERGE_COMMIT_MIN_COMMITS ? "merge" : "squash");
 
 // 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
@@ -14,6 +19,7 @@ export function mergeMessage({
   number,
   title,
   subjects,
+  rollbacks,
   authors,
   coAuthors,
   owner,
@@ -21,6 +27,7 @@ export function mergeMessage({
   number: string | number;
   title: string;
   subjects: string[];
+  rollbacks: string[];
   authors: string[];
   coAuthors: string[];
   owner: string | null;
@@ -45,7 +52,7 @@ export function mergeMessage({
   const summary = subjects.map((subject) => `- ${subject}`).join("\n");
   return {
     commit_title: commitTitle,
-    commit_message: [summary, trailers.join("\n")].filter(Boolean).join("\n\n"),
+    commit_message: [summary, [...new Set(rollbacks)].join("\n"), trailers.join("\n")].filter(Boolean).join("\n\n"),
   };
 }
 
@@ -65,6 +72,7 @@ function main(argv: string[]) {
     number,
     title,
     subjects,
+    rollbacks: rollbackLines(git("log", "--reverse", "--no-merges", "--format=%b", range)),
     authors: lines(git("log", "--reverse", "--no-merges", "--format=%an <%ae>", range)),
     coAuthors: lines(git("log", "--reverse", "--format=%(trailers:key=Co-authored-by,valueonly,unfold)", range)),
     owner: /github\.com[/:]([^/]+)\//.exec(remote)?.[1] ?? null,
