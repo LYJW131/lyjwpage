@@ -136,6 +136,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - README 实时卡片（`/cards/*.svg`）：和首页原卡并排对照的要求见 `lyjwpage-ui-design`「交付前清单」。出图里不跑脚本、不取外部资源（`docs/screenshots.md`「实时卡片」），所以对照前先列出这张卡里靠浏览器脚本、页面级样式或图标定义、展开交互才有的内容，对照时逐项看出图里有没有。出图在生产构建上看（`pnpm dev` 里 NumberFlow 读数是空的）；README 里的最终显示另在 375 宽用 WebKit 看一次（WebKit 缩小 SVG 时会裁切）。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` / `dev:scene` 注入由主线程起、主线程管（`pnpm dev:scene --reset` 一次清完），保留到这轮改动提交推送并确认部署后再清，期间把地址给 lyjw 自己测。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
 - 附图时机：同一项 UI 改动只在首次交付附效果图；之后 lyjw 提的修改若没有另行要求，视为 lyjw 正看着开发服务器，改完照常自测、不再单独截图。云端会话例外，见「主线程收到报告后」。要自写交互脚本时从 `scripts/site-verify.ts` 引 `resolvePlaywright` / `launchBrowser`，不自己找 Playwright 路径。
+- PR 描述里的前后对比：有 UI / UX 变化的 PR，写代码的线程开 PR 时在描述最前面（说明之后、「验证清单」之前）放一张 Before | After 两列表格，不折叠（lyjw 定的，仿 t3code 的 PR 写法）。同一视图、同宽、同主题各截一张：Before 用 main 的构建或 lyjw.me，After 用本分支的开发服务器或预览；数据会漂的用 `pnpm dev:scene` 注入同一场景。至多两行：桌面 1280 一行，375 一行；没改到手机布局的只放桌面。另有「没变的」要证明（相邻卡片、旁边的交互）可再加一行，标题写 `(unchanged)`。图推到孤立分支 `verify-shots` 的 `threads/<分支名，/ 换成 ->/` 下（Verify Action 也往这个分支推，不碰构建监视路径），描述里用 `https://raw.githubusercontent.com/LYJW131/lyjwpage/verify-shots/threads/<目录>/<文件>` 引用。推法照 `.github/workflows/verify.yml` 的 `shots` 步：在 scratchpad 里 `git init`、浅取 `verify-shots`、加图、提交、`git push origin HEAD:verify-shots`，被拒就重取 rebase 再推，至多 3 次。这张表给人看，回执与判定照旧由 Verify Action 签；细微改动给 lyjw 的叠图或参考线仍发在讨论串里，不进这张表。
 
 ### 3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）
 
