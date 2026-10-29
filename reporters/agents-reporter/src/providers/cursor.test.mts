@@ -34,17 +34,7 @@ const plan = {
 
 const hardLimit = { hardLimit: 10 };
 
-const sand = {
-  currentPeriodStart: "2026-09-20T17:03:18.185Z",
-  nextResetTimestampUtc: "2026-09-27T17:03:18.185Z",
-  usagePercent: 0.908158,
-  hasAvailableUsage: true,
-  hasNonZeroIncludedLimit: true,
-  grokPlanLabel: "Grok Bot Plan",
-  cursorPlanName: "Ultra",
-};
-
-test("normalizeCursorUsage 把总额、自家模型、其他模型收成三扇窗口，忽略 On-Demand", () => {
+test("normalizeCursorUsage 只收总额一扇，忽略分项与 On-Demand", () => {
   const node = normalizeCursorUsage(period, plan, hardLimit);
   assert.equal(node.plan_label, "Ultra");
   assert.deepEqual(node.primary_window, {
@@ -53,26 +43,7 @@ test("normalizeCursorUsage 把总额、自家模型、其他模型收成三扇�
     label: "Included",
     limit_window_seconds: 2_678_400,
   });
-  assert.equal((node.secondary_window as { label: string }).label, "Cursor models");
-  assert.equal((node.secondary_window as { used_percent: number }).used_percent, 12.986666666666666);
-  assert.equal((node.tertiary_window as { label: string }).label, "Other models");
-  assert.equal((node.tertiary_window as { used_percent: number }).used_percent, 49.448);
-  assert.equal(node.quaternary_window, null);
-});
-
-test("Grok Bot 周额度进第四扇窗口，额度为 0 时不报", () => {
-  const node = normalizeCursorUsage(period, plan, hardLimit, sand);
-  assert.deepEqual(node.quaternary_window, {
-    used_percent: 0.908158,
-    reset_at: "2026-09-27T17:03:18.185Z",
-    label: "Grok Bot",
-    limit_window_seconds: 7 * 86_400,
-  });
-  const off = normalizeCursorUsage(period, plan, hardLimit, { ...sand, hasNonZeroIncludedLimit: false });
-  assert.equal(off.quaternary_window, null);
-  const row = rowFromCursorResponses({ period, plan, hardLimit, sand });
-  assert.equal(row.limits[3]?.key, "cursor.quaternary");
-  assert.equal(row.limits[3]?.windowMinutes, 7 * 1440);
+  assert.equal(node.secondary_window, undefined);
 });
 
 test("rowFromCursorResponses 把 planName 收成套餐，key 是 cursor.primary 起", () => {
@@ -81,8 +52,7 @@ test("rowFromCursorResponses 把 planName 收成套餐，key 是 cursor.primary 
   assert.equal(row.limitsError, null);
   assert.equal(row.limits[0]?.key, "cursor.primary");
   assert.equal(row.limits[0]?.label, "Included");
-  assert.equal(row.limits[1]?.key, "cursor.secondary");
-  assert.equal(row.limits[2]?.key, "cursor.tertiary");
+  assert.equal(row.limits.length, 1);
   assert.equal(row.limits[0]?.windowMinutes, 2_678_400 / 60);
   assert.equal(row.limits[0]?.resetsAt, 1_789_576_991);
 });

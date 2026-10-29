@@ -1,4 +1,4 @@
-const KNOWN_AGENTS = ["claude", "codex", "grok", "cursor", "antigravity", "devin"] as const;
+const KNOWN_AGENTS = ["claude", "codex", "cursor", "antigravity", "devin"] as const;
 export type AgentId = (typeof KNOWN_AGENTS)[number];
 
 function ms(name: string, fallback: number): number {
@@ -19,7 +19,7 @@ function flag(name: string): boolean {
 }
 
 function agentIds(): AgentId[] {
-  const raw = process.env.AGENT_IDS?.trim() || "claude,codex,grok,cursor,antigravity,devin";
+  const raw = process.env.AGENT_IDS?.trim() || "claude,codex,cursor,antigravity,devin";
   const ids: AgentId[] = [];
   for (const part of raw.split(",")) {
     const id = part.trim().toLowerCase();
