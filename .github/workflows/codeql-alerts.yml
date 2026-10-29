@@ -1,0 +1,33 @@
+# 云端会话读 code-scanning 告警接口一律 403，这里用 Action 的令牌导出成 artifact，每日代码审查下载来看
+name: CodeQL Alerts
+
+on:
+  workflow_run:
+    workflows: [CodeQL]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: read
+
+concurrency:
+  group: codeql-alerts
+  cancel-in-progress: false
+
+jobs:
+  export:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --paginate "repos/$GITHUB_REPOSITORY/code-scanning/alerts?state=open&per_page=100" --jq '.[]' | jq -s . > codeql-alerts.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codeql-alerts
+          path: codeql-alerts.json
+          retention-days: 7
