@@ -25,7 +25,6 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
 
 const SESSION_WINDOW_MAX_MINUTES = 1440;
 
-// Cursor 按键匹配；按时长推断会把 tertiary 误当专项窗口而剔除。
 const FEATURED_LIMITS: Record<
   string,
   ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }>
@@ -39,20 +38,9 @@ const FEATURED_LIMITS: Record<
     { slot: "session", title: "5-hour" },
     { slot: "weekly", title: "Weekly" },
   ],
-  cursor: [
-    { slot: "cursor.secondary", title: "Cursor models" },
-    { slot: "cursor.tertiary", title: "Other models" },
-    { slot: "cursor.quaternary", title: "Grok Bot" },
-  ],
 };
 
-type FeaturedLimitSlot =
-  | "session"
-  | "weekly"
-  | "fable"
-  | "cursor.secondary"
-  | "cursor.tertiary"
-  | "cursor.quaternary";
+type FeaturedLimitSlot = "session" | "weekly" | "fable";
 
 function isNamedLimit(limit: VibeCodingLimit, name: string) {
   return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
@@ -85,9 +73,6 @@ function limitSlot(limit: VibeCodingLimit): "session" | "weekly" | null {
 function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
   if (slot === "fable") {
     return limits.find((limit) => isNamedLimit(limit, "fable")) ?? null;
-  }
-  if (slot !== "session" && slot !== "weekly") {
-    return limits.find((limit) => limit.key === slot) ?? null;
   }
   const matched = limits.filter((limit) => limitSlot(limit) === slot);
   if (matched.length === 0) return null;

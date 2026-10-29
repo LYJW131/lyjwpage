@@ -15,7 +15,7 @@
 
 - 镜像由 `.github/workflows/build-reporters.yml` 构建；合进 main 后推 GHCR，并用受限部署密钥 ssh 到 misaka-jp 自动换这一个服务（`reporters/misaka-deploy.sh`）。机器上只拉镜像，不放源码、不 build。
 - 一个 compose project 里有两个服务（本服务与 `server-reporter`），不点名服务的 `docker compose` 命令会同时动两个容器：只换这个就写服务名并加 `--no-deps`。
-- ssh 直连在 kex 阶段会被关掉，一律 `ssh -J dsm misaka-jp`；`compose.yaml` 改了才需要手动送（跳板后没有 sftp，走 ssh 管道）。控制台与机器侧的事实见 `docs/ops-facts.md`。
+- ssh 直连 `ssh misaka-jp`；`compose.yaml` 改了才需要手动送（走 ssh 管道）。控制台与机器侧的事实见 `docs/ops-facts.md`。
 
 ## 须成对修改
 

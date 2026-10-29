@@ -19,9 +19,9 @@ export type CodingAgentBrand = {
 
 export const CODING_AGENTS = {
   claude: { label: "Claude Code", icon: "anthropic", row: "featured" },
-  cursor: { label: "Cursor", icon: "cursor", row: "compact" },
+  cursor: { label: "X Subscription", icon: "x", row: "compact" },
   codex: { label: "Codex", icon: "openai", row: "compact" },
-  grok: { label: "Grok Build", icon: "grok", row: "compact" },
+  grok: { label: "Grok Build", icon: "grok", row: "hidden" },
   antigravity: { label: "Antigravity", icon: "antigravity", row: "compact" },
   opencode: { label: "OpenCode", icon: "opencode", row: "hidden" },
   pi: { label: "Pi", icon: "pi", row: "hidden" },

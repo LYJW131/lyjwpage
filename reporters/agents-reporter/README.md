@@ -1,6 +1,6 @@
 # agents-reporter
 
-把各 coding agent（Claude、Codex、Grok、Cursor、Antigravity、Devin CLI）的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
+把各 coding agent（Claude、Codex、Cursor、Antigravity、Devin CLI）的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
 
 限额（套餐 + 用量窗口）是厂商账号侧的事实，跟哪台 Mac 无关，所以由这个容器 24 小时跑，
 Mac 合盖 / 睡眠 / 离线不影响它。
@@ -59,7 +59,6 @@ Cursor 用量不按家分档：有哪家到期才有这一轮，每轮都顺带�
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。无需手抄；客户端常量不写进仓库 |
 | `CLAUDE_BIN` | `claude` | 用来读取 OAuth 配置的 Claude Code 安装程序，可设绝对路径 |
 | `AGENT_IDS` | | 逗号分隔，默认集合见 `src/config.ts#agentIds` |
-| `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
 | `ANTIGRAVITY_PLAN_LABEL` | | Antigravity 的订阅名，如 `Google AI Pro`。配额接口不带订阅（IDE 里那句来自 Windsurf 那套 language server 问 aicode.googleapis.com 的 gRPC，CLI 从不显示；`loadCodeAssist` 回的 free-tier 是 Code Assist 档位不是订阅），只能人工指定；空 = 不渲染套餐 |
@@ -83,20 +82,17 @@ Cursor 用量不按家分档：有哪家到期才有这一轮，每轮都顺带�
 mkdir -p agents-reporter/data && sudo chown 1000:1000 agents-reporter/data
 ```
 
-登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`、`/data/.config/cursor`、`/data/.local/share/devin`）。
+登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.gemini`、`/data/.config/cursor`、`/data/.local/share/devin`）。
 
 ```bash
 docker compose run --rm agents-reporter claude
 docker compose run --rm agents-reporter codex login --device-auth
-docker compose run --rm agents-reporter grok login --device-auth
 docker compose run --rm agents-reporter agy
 docker compose run --rm agents-reporter agent login   # cursor-agent，见下面
 docker compose run --rm agents-reporter devin auth login --force-manual-token-flow
 ```
 
 Devin 在无浏览器的环境用 `--force-manual-token-flow`：打开它给的链接登录，把网页上的 token 贴回终端。
-
-Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
 
 `codex login` 一启动就把旧的 `/data/.codex/auth.json` 删掉，中途取消或设备码过期等于把 codex 这份登录态弄没了，只能重登；
 其余几家不受影响。设备码 15 分钟有效。
@@ -107,12 +103,12 @@ Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录�
 
 CLI 升级改变配置结构时，可更新扫描规则，或成对填写 `CLAUDE_OAUTH_TOKEN_URL` / `CLAUDE_OAUTH_CLIENT_ID` 暂时覆盖。日志不会输出令牌；撤销登录或 refresh token 本身失效仍需重新登录。
 
-Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的 `/data/.codex/auth.json`、`/data/.grok/auth.json`。
+Codex 的 token 由上报器自己刷新，写回 `/data/.codex/auth.json`。
 
 ## cursor / devin / antigravity
 
 各家 CLI 装进镜像：用于登录，Claude 与 `agy` 安装包还提供 OAuth 配置，`devin` 提供版本号。限额运行时直打接口。
-CLI 各占一层、排在源码之前，版本固定在 Dockerfile 的 `ARG`（`CLAUDE_CODE_VERSION`、`CODEX_VERSION`、`GROK_VERSION`、
+CLI 各占一层、排在源码之前，版本固定在 Dockerfile 的 `ARG`（`CLAUDE_CODE_VERSION`、`CODEX_VERSION`、
 `CURSOR_AGENT_VERSION`、`AGY_VERSION`、`DEVIN_VERSION`），两个基础镜像按摘要固定；只改源码时 CLI 层全部命中缓存，CLI 不会自己变新。
 cursor、`agy`、`devin` 下载版本化地址后核对 Dockerfile 里写死的散列（`*_SHA256_*` / `AGY_SHA512_*`，各带 x86_64 与 aarch64），
 任何一步失败都让 build 失败。
@@ -128,9 +124,8 @@ cursor、`agy`、`devin` 下载版本化地址后核对 Dockerfile 里写死的�
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
 用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
 `DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT），
-收成四扇窗口：`cursor.primary` 总额、`secondary` Cursor 自家模型（Auto / Composer / Cursor Grok）、
-`tertiary` 其他厂商模型、`quaternary` Grok Bot 周额度。Grok Bot 只有网页接口
-`https://cursor.com/api/dashboard/get-sand-usage-status`，凭据是下面那份会话 cookie；它拿不到只少这一扇。
+只收一扇 `cursor.primary` 总额：Cursor 与 Grok 并成同一份订阅后，自家模型、其他厂商、Grok Bot 的分项都是这同一个池子，
+不再单报。
 用量历史用同一份 JWT 拼 `WorkosCursorSessionToken`，分页打
 `https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日行。平时只拉上海时间
 昨天 0 点以来的事件、整天替换这两天；每 `FULL_REFRESH_MS`（或换账号、账本还没全量过时）整段历史重拉一次核对，
@@ -211,8 +206,8 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
 ```
 
 `LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage`，
-codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，devin 是 `GetUserStatus`，
-cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。Claude 到期检查仍会读取凭据并可能刷新（`src/claude-oauth.ts#refreshClaudeIfDue`）。
+codex 是 `wham/usage`，antigravity 是 `retrieveUserQuotaSummary`，devin 是 `GetUserStatus`，
+cursor 是 `{ period, plan, hardLimit }`：三份 DashboardService 响应。Claude 到期检查仍会读取凭据并可能刷新（`src/claude-oauth.ts#refreshClaudeIfDue`）。
 这种模式下跳过 Cursor 用量，不带 coding 数据。没有凭据时看 `src/*.test.mts` 里喂录制页的用例：
 `coding-contract.test.mts` 把上报器各条路径产出的载荷，交给站点真正的校验（`shared/coding-usage.ts` 与 `shared/ingest/agents.ts`）
 过一遍，要在整个仓库里跑，不进镜像。
@@ -230,27 +225,27 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 
 跑在 misaka-jp 的 `/opt/lyjwpage`，和 `server-reporter` 同一台。
 机器与网络见 `docs/ops-facts.md`。代理开关见 `Dockerfile#NODE_USE_ENV_PROXY`。
-ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
+ssh 直连：`ssh misaka-jp`。
 
 限额在站点的可滞后层，浏览器按 `shared/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
 间隔见 `src/config.ts#config.cadence`。
 
-`compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：
+`compose.yaml` 改了才需要送，走 ssh 管道：
 
 ```bash
-ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/agents-reporter && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
+ssh misaka-jp 'mkdir -p /opt/lyjwpage/agents-reporter && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
 ```
 
 `.env` 单独送：
 
 ```bash
-ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agents-reporter/.env && chmod 600 /opt/lyjwpage/agents-reporter/.env' < 本机那份.env
+ssh misaka-jp 'cat > /opt/lyjwpage/agents-reporter/.env && chmod 600 /opt/lyjwpage/agents-reporter/.env' < 本机那份.env
 ```
 
 先登录各家（见上），再起：
 
 ```bash
-ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter'
+ssh misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter'
 ```
 
 合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
@@ -268,7 +263,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 
 ## 和 TokenTracker 的关系
 
-参考了 TokenTracker 的读取逻辑（Claude `/api/oauth/usage`、Codex `wham/usage`、Grok billing、
+参考了 TokenTracker 的读取逻辑（Claude `/api/oauth/usage`、Codex `wham/usage`、
 以及各家 token 刷新写回），**没有把 TokenTracker 装进容器**，也没有任何 git 依赖。
 限额请求使用 Node 内置 `fetch`，镜像版本见 `Dockerfile`。
 

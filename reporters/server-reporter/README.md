@@ -87,7 +87,7 @@ pnpm --filter @lyjwpage/server-reporter test
 部署单元是 Docker，和 `agents-reporter` 合在
 [`reporters/compose.yaml`](../compose.yaml) 一个 project 里，misaka-jp 上一条命令起两个。不用 systemd 装它。
 
-ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
+ssh 直连：`ssh misaka-jp`。
 
 镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
 （只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/server-reporter:latest` 和
@@ -97,33 +97,33 @@ ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm 
 `compose.yaml` 改了才需要送（`scp` 不一定可用，走 ssh 管道）：
 
 ```bash
-ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
+ssh misaka-jp 'mkdir -p /opt/lyjwpage && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
 ```
 
 状态卷的目录先建好并交给容器里的 `nobody`（镜像里是 uid 65534），否则写不进去、
 流量那栏不会出现：
 
 ```bash
-ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/server-reporter/data && chown 65534:65534 /opt/lyjwpage/server-reporter/data'
+ssh misaka-jp 'mkdir -p /opt/lyjwpage/server-reporter/data && chown 65534:65534 /opt/lyjwpage/server-reporter/data'
 ```
 
 `.env` 单独送：
 
 ```bash
-ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt/lyjwpage/server-reporter/.env' < 本机那份.env
+ssh misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt/lyjwpage/server-reporter/.env' < 本机那份.env
 ```
 
 起来：
 
 ```bash
-ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter && docker compose up -d --no-deps server-reporter'
+ssh misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter && docker compose up -d --no-deps server-reporter'
 ```
 
 合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
 
 生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server`，不经站点。
 
-看日志：`ssh -J dsm misaka-jp 'docker logs -f server-reporter'`。
+看日志：`ssh misaka-jp 'docker logs -f server-reporter'`。
 
 ### 容器里怎么还能看见宿主机
 

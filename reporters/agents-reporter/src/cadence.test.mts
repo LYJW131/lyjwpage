@@ -76,7 +76,7 @@ test("未配置不出网；接口异常或形状不对都当谁也没在用", as
   }
 });
 
-const IDS = ["claude", "codex", "grok"] as const;
+const IDS = ["claude", "codex", "devin"] as const;
 
 function schedule() {
   return new Schedule(IDS, { activeIntervalMs: ACTIVE, idleIntervalMs: IDLE });
@@ -92,7 +92,7 @@ test("启动时每家都到期；只有在用的那家按快档再取，其余�
   assert.deepEqual(s.due(ACTIVE), ["claude"]);
   s.collected(["claude"], ACTIVE);
   assert.deepEqual(s.due(2 * ACTIVE), ["claude"]);
-  assert.deepEqual(s.due(IDLE), ["claude", "codex", "grok"]);
+  assert.deepEqual(s.due(IDLE), ["claude", "codex", "devin"]);
 });
 
 test("闲着的那家开始用，下一轮提前到上次采集后一个快档；已过就立即到期", () => {
@@ -106,17 +106,17 @@ test("闲着的那家开始用，下一轮提前到上次采集后一个快档�
   const late = schedule();
   late.collected([...IDS], 0);
   late.observe(new Set());
-  late.observe(new Set(["grok"]));
-  assert.deepEqual(late.due(1_000_000), ["grok"]);
+  late.observe(new Set(["devin"]));
+  assert.deepEqual(late.due(1_000_000), ["devin"]);
   assert.equal(late.delay(1_000_000), 0);
 });
 
 test("差不到十分之一个快档就要到期的几家顺带进这一轮", () => {
   const s = schedule();
-  s.collected(["codex", "grok"], 0);
+  s.collected(["codex", "devin"], 0);
   s.collected(["claude"], IDLE - ACTIVE - 1_000);
   s.observe(new Set(["claude"]));
-  assert.deepEqual(s.due(IDLE - 20_000), ["claude", "codex", "grok"]);
+  assert.deepEqual(s.due(IDLE - 20_000), ["claude", "codex", "devin"]);
   assert.deepEqual(s.due(IDLE - ACTIVE / 10 - 1), ["claude"]);
 });
 
@@ -155,9 +155,9 @@ test("闲档每 5 分钟重查活动，持续闲置仍每 60 分钟心跳", asyn
 test("等待中某家开始用，过了快档就立即结束等待，只让那家到期", async () => {
   const s = schedule();
   s.collected([...IDS], 0);
-  const result = await waitWith(s, [[], [], ["grok"]]);
+  const result = await waitWith(s, [[], [], ["devin"]]);
   assert.equal(result.now, 2 * ACTIVE);
-  assert.deepEqual(s.due(result.now), ["grok"]);
+  assert.deepEqual(s.due(result.now), ["devin"]);
 });
 
 test("等待不足一个快档时按剩余时间睡", async () => {

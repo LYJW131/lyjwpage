@@ -17,10 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # misaka-jp 从 GHCR 拉 GB 级单层会卡住。版本与散列都是下面的 ARG，升级步骤见 README「cursor / devin / antigravity」。
 ARG CLAUDE_CODE_VERSION=2.1.308
 ARG CODEX_VERSION=0.163.0
-ARG GROK_VERSION=1.0.67
 RUN npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" && rm -rf /root/.npm
 RUN npm install -g "@openai/codex@$CODEX_VERSION" && rm -rf /root/.npm
-RUN npm install -g "@xai-official/grok@$GROK_VERSION" && rm -rf /root/.npm
 # cursor-agent 的入口只是包装脚本，必须保留 versions 目录并链接其中的实际程序。
 ARG CURSOR_AGENT_VERSION=2026.10.19-6bbf2c4
 ARG CURSOR_AGENT_SHA256_X64=cf80cc18d8b33bf33e762353977ca1868cfc45290c92c0ffdcef83bb8b37b44f

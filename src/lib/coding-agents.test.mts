@@ -28,7 +28,7 @@ function usageAgent(id: string, extra: Partial<CodingUsageAgentView> = {}): Codi
 }
 
 test("登记表：展示名、图标、行的种类；没登记的 id 用 id 当名字、占紧凑行", () => {
-  assert.deepEqual(codingAgentBrand("grok"), { label: "Grok Build", icon: "grok", row: "compact" });
+  assert.deepEqual(codingAgentBrand("grok"), { label: "Grok Build", icon: "grok", row: "hidden" });
   assert.equal(codingAgentBrand("opencode").row, "hidden");
   assert.deepEqual(codingAgentBrand("newagent"), { label: "newagent", icon: "newagent", row: "compact" });
   assert.equal(codingAgentBrand("constructor").label, "constructor");
