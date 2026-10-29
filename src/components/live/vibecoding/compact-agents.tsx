@@ -69,6 +69,7 @@ function CompactAgentRow({
     : row.limits.map((item) => ({ kind: "limit" as const, key: item.key, title: item.label ?? item.key, limit: item, cap: null }));
 
   return (
+    // 行高改了要重量 src/app/cards/route.tsx#COMPACT_AGENT_ROW_PX，README 卡按它算高度。
     <div
       className="min-w-0 py-3"
       title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}

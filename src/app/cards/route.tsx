@@ -24,6 +24,7 @@ import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { RenderClock } from "@/hooks/use-mounted-at";
+import { codingAgentRows } from "@/lib/coding-agents";
 import { trophiesTilePath } from "@/lib/paths";
 import { githubAvatarDataUri } from "@/lib/github-avatar-inline";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
@@ -49,36 +50,32 @@ import listeningFixture from "../../../workers/core/dev-fixtures/listening-now-y
 import powerBankFixture from "../../../workers/core/dev-fixtures/powerbank-charging.json";
 import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
 import watchingFixture from "../../../workers/core/dev-fixtures/watching-now.json";
-import cardsCss from "./readme-cards.css?inline";
 import { inlineImages, inlineQuestCover } from "./inline-images";
+import { FULL_WIDTH, flattenNumberFlow, scalableSvg, svgDocument, svgNamespaces, type CardFrame, type Theme } from "./svg-document";
 
 import type { Route } from "./+types/route";
 
 // GitHub 经 camo 代取 README 图片并按这个头缓存；与 workers/core/src/week-card.ts#WEEK_CARD_CACHE_CONTROL 同档。
 const CARD_CACHE_CONTROL = "public, max-age=600, stale-while-revalidate=3600";
 
-// 首页在 1280 视口下的内容宽（max-w-5xl）与半卡宽（两列间 gap-3）；宽度断点按内容宽定死成桌面布局。
-const FULL_WIDTH = 1024;
+// 半卡宽：两列间 gap-3。
 const HALF_WIDTH = (FULL_WIDTH - 12) / 2;
-// 硬阴影向右下偏移，画布留出这一圈。
-const SHADOW_PAD = 4;
 // 须与 src/components/live/media-pair.tsx#SLOT_PX 同步：充电头、充电宝与正在听那一排的槽高。
 const MEDIA_SLOT_PX = 396;
 const FOCUS_HEIGHT = 46;
 const OUTAGE_HEIGHT = 74;
 const DIGEST_HEIGHT = 202;
 const QUEST_HEIGHT = 98;
+// Vibe Coding 卡底部每个 compact 代理占一行，行数跟着上报的代理变；按 FULL_WIDTH 在浏览器里量得。
+// 须与 src/components/live/vibecoding/compact-agents.tsx 的行高同步。
+const COMPACT_AGENT_ROW_PX = 57;
+const VIBE_CODING_BASE_HEIGHT = 697;
 
-type Theme = "light" | "dark";
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
 // still：内容不随时间变（聊天卡），不标抓取时间。
-type Rendered = { element: ReactElement; sample: boolean; still?: boolean };
-type ReadmeCard = {
-  label: string;
-  width: number;
-  height: number;
-  // 并排的半卡：README 里两张图各占一半、中间不留空，左卡右侧补卡间距，右卡左侧补，右缘与整卡对齐。
-  pair?: "left" | "right";
+// height：内容随数据增减行的卡按这次的数据给出高度，盖过 ReadmeCard.height。
+type Rendered = { element: ReactElement; sample: boolean; still?: boolean; height?: number };
+type ReadmeCard = CardFrame & {
   annotate?: (html: string, note: string) => string;
   render: (status: Status, site: SiteServices, now: number) => Promise<Rendered>;
 };
@@ -280,14 +277,16 @@ const CARDS: Record<string, ReadmeCard> = {
   "vibe-coding": {
     label: "Vibe Coding",
     width: FULL_WIDTH,
-    height: 1032,
+    height: VIBE_CODING_BASE_HEIGHT,
     async render(status) {
       const [coding, codingNow, limits, history] = await Promise.all([
         status("coding"), status("codingNow"), status("limits"), status("limitsHistory"),
       ]);
+      const rows = codingAgentRows(coding.ok ? coding.data : null, codingNow.ok ? codingNow.data : null, limits.ok ? limits.data : null);
       return {
         element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} historyFallback={history} />,
         sample: false,
+        height: VIBE_CODING_BASE_HEIGHT + rows.filter((row) => row.row === "compact").length * COMPACT_AGENT_ROW_PX,
       };
     },
   },
@@ -357,29 +356,6 @@ const CARDS: Record<string, ReadmeCard> = {
   },
 };
 
-// 图片里的媒体查询按图片显示宽度算，README 把卡缩到正文宽就会掉进窄屏布局、超出写死的高度；按 FULL_WIDTH 定死断点。
-const freezeWidthQueries = (css: string) =>
-  css.replace(/@media\s*(not all and\s*)?\(width\s*>=\s*([\d.]+)(px|rem)\)\s*{/g, (_, not, size, unit) => {
-    const matches = Number(size) * (unit === "rem" ? 16 : 1) <= FULL_WIDTH;
-    return `@media ${matches === !not ? "all" : "not all"}{`;
-  });
-
-// 不内嵌字体：camo 回图带 CSP `default-src 'none'`，data: 字体照样被拦，经 GitHub 看到的总是系统等宽字体。
-const CSS = freezeWidthQueries(cardsCss.replace(/@font-face\s*{[^}]*}/g, "")) +
-  // 奖杯展开面板的高度在浏览器里量出来再动画过去，SSR 时是 0。
-  "#playstation-trophies{height:auto!important}" +
-  // 勿扰图标在浏览器里挂载后才上色，静态图直接画上色后的样子。
-  ".focus-icon .tint{opacity:1}" +
-  // 热力图切换挂在 <html data-heatmap> 上，图片里没有 <html>，按首页默认画 Tokens 那一面。
-  '.heatmap-panel[data-heatmap-panel="tokens"]{display:block!important}' +
-  '.heatmap-tab[data-heatmap-tab="tokens"]{background-color:var(--muted)!important;color:var(--foreground)!important}';
-
-// NumberFlow 的数字在声明式 Shadow DOM 里，XML 文档不解析 <template shadowrootmode>；去掉模板，留下它给的纯文本读数与配套样式。
-const flattenNumberFlow = (html: string) => html.replace(/<template\b[^>]*\sshadowrootmode="open"[^>]*>[\s\S]*?<\/template\s*>/g, "");
-
-// HTML 解析器自己认 <svg>，XML 里不写 xmlns 的 <svg> 落进 XHTML 命名空间，图标与图表就整个不画。
-const svgNamespaces = (html: string) => html.replace(/<svg\b(?![^>]*\sxmlns=)/g, '<svg xmlns="http://www.w3.org/2000/svg"');
-
 function capturedAt(now: number): string {
   const time = new Intl.DateTimeFormat("en-US", {
     timeZone: siteConfig.timezone,
@@ -396,39 +372,6 @@ function capturedAt(now: number): string {
 const annotateTitle = (html: string, note: string) =>
   html.replace(/(<span class="label-mono[^"]*">[^<]*)(<\/span>)/, `$1 · ${note}$2`);
 
-const canvasSize = (card: ReadmeCard) => ({
-  width: card.pair ? (FULL_WIDTH + SHADOW_PAD) / 2 : card.width + SHADOW_PAD,
-  fullHeight: card.height + SHADOW_PAD,
-});
-
-// 没有卡头的卡（每日摘要）把说明放在右上角，分两行避开表盘。
-function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: string | null): string {
-  const { label, height } = card;
-  const { width, fullHeight } = canvasSize(card);
-  const offset = card.pair === "right" ? width - card.width - SHADOW_PAD : 0;
-  return (
-    // 暗色类挂在 <svg> 上：它是图片里的 :root，`--color-*: var(--*)` 这类别名在 :root 上求值，挂在内层就仍取亮色。
-    `<svg xmlns="http://www.w3.org/2000/svg"${theme === "dark" ? ' class="dark"' : ""} width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
-    `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
-    `<div xmlns="http://www.w3.org/1999/xhtml" class="font-mono text-foreground antialiased" style="position:relative;left:${offset}px;width:${card.width}px;height:${height}px;display:flex;flex-direction:column">` +
-    `<style><![CDATA[${CSS}]]></style>` +
-    `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${cornerNote ? `<div class="label-mono text-muted-foreground" style="position:absolute;right:1.25rem;top:1rem;text-align:right">${cornerNote}</div>` : ""}</div>` +
-    `</div></foreignObject></svg>`
-  );
-}
-
-// WebKit（iOS 的 GitHub App 与 Safari）缩小显示含 foreignObject 的 SVG 时，HTML 仍按原尺寸画、超出部分裁掉；
-// 整张卡作为 <image> 套一层，内层按原尺寸渲染，缩放只落在外层图片上。
-// WebKit 把显示高度取整后按 meet 等比放进去，矮卡（勿扰）的取整误差占比大，左右就缩进一截；preserveAspectRatio="none" 让它铺满盒子。
-function scalableSvg(inner: string, card: ReadmeCard): string {
-  const { width, fullHeight } = canvasSize(card);
-  const href = `data:image/svg+xml;base64,${Buffer.from(inner).toString("base64")}`;
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" preserveAspectRatio="none" role="img" aria-label="${card.label}">` +
-    `<image width="${width}" height="${fullHeight}" href="${href}"/></svg>`
-  );
-}
-
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const match = /^([a-z-]+)\.svg$/.exec(params.card ?? "");
   const card = match ? CARDS[match[1]] : undefined;
@@ -439,12 +382,13 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     site.status(key).catch((): FirstScreen<typeof key> => ({ ok: false, error: FIRST_SCREEN_UNAVAILABLE }));
   try {
     const now = Date.now();
-    const { element, sample, still } = await card.render(status, site, now);
+    const { element, sample, still, height } = await card.render(status, site, now);
+    const sized = height ? { ...card, height } : card;
     const html = renderToString(<RenderClock value={now}>{element}</RenderClock>);
     const note = sample ? "Sample data" : capturedAt(now);
     const titled = still ? html : (card.annotate ?? annotateTitle)(html, note);
     const body = await inlineImages(svgNamespaces(flattenNumberFlow(titled)), site);
-    return new Response(scalableSvg(svgDocument(body, card, theme, titled === html && sample ? note : null), card), {
+    return new Response(scalableSvg(svgDocument(body, sized, theme, titled === html && sample ? note : null), sized), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
     });
   } catch (error) {
