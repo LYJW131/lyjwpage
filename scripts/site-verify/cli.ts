@@ -50,6 +50,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   cards: { ...common, card: text, width: size, height: size, theme: oneOf("dark", "light"), settle, ssr: flag, engine, dpr: number(0.5, 4) },
   shot: { ...common, widths: text, card: text, viewport: flag, theme: oneOf("dark", "light", "both"), dpr: number(0.5, 4), out: text, settle, ssr: flag, engine, height: size },
   reload: { ...common, engine, width: size, height: size, theme: oneOf("dark", "light"), skew: number(-1440, 1440), latency: number(0, 60_000), watch, grace: number(0, 60_000), out: text },
+  "readme-cards": { ...common, card: text, theme: oneOf("dark", "light") },
   skew: { ...common, "old-html": text, engine, width: size, height: size, watch, out: text },
   override: { ...common, endpoint: text, fixture: text, clear: flag, on: flag, off: flag, list: flag, "dry-run": flag },
 };

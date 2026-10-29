@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { cmdCards, cmdDoctor, cmdShot } from "./site-verify/cards.ts";
 import { errorText, ExitError, fail, parseCommand, print, ROOT, WORKER_URL, type Flags } from "./site-verify/cli.ts";
+import { cmdReadmeCards } from "./site-verify/readme-cards.ts";
 import { cmdReload } from "./site-verify/reload.ts";
 import { cmdSkew } from "./site-verify/skew.ts";
 
@@ -12,6 +13,7 @@ export { HIDE_DEV_UI, launchBrowser, resolvePlaywright } from "./site-verify/bro
 export { loadFeatureMap, requiredCardIds, type FeatureMap } from "./site-verify/cards.ts";
 export { parseCommand, parseWidths } from "./site-verify/cli.ts";
 export { classifyRequest, consoleClean, consoleProblems, isEnvNoise, navOrigin, newSink, updateOrigin, type Sink } from "./site-verify/console-sink.ts";
+export { cardFitProblem, innerCardSvg, readmeCardNames } from "./site-verify/readme-cards.ts";
 export { findJumps, textJumps } from "./site-verify/reload.ts";
 export { documentCommit, skewVerdict, staleAssetHtml } from "./site-verify/skew.ts";
 
@@ -27,6 +29,7 @@ const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
   shot      按宽度截图（整页或单卡 clip），同时收集控制台 error / warn / pageerror
   reload    热缓存刷新，查首次绘制后的跳动（字体换装、时间跳、卡片晚到）
   skew      旧页面撞上新部署：用旧 HTML 打开当前站点，查它引用的资源取不取得到、页面有没有样式与水合
+  readme-cards  量 README 里每张 /cards/<卡>.svg：写死的卡高和内容实高对不上（底部留白或被裁）就失败
   override  夹具注入，转发给 scripts/dev-override.ts（成套注入用 pnpm dev:scene）；--dry-run 只打印命令不执行
 
 公共选项：
@@ -75,6 +78,11 @@ skew（模拟 Safari 恢复后台标签时按缓存取回的旧 HTML）：
   --engine chromium|webkit（默认 chromium）  --width <px> --height <px>（默认 375x812）
   --watch <ms>        打开后等多久再判（默认 8000）   --out <目录>  存一张最后停下的截图（可选）
   例子  node scripts/site-verify.ts skew --url https://lyjw.me --old-html /tmp/old-home.html
+
+readme-cards（README 卡片高度；卡片列表取根 README.md 里的 /cards/<卡>.svg）：
+  --card <卡[,卡]>    只量这几张    --theme dark|light（默认 light）
+  判据：放开高度后卡片要的高度超过写死的卡高 1px 以上算被裁；卡片底边离写死的卡高 1px 以上算留白
+  例子  node scripts/site-verify.ts readme-cards --url https://lyjw.me
 
 override（会改本地 Worker 状态；先 pnpm dev:worker + pnpm dev:local，workers/core/.dev.vars 需 DEV_OVERRIDES=true）：
   --endpoint <路径> --fixture <夹具.json>   注入（夹具名见功能地图 endpoints）
@@ -136,7 +144,8 @@ async function main() {
   if (command === "override") return cmdOverride(flags);
   if (command === "reload") return cmdReload(flags);
   if (command === "skew") return cmdSkew(flags);
-  fail(`未知子命令：${command}`, "可用：doctor / cards / shot / reload / skew / override；--help 看全部选项", 2);
+  if (command === "readme-cards") return cmdReadmeCards(flags);
+  fail(`未知子命令：${command}`, "可用：doctor / cards / shot / reload / skew / readme-cards / override；--help 看全部选项", 2);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

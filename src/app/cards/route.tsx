@@ -329,7 +329,7 @@ const CARDS: Record<string, ReadmeCard> = {
   "site-status": {
     label: "LYJWPAGE",
     width: FULL_WIDTH,
-    height: 938,
+    height: 924,
     async render(status) {
       const [githubRepo, siteDeployments, cloudflareWorkers, health, server, reporters] = await Promise.all([
         status("githubRepo"),

@@ -117,6 +117,7 @@ node scripts/site-verify.ts cards --url http://localhost:3211         # 逐卡�
 node scripts/site-verify.ts shot --url http://localhost:3211 --widths 1280,375 --out /tmp/shots  # 两宽度整页截图
 node scripts/site-verify.ts shot --url http://localhost:3211 --widths 375 --engine webkit --out /tmp/shots  # iPhone 引擎再截一张
 node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --theme both --out /tmp/shots  # 单卡明暗 clip
+node scripts/site-verify.ts readme-cards --url <预览地址>              # README 卡写死的卡高与内容实高对不对得上
 ```
 
 - 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `node scripts/site-verify.ts override --endpoint <端点> --fixture <夹具> --dry-run`，确认命令后去掉 `--dry-run` 执行（夹具名从 feature-map.json 的 `endpoints` 里挑；收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
@@ -125,6 +126,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 改到 canvas、WebGL 或按窗口宽度挂载的动画时，页面开着用 `page.setViewportSize` 把宽度拉过它的断点再拉回，截图确认画面还在、按新尺寸重画；有无 WebGL 的回退路径的，再用 `--disable-webgl` 启动的 Chromium 把触发和调宽再走一遍。
 - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的环境噪声，脚本单列为 `envNoise`，不算站点错误。页面常开 WebSocket、在轮询，没有 networkidle：脚本按 `--settle` 毫秒等待（默认 4000），别自己写 networkidle。
 - 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；lyjw 一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
+- 改到 README 卡片（`src/app/cards/`，或卡里用到的首页组件改了行高、行数）时，对分支预览跑一次 `readme-cards`（`pnpm dev` 里 NumberFlow 是空壳，高度量不准）。
 - 首屏跳动用 `reload`：先加载一次暖缓存再刷新，报三样东西——首帧时还没加载完的字体（`fontsAfterPaint`）、首帧后只变了一两次的文字（`textJumps`，带 before → after）、录屏里只变了一两次的画面（`frameJumps`，带前后帧文件）。浏览器时钟默认拨快 2 分钟（`--skew`），模拟 lyjw 刷到的是缓存过几分钟的首屏 HTML；只开一次页面、不刷新、时钟和服务端一致时，这类跳动根本不出现。
   ```bash
   node scripts/site-verify.ts reload --url http://localhost:3300 --out /tmp/reload                  # Chromium：录屏 + 文字 + 字体
