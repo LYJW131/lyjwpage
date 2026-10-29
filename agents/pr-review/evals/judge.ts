@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import type { Finding } from "../lib/findings.js";
 import { type Case, caseWorkspace, loadCases } from "./cases.js";
+import { clean } from "./clean.js";
 
 // 跑评审员的那一侧每个 (用例, 轮次) 写一份：findings 为 null 表示没交出能解析的结果。
 export type Raw = {
@@ -64,16 +65,6 @@ function labels(item: Case) {
     ...item.gold.later.map((label, i) => ({ id: `L${i + 1}`, label })),
     ...item.gold.shouldNotReport.map((label, i) => ({ id: `N${i + 1}`, label })),
   ];
-}
-
-// 评审 bot 的评论尾巴（Devin 的徽章、Codex 的反馈提示）与 HTML 对判分没用。
-function clean(comment: string) {
-  return comment
-    .split(/\n<a href=|\n---\n\*Was this helpful|\nUseful\? React/)[0]
-    .replace(/<[^>]+>/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, 1200);
 }
 
 function message(item: Case, findings: Finding[]) {
