@@ -46,7 +46,7 @@ Agent(description: "Sonnet 拉取 Anthropic 动态", subagent_type: "general-pur
 - `x`：每个账号一个推文 id 书签，不含回复与转推；新账号首扫没有帖子时书签记成 `t:<扫描时刻>`，下一轮从这个时刻读起。两次运行之间新帖超过 `X_TIMELINE_MAX_PAGES` 页时只读最新的那些，书签照样推进到最新，账号进 `truncatedAccounts`，摘要里写明「@某某 新帖超上限，更早的未报」。账号分三组：`official`（官方账号）、`anthropic`（Anthropic 里做 Claude / Claude Code 的人）、`builders`（lyjw 关注的前沿作者）。
 - `x-likes`、`x-bookmarks`：lyjw 自己的点赞和收藏。按操作时间倒序、没有 since_id，书签是最近见过的 `X_SELF_KNOWN` 条推文 id，翻到其中任一条就停。翻满 `X_SELF_MAX_PAGES` 页还没碰到（大批取消点赞或积压太多）标 `cursorLost`，只报翻到的部分，摘要里写明。
 
-X 三类来源都经 claude.ai 连接器 `LYJW MCP Portal`（X 官方 MCP，以 lyjw 账号身份）拉，脚本只出调用代码和记账，见第 2 步。会话里没有这个连接器时三类都算失败、书签不动，不退回 `api.x.com` 代理（代理是 App-only 凭证，读不到点赞和收藏）。
+X 三类来源都经 claude.ai 连接器 `LYJW MCP Portal`（X 官方 MCP，以 lyjw 账号身份）拉，脚本只出调用代码和记账，见第 2 步。会话里没有这个连接器时三类都算失败、书签不动，不退回 `api.x.com` 代理拉清单（代理是 App-only 凭证，读不到点赞和收藏）。
 
 来源或账号第一次出现时（没有已见集合或书签），只报最近一天半的条目，其余直接记为已见，扫描结果里标 `firstRun` / `firstRunAccounts`。`x-likes`、`x-bookmarks` 没有操作时间，第一次只报最新 `X_SELF_FIRST` 条、标 `firstRun`，更早的不看，摘要里写明「首次扫描，只报最近 N 条」。来源本身不带日期时标 `firstRunUndated`，这次一条都报不出，摘要里写明「首次扫描、来源无日期，未报存量」。
 
@@ -88,6 +88,8 @@ python3 -I "$SCRATCH/fetch.py" x-ingest "$SCRATCH/x" > "$SCRATCH/x-scan.json"
 `$SCRATCH/scan.json` 与 `$SCRATCH/x-scan.json` 里 `ok: false` 的来源是失败，不是没动静：它的书签不动，摘要顶部写明哪个来源读不到、错误是什么，其余照做。`x` 按账号算：`failedAccounts` 里的账号书签留在原处，其余账号照常推进，所以 `x` 有个别账号失败时仍然 `commit x`。同一来源连续两天失败，在运行记录里标出来，晨报会转告 lyjw。
 
 ### 3. 读正文
+
+- X 补读：MCP 返回的某条推文正文不全（长帖在 280 字处截断、X Article 只有标题）或那条拿不到，直接用 `curl` 调 `GET https://api.x.com/2/tweets/<id>?tweet.fields=note_tweet,article` 接着读（代理注入凭据，只读公开数据；长帖在 `note_tweet.text`，Article 在 `article.plain_text`），不停下来让 lyjw 发全文；补读也拿不到才在摘要里写明缺什么。补读不算进全文篇数上限。
 
 - `anthropic`、`claude-dev`、`claude-blog`：逐篇读全文（`curl` 后抽正文，或 WebFetch）。
 - `x`：推文正文在扫描结果里；推文链到官方页面（anthropic.com、claude.dev、claude.com、文档站）就读那页，和第 2 步拉到的同一篇只读一次、合成一条。`official` 组逐条报；`anthropic` 与 `builders` 组量大，只挑讲 Claude、coding agent、skill、验证与评审流程、上下文工程这类和本项目做法相关的，其余按账号合成一句「@某某 另有 N 条」。
