@@ -77,7 +77,7 @@ test("旧客户端握手：回它要的版本、不发会话 ID，通知回 202�
   const list = await post({ jsonrpc: "2.0", id: 2, method: "tools/list" }, { "MCP-Protocol-Version": "2025-06-18" });
   assert.equal(list.body?.result?.resultType, undefined);
   const tools = list.body?.result?.tools ?? [];
-  assert.deepEqual(tools.map((tool) => tool.name), ["get_site_status", "read_project_doc"]);
+  assert.deepEqual(tools.map((tool) => tool.name), ["get_site_status", "read_project_doc", "read_private_history"]);
   assert.ok(tools.every((tool) => tool.annotations.readOnlyHint && tool.inputSchema));
 });
 
@@ -146,7 +146,7 @@ test("新协议：server/discover 带版本列表、resultType 与 serverInfo", 
 
 test("新协议：tools/list 必须带 ttlMs 与 cacheScope，否则客户端整张表都不认", async () => {
   const { body } = await modern(22, "tools/list");
-  assert.equal(body?.result?.tools?.length, 2);
+  assert.equal(body?.result?.tools?.length, 3);
   assert.ok((body?.result?.ttlMs ?? -1) >= 0);
   assert.equal(body?.result?.cacheScope, "public");
 });

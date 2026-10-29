@@ -30,8 +30,8 @@ test("代码工具只在有 runCode 时出现在 MCP 工具表里", async () => 
     );
     return ((await response.json()) as { result: { tools: { name: string }[] } }).result.tools.map((tool) => tool.name);
   };
-  assert.deepEqual(await list({ ...io(), runCode: undefined }), ["get_site_status", "read_project_doc"]);
-  assert.deepEqual(await list(io()), ["get_site_status", "read_project_doc", "run_site_code"]);
+  assert.deepEqual(await list({ ...io(), runCode: undefined }), ["get_site_status", "read_project_doc", "read_private_history"]);
+  assert.deepEqual(await list(io()), ["get_site_status", "read_project_doc", "read_private_history", "run_site_code"]);
 });
 
 test("同一次运行重复读同一视图只占一次额度，views 记进账本", async () => {

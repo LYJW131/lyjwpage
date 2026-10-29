@@ -17,11 +17,17 @@
 | POST | `/api/build/progress` | 构建工作流持 OIDC 令牌报告计划审查结果、进度或 `blocked` |
 | POST | `/api/build/screenshot` | 构建工作流在上传前持 OIDC 令牌提交界面截图，存进 R2 图片桶，PR 开出后由 App 评论 |
 | POST | `/api/build/webhook` | 验证 GitHub webhook 并更新构建状态 |
-| POST | `/mcp` | 无鉴权的 Streamable HTTP MCP |
+| POST | `/mcp` | Streamable HTTP MCP；公开工具不用登录，`read_private_history` 要带 OAuth 令牌 |
+| GET | `/.well-known/oauth-protected-resource/mcp` | `/mcp` 的资源元数据（RFC 9728） |
+| GET | `/.well-known/oauth-authorization-server` | 授权服务器元数据（RFC 8414） |
+| GET, POST | `/oauth/authorize` | 本站同意页；同意后跳 GitHub 登录 |
+| GET | `/oauth/github/callback` | GitHub 登录回调，只放行 lyjw 的账号 |
+| POST | `/oauth/token` | 换取、刷新与撤销令牌 |
+| POST | `/oauth/register` | 动态客户端注册，给还不支持 CIMD 的客户端 |
 
 浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，前三者验证 GitHub Actions OIDC 令牌（`src/build/actions-oidc.ts#verifyActionsToken`），webhook 验证原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
-`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。core 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
+`PUBLIC_STATUS` 是站点状态的读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。core 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。`PRIVATE_HISTORY` 绑 core 的 `PrivateHistory`（`shared/private-history.ts#PrivateHistoryRpc`），只在 `/mcp` 验过令牌后调用，见下文「MCP 登录」。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
 
 ## 代码职责
 
@@ -78,12 +84,23 @@
 
 ## MCP
 
-`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。生产里站点域名上的 `/mcp` 由 site Worker 经 Service Binding 直接交给本 Worker；Service Binding 保留访客的 `CF-Connecting-IP`，跨域 `fetch` 或缓存层 rewrite 会把它换成共用的出口 IP。site 的分支 Preview 与本地没有这些绑定，仍用 307 跳到 `PUBLIC_BACKEND_URL` 对应的后端，307 保留 POST 与请求体。公开访问域名见 `docs/ops-facts.md`。
+`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，公开工具不用登录；lyjw 登录后多一个读私有历史的工具（见「MCP 登录」）。生产里站点域名上的 `/mcp` 由 site Worker 经 Service Binding 直接交给本 Worker；Service Binding 保留访客的 `CF-Connecting-IP`，跨域 `fetch` 或缓存层 rewrite 会把它换成共用的出口 IP。site 的分支 Preview 与本地没有这些绑定，仍用 307 跳到 `PUBLIC_BACKEND_URL` 对应的后端，307 保留 POST 与请求体。公开访问域名见 `docs/ops-facts.md`。
 
 - 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`start_design`、`ask_visitor`、`propose_build`（要访客在卡片里操作）、`show_card`（只对对话卡片有意义）和 `web_search`、`web_fetch`、领域搜索与检索 MCP 只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
 - 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。
 - 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，拦下时回 429 带 `Retry-After`；和 `CHAT_USAGE_LIMIT` 一样只是尽力而为，核验记录见 `docs/ops-facts.md`。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
 - 验证：`src/mcp.test.ts` 覆盖两代握手与报错，但客户端会按自己的 schema 严格校验结果，单测验不出这类不兼容；改了协议处理，起 `pnpm dev:worker` 后用真实客户端各连一次：`claude -p --strict-mcp-config --mcp-config '{"mcpServers":{"lyjw":{"type":"http","url":"http://localhost:8788/mcp"}}}' "…"` 走新协议，`npx @modelcontextprotocol/inspector --cli http://localhost:8788/mcp --transport http --method tools/list` 走旧协议握手。
+
+### MCP 登录
+
+按 MCP 授权规范 2026-07-28（OAuth 2.1）做，同一个 `/mcp` 端点兼作公开与登录两用，Claude 里加自定义连接器时选「Sign in when needed」，客户端身份选 CIMD 或 DCR 都行。 <!-- allow: 规范版本号 -->
+
+- 角色：本 Worker 既是授权服务器（issuer 是站点根 `https://lyjw.me`）也是受保护资源（`https://lyjw.me/mcp`），都由 `@cloudflare/workers-oauth-provider` 的 `OAuthAuthorizationServer` 与 `OAuthResourceServer` 实现（`src/oauth/server.ts`）；授权、令牌与客户端登记存 KV `OAUTH_KV`。唯一的 scope 是 `history:read`（`shared/mcp-auth.ts`）；访问令牌一小时，刷新令牌闲置 30 天过期。
+- 流程：客户端不带令牌调 `read_private_history` 时，`/mcp` 回 401，`WWW-Authenticate` 指向资源元数据；客户端读元数据找到授权服务器，带 PKCE（S256）与 `resource` 打开 `/oauth/authorize`。同意页（`src/oauth/consent-page.ts`）写明客户端名字是否经 CIMD 核实、回到哪个主机；同意后跳 GitHub，用的是访客构建那个 GitHub App（同一个 Client ID 与 `GITHUB_APP_CLIENT_SECRET`）。回调 `src/oauth/authorize.ts#handleGithubCallback` 换 GitHub 令牌、查身份后立即撤销（`src/build/handlers.ts#verifyGithubVisitor`），GitHub 用户 ID 不是 `site.githubId` 就回 `access_denied`。
+- 带 `Authorization` 头的 `/mcp` 先经资源服务器验令牌：受众必须是 `MCP_RESOURCE`，无效或过期回 401；有 `history:read` 才给 `ToolIO.readHistory`，否则调私有工具回 403 `insufficient_scope`。公开工具带不带令牌都一样。
+- `read_private_history` 按 `shared/private-history.ts#PRIVATE_HISTORY_TABLES` 登记的表读，参数是表名、ISO 时间范围（不带时区按 `Asia/Shanghai`，`to` 不含）和条数（缺省最近 7 天、100 行，上限 `PRIVATE_HISTORY_MAX_ROWS`）；列名转成 camelCase，时间列按 `localTimes` 换成本地时间。访客对话记录（`ChatLog`）不在里面。
+- OAuth 端点和 `/mcp` 共用 `MCP_LIMIT` 的按 IP 限流；CORS 与预检由库自己回。没绑 `OAUTH_KV` 时这些端点和带令牌的 `/mcp` 回 503，匿名 `/mcp` 照旧。资源 URL 写死生产域名，分支 Preview 与本地登录不了。
+- 验证：`src/mcp-oauth.test.ts` 用内存 KV 走完注册、同意、GitHub 回调、换令牌与带令牌调用，以及别的账号被拒。
 
 - Code Mode（默认关闭）：`MCP_CODE_MODE=true` 且有 `LOADER`（只在本地的 `wrangler.test.toml` 里绑定 `worker_loaders`）时，`/mcp` 的工具表多一个 `run_site_code`（`src/tools/code-mode.ts#CODE_TOOL`），首页对话不用；它不在 `SITE_TOOLS` 里，由 `src/worker.ts` 给 `ToolIO.runCode` 才出现。模型写的代码在 Worker Loader 动态 Worker 里跑（`src/tools/code-sandbox.ts`）：`globalOutbound` 为 null、无绑定，唯一出口是 `status(view)`，读到完整未分页的公开 JSON；读取额度与 `get_site_status` 共用账本，同一次运行重复读同一视图只占一次；有 CPU 与墙钟超时（`CODE_TIMEOUT_MS`）、代码长度与输出长度上限。生产既不设该变量也不绑定 `LOADER`，打开开关也不生效。
 

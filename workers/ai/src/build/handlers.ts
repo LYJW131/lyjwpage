@@ -18,7 +18,7 @@ type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
 type GithubVisitor = { account: string; userId: number; name: string | null };
 
 // 每次构建都由访客在弹窗里授权一次：换来的令牌只用来确认身份，用完立即撤销，Worker 不签发也不保存会话凭据。
-async function verifyGithubVisitor(code: string, codeVerifier: string, secret: string, fetcher: typeof fetch): Promise<GithubVisitor | Response> {
+export async function verifyGithubVisitor(code: string, codeVerifier: string, secret: string, fetcher: typeof fetch): Promise<GithubVisitor | Response> {
   let token: string | null = null;
   try {
     token = await exchangeCode(code, codeVerifier, secret, fetcher);

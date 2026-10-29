@@ -6,7 +6,7 @@ Most cards show live or recent state; a card for something not happening right n
 
 ## Data for agents
 
-- [MCP endpoint](https://lyjw.me/mcp): public, no auth, Streamable HTTP. The `get_site_status` tool reads any card's live data with paging and search; tool descriptions list every view
+- [MCP endpoint](https://lyjw.me/mcp): public, Streamable HTTP; public tools need no auth, `read_private_history` needs OAuth sign-in by LYJW. The `get_site_status` tool reads any card's live data with paging and search; tool descriptions list every view
 - WebMCP: with the page open in a browser that supports WebMCP (`document.modelContext`), the page registers a read-only `get_site_status` tool that returns one status view's JSON
 - [Agent resource manifest](https://lyjw.me/.well-known/ard.json): ARD 1.0 manifest with the MCP server card for `/mcp`
 - [Daily digest](https://lyjw.me/api/status/digest): JSON summary of the last 24 hours, with a tagline and a few readings
