@@ -22,7 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - env:
+      # 显式 bash 才带 pipefail：接口报错时任务要红，不能导出一份空数组被读成「没有告警」
+      - shell: bash
+        env:
           GH_TOKEN: ${{ github.token }}
         run: gh api --paginate "repos/$GITHUB_REPOSITORY/code-scanning/alerts?state=open&per_page=100" --jq '.[]' | jq -s . > codeql-alerts.json
 
