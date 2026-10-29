@@ -233,7 +233,6 @@ async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, 
   }
 }
 
-
 export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now(), page: StatusPage = FIRST_PAGE): Promise<string> {
   const results = await Promise.all(views.map(async (key) => `## ${key}\n${(await readView(read, key, page, now)).section}`));
   return [clockLine(now), ...results].join("\n\n");

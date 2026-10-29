@@ -64,6 +64,6 @@ test("day 表续读的 to 是最旧那天的下一天，那一天整组留到下
   const days = { table: "coding_usage_days" as const, from: 0, to: NOW, limit: 3 };
   const page = historyText(days, { ok: true, rows: [{ date: "2026-10-27" }, { date: "2026-10-26" }, { date: "2026-10-26" }], truncated: true }, NOW);
   assert.match(page, /^1 rows/m);
-  assert.match(page, /to set to "2026-10-27"/);
+  assert.match(page, /from set to "1970-01-01T00:00:00.000Z" and to set to "2026-10-27"/);
   assert.equal((parseHistoryInput({ table: "coding_usage_days", to: "2026-10-27" }, NOW) as { to: number }).to, Date.parse("2026-10-26T16:00:00Z"));
 });
