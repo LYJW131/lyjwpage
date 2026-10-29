@@ -83,6 +83,10 @@
   - 是什么：AI 编程用量排行榜 [tokens.ci](https://tokens.ci) 的 CLI。`tokens cloud submit` 在 Claude Code 云端会话里按会话 id 的哈希当设备上报 token 总量，同一会话恢复到新 VM 时合并、不重复计。
   - 取了什么：Stop 钩子每轮结束上报一次（后台跑，外包 `timeout`），本地会话找不到云端会话 id，什么都不做；CLI 在 Setup script 里装一次，不用 SessionStart 钩子。改动有两处：`TZ` 写死在命令里，按 SGT 分日，不动整个环境的时区；`TOKENS_API_TOKEN` 没设时填占位值，让 CLI 照常发请求，打算由云端环境的 Network secret 在出站时把真 token 换进 `Authorization`。
   - 状态：采用。项目讨论串不跑仓库级钩子，所以 Stop 钩子放在用户级设置，由 [`scripts/cloud/tokens.sh`](../scripts/cloud/tokens.sh) 写进 `~/.claude/settings.json`；SessionStart 钩子在 [`scripts/cloud/claude-user-settings.json`](../scripts/cloud/claude-user-settings.json)，由 [`scripts/cloud/claude-user.sh`](../scripts/cloud/claude-user.sh) 写入。项目讨论串也不读仓库的 `.claude/skills/`，平台又预建了真实的 `~/.claude/skills/` 目录，所以同一份 Setup script 与用户级 SessionStart 钩子把仓库里每个 skill 逐个软链进这个目录，`.claude/rules/*.md` 同样逐个软链进 `~/.claude/rules/`（钩子在 `CLAUDE_PROJECT_DIR` 为空时用工作目录；目录已存在且受监视，按 [Claude Code skills 文档](https://code.claude.com/docs/en/skills#live-change-detection) 新增的 skill 当场生效）。云端凭据配置见 [ops-facts.md](./ops-facts.md)。
+- **[t3code PR #26639](https://github.com/pingdotgg/t3code/pull/26639)**（Theo 在 [X 上的帖子](https://x.com/theo/status/2115721106254700857)，PR 由 agent 写成并自动合并）
+  - 是什么：一个修 UI 交互的 PR，描述里先两三句讲 bug 和改后行为，接着是 Before | After 截图表和「没变的」对照截图，最后一行 Proof 写在 main 上红、现在绿的测试。图放在他们自己的 Cloudflare 图床，用外链引用。
+  - 取了什么：描述最前面放不折叠的 Before | After 截图表，另可加一行 `(unchanged)`。图床不照抄，改推到已有的孤立分支 `verify-shots`。
+  - 状态：采用。落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「2. UI 浏览器端到端」与 [HUMAN.md](../HUMAN.md)「7. Claude 怎么向你汇报」。
 
 ## 写 skill 与写给 agent 的文档
 
