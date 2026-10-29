@@ -78,7 +78,7 @@ export function historyText(query: PrivateHistoryQuery, result: PrivateHistoryRe
   );
   const range = `${localTime(query.from)} to ${localTime(query.to)} (${STATUS_TIME_ZONE}, to excluded)`;
   const notes = [`${rows.length} rows from ${query.table}, ${range}, newest first.`];
-  if (next) notes.push(`More rows exist: call again with to set to "${next.to}" to continue.`);
+  if (next) notes.push(`More rows exist: call again with from set to "${new Date(query.from).toISOString()}" and to set to "${next.to}" to continue.`);
   else if (result.truncated) notes.push("More rows exist, but every row on this page has the same time, so it cannot continue from here: call again with a higher limit.");
   return [clockLine(now), notes.join(" "), JSON.stringify(rows)].join("\n\n");
 }

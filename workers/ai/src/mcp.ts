@@ -164,7 +164,7 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
 // denied：要登录的工具在没有 readHistory 时的回应；匿名是 401 登录挑战，带了令牌但缺 scope 由调用方换成 403。
 export async function handleMcp(request: Request, io: ToolIO, version: string, denied: () => Response = signInRequired): Promise<Response> {
   if (request.method !== "POST") {
-    return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST. Public tools need no auth; read_private_history needs OAuth sign-in.\n", {
+    return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST. Public tools need no auth; read_private_history and run_site_code need OAuth sign-in.\n", {
       status: 405,
       headers: { Allow: "POST", "Content-Type": "text/plain; charset=utf-8" },
     });

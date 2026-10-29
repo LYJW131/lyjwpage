@@ -17,7 +17,7 @@
 | POST | `/api/build/progress` | 构建工作流持 OIDC 令牌报告计划审查结果、进度或 `blocked` |
 | POST | `/api/build/screenshot` | 构建工作流在上传前持 OIDC 令牌提交界面截图，存进 R2 图片桶，PR 开出后由 App 评论 |
 | POST | `/api/build/webhook` | 验证 GitHub webhook 并更新构建状态 |
-| POST | `/mcp` | Streamable HTTP MCP；公开工具不用登录，`read_private_history` 要带 OAuth 令牌 |
+| POST | `/mcp` | Streamable HTTP MCP；公开工具不用登录，`read_private_history` 与 `run_site_code` 要带 OAuth 令牌 |
 | GET | `/.well-known/oauth-protected-resource/mcp` | `/mcp` 的资源元数据（RFC 9728） |
 | GET | `/.well-known/oauth-authorization-server` | 授权服务器元数据（RFC 8414） |
 | GET, POST | `/oauth/authorize` | 本站同意页；同意后跳 GitHub 登录 |
