@@ -22,3 +22,5 @@ Created 2026-10-12 at lyjw's request. Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY` ("
 **Delegation (2026-10-23 06:40 SGT, lyjw「处理定时任务吧」):** prompt section「## 分工」: steps 5–7 (review, simplify, gardener, apply + verify) go to an opus high reviewer subagent that commits but does not push; the persistent session keeps state, PR, merge gate and bookkeeping. Prompt text mirrored at /mnt/project-files/routine-prompts/daily-review.txt. See [[token-efficiency-review]].
 
 **Moved 2026-10-28 06:33 SGT** to a new thread/session and new trigger id (old signing key revoked); current ids and branch: [[routine-bindings]]. Ids above are the old, disabled ones.
+
+**CodeQL (lyjw 2026-10-29「交给项目自身巡检任务每次看一眼codeql」):** prompt step 2b reads the latest `codeql-alerts` artifact (exported by `.github/workflows/codeql-alerts.yml`, since cloud gets 403 on the alerts API); small real fixes go to the reviewer (step 6c), the rest into「需要你决定」; run record gets a「CodeQL」line. See [[codeql-policy]].
