@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "id": "english-question-english-reply-deepseek",
+      "source": "#325 #713",
+      "tier": "flash",
+      "fixtures": ["playing-now-pragmata"],
+      "question": "What game is lyjw playing right now?",
+      "must": ["PRAGMATA"],
+      "mustNot": ["[\\u3040-\\u30ff\\u4e00-\\u9fff]"]
+    },
+    {
+      "id": "english-question-english-reply-claude",
+      "source": "#325 #713",
+      "tier": "haiku",
+      "fixtures": ["playing-now-pragmata"],
+      "question": "What game is lyjw playing right now?",
+      "must": ["PRAGMATA"],
+      "mustNot": ["[\\u3040-\\u30ff\\u4e00-\\u9fff]"]
+    },
+    {
+      "id": "japanese-question-japanese-reply",
+      "source": "#325",
+      "tier": "flash",
+      "fixtures": ["playing-now-pragmata"],
+      "question": "lyjw は今どのゲームを遊んでいますか？",
+      "must": ["PRAGMATA", "[\\u3040-\\u309f]"]
+    },
+    {
+      "id": "pulse-listening-lane-reaches-model",
+      "source": "#508",
+      "tier": "flash",
+      "fixtures": ["pulse-busy-day"],
+      "question": "lyjw 最近 24 小时里最后听的一首歌是什么？",
+      "must": ["勇者"]
+    }
+  ]
+}

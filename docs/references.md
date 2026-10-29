@@ -58,6 +58,10 @@
   - 是什么：由 agent 写、评、合、发的桌面应用仓库，工作流写在它的 AGENTS.md、LESSONS.md、docs/code-standards.md 与 test 工作流里。
   - 取了什么：合并钉住验过的 head（它用 `gh pr merge --match-head-commit`）；修复要证明「撤掉就红」；每晚审当天提交、找返工的记成教训，同类见满 3 天升成规则；main 上的 CI 不被下一次推送取消。
   - 状态：部分采用。钉 head 落在 [merge-message.ts](../scripts/merge-message.ts) 输出的 `expectedHeadSha` 与 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「3. PR 合并门槛」；撤回证明落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「1. 本地门禁」，由 [revert-proof.ts](../scripts/revert-proof.ts) 在临时克隆里执行；返工账落在 04:00 每日审查提示词的园丁一步（`docs/ops-facts.md` 里那条 routine，提示词只能从它自己的线程改），记进缓冲 issue #280，候选由 [rework-candidates.ts](../scripts/rework-candidates.ts) 列出，模型只定类别；CI 落在 [ci.yml](../.github/workflows/ci.yml) 的 `concurrency`。不采用：PR 上自动录屏截图的 UI 预览（要在 CI 跑 PR 代码并持模型 key，已有 `pnpm dev:scene` 与验证员截图）、每次必读的大教训文件（教训直接落成检查、skill 或记忆）、社区 PR 防害与拉黑（无外部贡献者）、子系统设计页（已有 `docs/` 与 `pnpm docs:check`）、提交正文记验证（回执已绑 SHA 发在 PR 评论）。
+- **[AI Coding 最佳实践 20 条](https://x.com/HiTw93/status/2115366100221501540)**（HiTw93，X）
+  - 是什么：一位开发者把 AI Coding 经验写成 20 条规则，分需求、规则、编码、排查、审查、发布、复盘七组。
+  - 取了什么：第 13 条，修 3 次还不对就带着问题、诉求和试过的解法换干净上下文重来；第 17 条里的回滚说明，只取 `git revert` 撤不回的那几类；第 19 条，线上 bug 留成题、换模型时整套重跑，只取首页对话的模型行为这一块。
+  - 状态：部分采用。重开落在 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md)「卡住时」与 `HUMAN.md`「10. 你会在什么时候被打断」；回滚行落在根 `AGENTS.md`「部署流程」与 [merge-message.ts](../scripts/merge-message.ts) 的 `rollbackLines`；对话题单落在 [chat-regression-cases.json](../workers/ai/scripts/chat-regression-cases.json)，由 [chat-probe.ts](../workers/ai/scripts/chat-probe.ts) 的 `--cases` 跑，用法写在 [AI Worker README](../workers/ai/README.md)「本地开发」。不采用：把「怎么验证」抄进提交（回执在 PR 上、标题带 PR 号）；每个提交都写回滚（多数改动 revert 就回得去）；题单进 CI（调真模型要钱、有随机性）；UI bug 常驻端到端套件。
 
 - **[tester-army/e2e](https://github.com/tester-army/e2e)**（TesterArmy）
   - 是什么：开源的 AI 端到端测试框架，测试里混写 `agent.act` 自然语言目标与定位器断言，验证过的 agent 动作录下来下次免模型回放；另有 `e2e explore`（给目标让 agent 自己逛应用报问题）与 `e2e mcp`（给编码 agent 操作运行中的应用）。

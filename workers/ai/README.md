@@ -133,6 +133,8 @@ pnpm dev:local
 
 改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef 与验人，状态视图读 `workers/core/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
 
+修过的首页对话模型行为 bug 记在 `scripts/chat-regression-cases.json`：每条是一个问题、档位、夹具和回答里必须有或不能有的正则。换对话模型或改对话提示词时，改它的线程跑 `pnpm --dir workers/ai chat:probe --cases scripts/chat-regression-cases.json --runs 3`，没过的条目连同回答写进 PR。它调真模型、结果有随机性，不进 CI。
+
 ## 验证
 
 从仓库根目录执行：
