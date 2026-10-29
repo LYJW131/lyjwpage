@@ -45,7 +45,7 @@ const BUILD_HANDLERS = new Map<string, (request: Request, env: Env, fetcher?: ty
 ]);
 const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH]);
 
-// 照 Cloudflare MCP 门户的约定：连接地址带 ?codemode（值不是 off）才开 Code Mode，工具表随连接地址变。
+// 参数名与 off 照 Cloudflare MCP 门户：连接地址带 ?codemode（值不是 off）才开 Code Mode，工具表随连接地址变。
 const codeModeRequested = (request: Request) => {
   const value = new URL(request.url).searchParams.get("codemode");
   return value !== null && value !== "off";
