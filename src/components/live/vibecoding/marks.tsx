@@ -36,6 +36,15 @@ export function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"
   );
 }
 
+// 源：x.com 页面里的 X 标志。
+function XMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor" aria-hidden className={className}>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
 export function BrandMark({
   icon,
   label,
@@ -46,8 +55,8 @@ export function BrandMark({
   className?: string;
 }) {
   switch (icon) {
-    case "cursor":
-      return <CursorIcon size={20} className={className} />;
+    case "x":
+      return <XMark className={className} />;
     case "antigravity":
       return <AntigravityColor size={20} className={className} />;
     case "grok":
@@ -133,7 +142,7 @@ export function FeaturedMark({ row, active }: { row: Pick<CodingAgentRow, "id" |
   if (active) return <CodexActivityIndicator active />;
   return (
     <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-      {row.icon === "cursor" ? <CursorIcon size={18} /> : <BrandMark icon={row.icon} label={row.label} className="size-5" />}
+      <BrandMark icon={row.icon} label={row.label} className="size-5" />
     </span>
   );
 }

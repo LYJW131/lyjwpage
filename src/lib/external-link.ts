@@ -20,7 +20,7 @@ const HOSTS: Record<string, string | ((url: URL) => string)> = {
   "claude.ai": "Claude usage settings",
   "cursor.com": "Cursor usage dashboard",
   "chatgpt.com": "Codex usage analytics on ChatGPT",
-  "grok.com": "Grok",
+  "grok.com": (url) => (url.pathname.startsWith("/dashboard") ? "X Subscription usage dashboard" : "Grok"),
   "dash.cloudflare.com": "Cloudflare dashboard (sign-in required)",
   "emby.lyjw131.com": "LYJW's Emby media server (sign-in required)",
   "music.apple.com": (url) => {
