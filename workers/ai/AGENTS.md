@@ -5,8 +5,10 @@
 ## 不变量
 
 - 生产不开放 `workers.dev` 或独立公开域名；HTTP 只服务 `shared/ai-paths.ts#AI_HTTP_PATHS` 中的路径，生产由 site 的 `AI_SERVICE` 转发原请求和响应流（core 的同名转发只在分支 Preview 与本地用到），不改访客 IP、不缓冲聊天响应。
-- `PUBLIC_STATUS` 是唯一状态读取权限，契约为 `shared/public-status.ts#PublicStatusRpc`。只能读取 core 返回的公开模型；不添加 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore` 绑定，不自建状态权威。
-- `src/tools/registry.ts#SITE_TOOLS` 同时是无鉴权 `/mcp` 和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
+- 读 core 只有两个权限：`PUBLIC_STATUS`（`shared/public-status.ts#PublicStatusRpc`，公开模型）和 `PRIVATE_HISTORY`（`shared/private-history.ts#PrivateHistoryRpc`，不公开的长期历史）。`PRIVATE_HISTORY` 只能在 `/mcp` 验过 OAuth 令牌、带 `history:read` 后经 `ToolIO.readHistory` 调；不添加 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore` 绑定，不自建状态权威。
+- `/mcp` 的 OAuth（`src/oauth/`，`@cloudflare/workers-oauth-provider`）：本 Worker 既是授权服务器也是资源，令牌受众只认 `shared/mcp-auth.ts#MCP_RESOURCE`；上游登录走站点的 GitHub App，GitHub 令牌查完身份即撤销、不进 MCP 令牌（不做令牌透传）；只有 `site.githubId` 能拿到授权码，判断在 `src/oauth/authorize.ts#handleGithubCallback`。不带令牌的 `/mcp` 行为不变。
+- `src/tools/registry.ts#SITE_TOOLS` 同时是 `/mcp`（不用登录的那部分）和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
+- `read_private_history`（`src/tools/private-history.ts`）只挂在 `/mcp`，不进 `SITE_TOOLS` 与首页对话；它总在工具表里，没登录时调用回 HTTP 401 登录挑战（`src/mcp.ts#signInRequired`）。
 - `run_site_code` 执行模型生成的代码，只能在 `MCP_CODE_MODE=true` 时经 `ToolIO.runCode` 暴露给 `/mcp`，不进 `SITE_TOOLS` 与首页对话；沙箱必须保持无网络（`globalOutbound: null`）、无绑定，只通过 `status(view)` 读白名单视图并共用读取账本。
 - 访客触发的付费模型调用前先过 `ChatQuota`；缺配额绑定或历史签名密钥时关闭对话入口。历史只能经 `src/chat/seal.ts#sealedHistory` 验证后进入 Clef 和模型，工具循环共用整条回复的输出预算与读取账本。
 - 设计会话、计划和构建状态令牌各自签名；计划只能被 Start build 消费一次，Open issue 不消费计划；Start build 受理前按 `issueRef` 查一次 GitHub，已有这份计划的 issue 就拒绝。`BuildCoordinator` 只保存 AI 交互配额与构建状态，不保存站点遥测。访客 GitHub token 用完立即撤销，不持久化。

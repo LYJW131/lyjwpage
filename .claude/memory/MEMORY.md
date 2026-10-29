@@ -42,7 +42,7 @@
 - **Process steps go in the brief:** bug threads get 「改代码前先造一条会报红的复现」, threads that change code get 「开 PR 前的验证派 Haiku 子代理」; written only in skills/AGENTS.md, Opus skipped both, in the task text it did both 3/3 (eval 2026-10-26): [[agent-knowledge-eval-plan]].
 - **Secrets** piped on the Mac with `rotate-secret`, never pasted: [[credentials-pipe-only]]. Secret checks that flag memory get fixed, not the memory: [[repo-memory-mirror]].
 - **Commit identity:** as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
-- **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. api.x.com via proxy (app-only, public only) is the fallback when the connector is missing: [[x-api-via-proxy]].
+- **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. When the MCP misses or truncates info (or the connector is missing), call api.x.com via proxy (app-only, public only) yourself and keep going, no asking (lyjw 2026-10-29): [[x-api-via-proxy]].
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
@@ -56,6 +56,7 @@
 - Collector manual run: GitHub Actions "Run Collector Jobs".
 - Repo memory mirror `.claude/memory/`, daily 03:15 routine: [[repo-memory-mirror]].
 - Old account project: [[old-account-project-import]]. wrangler → cf CLI partial: [[cf-cli-migration]].
+- **lyjw.page** (bought 2026-10-29) 301-redirects to lyjw.me via Cloudflare (all one-level subdomains, path+query kept, null MX/SPF/DMARC reject); record in docs/ops-facts.md (#747).
 
 ## Routines
 - **All six moved to new threads 2026-10-28 06:33 SGT** (old signing key revoked); trigger/session/branch table and how to move again: [[routine-bindings]]. Old triggers disabled, not deleted.
@@ -68,12 +69,14 @@
 - [[agent-automation-practices]], [[token-efficiency-review]].
 
 ## Decisions and state
-- **Aoko summon easter egg live** (#673 #690 #695, merge 55f94ba, 2026-10-27 01:20 SGT): dark mode, wide desktop, Konami code ↑↑↓↓←→←→BA Enter; code in `src/components/space-backdrop/aoko*`; assets `public/mascots/aoko*.webp` prefetched on first key. Source library on lyjw's T9 drive, Jev catalog `~/Desktop/mahoyo-catalog/`, export `scripts/aoko-fx-assets.ts`. Unverified: real-GPU fps, real no-WebGL device. Summon not persisted (localStorage needs lyjw's OK). Handoff: /mnt/user-data/uploads/hearth/478f8dff-1229-4c8a-8ea4-be5c17177dc1/478f8dff-1229-4c8a-8ea4-be5c17177dc1.md
+- **Aoko summon easter egg live** (#673 #690 #695, merge 55f94ba, 2026-10-27 01:20 SGT): dark mode, wide desktop, Konami code ↑↑↓↓←→←→BA Enter; runtime code in `src/components/space-backdrop/aoko*`; assets `public/mascots/aoko*.webp` (incl. `aoko-normal.webp`) prefetched on first key. Real normal-map lighting since #745 (2026-10-29; LIGHTS/GROUND in aoko-figure.ts). **Character-art production moved out (#738) to private repo LYJW131/character-art:** skill `.claude/skills/character-art`, export script `scripts/fx/aoko-fx-assets.ts`, preview `preview/index.html`; `.claude/rules/character-art.md` points there. When site Aoko shader constants/lights change, sync character-art `characters/aoko/coords.json`. Source library on lyjw's T9 drive, Jev catalog `~/Desktop/mahoyo-catalog/`. Unverified: real-GPU fps, real no-WebGL device. Summon not persisted (localStorage needs lyjw's OK). Handoff: /mnt/user-data/uploads/hearth/478f8dff-1229-4c8a-8ea4-be5c17177dc1/478f8dff-1229-4c8a-8ea4-be5c17177dc1.md
+- **PS5 in-game card live** (#743, 2026-10-29): uses n100 playstation-reporter presence; core infers session start.
+- **Limits history reads StateHub DO, D1 is archive-only** (#742, 2026-10-29); D1 has no public reader.
 - **Visitor build guards relaxed** (#710, lyjw「太过度防御了」): only paths executed or auto-loaded before merge are denied; others dropped/flagged for review: [[visitor-build-relaxed]].
 - Git history slimming parked: [[repo-history-slim]]. Chat tiers/consent/logs: [[chat-tiers]]. DO locations: [[do-physical-locations]].
-- Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn.
+- Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn. `/image` upstream-timeout 502s (~1/day) are by design.
 - **Cron late delivery** (Cloudflare): core and collector claim slots (#675, #681): [[core-heartbeat-slot-claim]], [[core-cron-internal-error]].
-- **Stored-but-not-public data inventory + pending GitHub-login MCP plan:** [[private-data-inventory]].
+- **Stored-but-not-public data inventory + GitHub-login MCP on the shared `/mcp` (live since #751, 2026-10-29):** [[private-data-inventory]]. lyjw chose one shared `/mcp` endpoint (public read, optional sign-in).
 - Small settled site decisions: [[site-small-decisions]]. Claude limit forecast backtest, no change until ~4 hourly weeks: [[limit-forecast-backtest]]. Desktop CLS: [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy.
 - iOS app paused; keep only its reporting endpoints.
@@ -83,6 +86,7 @@
 - [[build-actions-migration]], [[avatar-watch-restored]], [[codeql-policy]], [[pulse-tokens-lane-coverage]].
 - **Not adopting** (don't re-propose; list and reasons): [[not-adopting]]. No reporter OTel migration: [[reporter-otel-decision]].
 - **Own change reviewer `agents/pr-review`** (Devin swe-2-max in the cloud thread, prompt tuned by eval; Cursor Free tier can't run the Agent SDK): [[pr-review-devin-reviewer]].
+- WebMCP eval CLI tried, 70/70, not in CI, rerun by hand: [[webmcp-evals-baseline]].
 - Jev comment check (advisory): [[jev-comment-check]]. Chat prefetch: [[idea-jev-context-prefetch]]. Chat web search: [[chat-web-search]].
 - .mjs→TS; no new `scripts/*.mjs`: [[mjs-to-ts-migration]].
 - **Baselines shrink-only;** only lyjw adds `baseline-exception`.

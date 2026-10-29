@@ -32,6 +32,10 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/github-callback.data"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("POST", "/mcp"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("POST", "/mcp/tools/call"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/.well-known/oauth-protected-resource/mcp"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/.well-known/oauth-authorization-server"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/oauth/token"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/oauth/github/callback"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("POST", "/relay"), { kind: "error-relay" });
   assert.deepEqual(classifyGatewayRequest("GET", "/relay"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("POST", "/relay/api/1/envelope/"), { kind: "invalid" });
