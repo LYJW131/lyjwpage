@@ -458,7 +458,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `.github/workflows/collapse-worker-previews.yml`：Cloudflare 在 PR 上为各 Worker 发的预览评论里，不是 `site` 的（按正文日志链接 `services/view/<worker>/` 认）由 `lyjw131[bot]` 标为已解决折叠，只留 site 的预览链接；不参与发布。
 - `.github/workflows/comment-check.yml`：改了 JS / TS 的 PR 上，Jev 逐条判断新增注释该不该删（`scripts/comment-check.ts`），建一项 `Comment check (Jev)` 检查，有该删的或没问全为 neutral；问过注释时，另一个只跑默认分支脚本的 job 以 `lyjw131[bot]` 在 PR 上原地更新一条评论；只是建议，不参与发布。
 - `.github/workflows/do-not-merge.yml`：一次性测试 PR 开的时候就贴 `do-not-merge` 标签；带这个标签时 `do-not-merge` 检查失败，合并钩子 `scripts/guard-merge-method.ts` 用 `gh` 读标签，带标签或读不到都拦。
-- `.github/workflows/codeql-alerts.yml`（main 上的 CodeQL 跑完后由 lyjw131[bot] 把未关闭的告警写进带 `codeql-alerts` 标签的草稿 PR，给每日代码审查读；告警清零时关掉它）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
+- `.github/workflows/codeql-alerts.yml`（main 上的 CodeQL 跑完后由 lyjw131[bot] 把未关闭的告警写进带 Automation 标签的常驻 issue「CodeQL 告警清单」，给每日代码审查读）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
 
 ## 11 工作流：站是怎么被造出来的（第 08 章「一句话之后」）
 
