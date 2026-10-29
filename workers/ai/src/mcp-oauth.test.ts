@@ -210,7 +210,7 @@ test("lyjw 的 GitHub 账号走完授权拿到令牌，带令牌读私有历史"
 });
 
 test("客户端拿 /mcp?codemode=on 当 resource 登录，令牌受众归到 /mcp，带令牌在同一地址照常用", async () => {
-  const env = { ...oauthEnv(), LOADER: { load: () => ({ getEntrypoint: () => ({ fetch: async () => Response.json({ ok: true, result: 1 }) }) }) } as unknown as WorkerLoader };
+  const env = { ...oauthEnv(), LOADER: { load: () => ({ getEntrypoint: () => ({ run: async () => JSON.stringify({ ok: true, result: 1 }) }) }) } as unknown as WorkerLoader };
   const codeModeUrl = `${SITE}/mcp?codemode=on`;
   const { redirect, verifier, clientId } = await signIn(env, 153256373, codeModeUrl);
   const code = redirect.searchParams.get("code");

@@ -68,7 +68,7 @@ test("无 Origin 的 MCP 客户端通过只读 Service Binding 查询公开状�
 });
 
 test("Code Mode 按连接地址的 codemode 参数开，off 与不带都不给 run_site_code", async () => {
-  const loader = { load: () => ({ getEntrypoint: () => ({ fetch: async () => Response.json({ ok: true, result: 42 }) }) }) } as unknown as WorkerLoader;
+  const loader = { load: () => ({ getEntrypoint: () => ({ run: async () => JSON.stringify({ ok: true, result: 42 }) }) }) } as unknown as WorkerLoader;
   const call = (query: string, body: object) => worker.fetch(new Request(`https://ai.test/mcp${query}`, {
     method: "POST",
     headers: { "MCP-Protocol-Version": "2025-06-18" },

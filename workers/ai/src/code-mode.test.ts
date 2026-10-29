@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { STATUS_VIEWS } from "@shared/status-views";
 import { handleMcp } from "./mcp.ts";
-import { CODE_TOOL, formatOutcome, sandboxModule } from "./tools/code-mode.ts";
+import { CODE_TOOL, formatOutcome } from "./tools/code-mode.ts";
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 
 const io = (paths: string[] = []): ToolIO => ({
@@ -59,11 +59,4 @@ test("坏输入、过长代码、未开启都回错误结果，输出被截断",
   const big = formatOutcome({ ok: true, result: "a".repeat(20_000) });
   assert.match(big.text, /…\[truncated/);
   assert.ok(big.text.length < 8_100);
-});
-
-test("沙箱模块把代码放进 async 函数体并捕获异常", () => {
-  const source = sandboxModule("return await status('playing');");
-  assert.match(source, /env\.STATUS\.read\(view\)/);
-  assert.match(source, /return await status\('playing'\);/);
-  assert.match(source, /catch \(error\)/);
 });
