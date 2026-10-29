@@ -3,6 +3,7 @@
 - **Production domain is `https://lyjw.me`.** `lyjw.dev` is ONLY the branch-preview domain (`<branch>.preview.lyjw.dev`): [[prod-domain-lyjw-me]].
 
 ## How lyjw wants us to work (put the relevant ones in every brief)
+- **Copy the existing in-repo pattern first** (lyjw 2026-10-29「先按站点当前类似的实现来做」, after CodeQL issue design changed many times in one day): before designing any automation/workflow/feature, find the closest existing one (e.g. standing issues #185/#280: lyjw opens the issue, bots only comment, fix PRs say `Refs #N`) and mirror it; deviate only with a stated reason.
 - **Thread effort per thread** (lyjw 2026-10-26): reading a link → `effort: low`; harder work → high/xhigh. Default Opus medium.
 - **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct address stays "你" (#313).
 - **Times in SGT** (e.g. "18:07 (SGT)") in everything shown to lyjw.
@@ -13,7 +14,6 @@
 - **Latest stack, no legacy compat** (2026-10-15); exception: iOS reporter endpoints keep working.
 - **Exploring directions is allowed;** raise doubts early, closing a PR is not sunk cost: [[explore-directions]].
 - **Don't over-engineer** (「你过度设计了 提示词改一下就行了」): smallest change that works; small code additions aren't a cost. Asked why something was blocked/red and the cause is the guard or a non-blocking check → explain, let lyjw pick looser or stricter, don't tighten (「太过度防御了」): [[no-edge-case-hardening]].
-- **Copy the nearest existing pattern first** (「先按站点当前类似的实现来做」, 2026-10-29): before a new workflow/state carrier/notification, find the repo equivalent (e.g. standing Automation issues #185/#280) and name it: [[follow-existing-pattern-first]].
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Do it yourself if a tool can** (MCP/API/CLI/RC); ask lyjw only for hands or decisions (2026-10-22).
@@ -25,6 +25,7 @@
 - **Merge method:** <3 commits squash, ≥3 merge commit; enforced. Messages via `pnpm merge-message`: [[merge-commit-format]].
 - **Project threads skip repo hooks and nested rules; skills load** via Setup script symlinks. Follow AGENTS.md guard rules by hand: [[thread-sessions-skip-repo-hooks]].
 - **UI/UX changes need lyjw's OK after screenshots** (desktop + mobile, decision card once preview is up; clear bug fixes exempt): [[design-md-ui-approval]], [[ui-before-after-reference-lines]], [[ink-tokens-keep-chroma]].
+- **UI PRs open with an unfolded Before | After table in the PR description** (t3code/Theo style, #765, 2026-10-29): the coding thread (not the verifier) shoots main/lyjw.me vs branch, pushes to `verify-shots/threads/<branch>/`, raw URLs; desktop + 375 rows, optional `(unchanged)` row. Only for UI/UX PRs. Put this in UI briefs.
 - **Screenshots/fixtures internally consistent** (「太假了」): one scene via `pnpm dev:scene <name>`; README cards are live `/cards/*.svg`; pain points /mnt/project-files/fixtures/痛点.md.
 - **Bot review only for real logic changes;** read every Devin/Codex/Claude review; fix only real bugs, reply「边缘情况，不改」to edge cases; one review-fix push, then merge (lyjw 2026-10-28); Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]].
 - **Verify receipt screenshots:** verifier keeps only 1–2 shots that show the change (max 4), folded in `<details>` (lyjw 2026-10-28「很多图片都是没有意义的」). A push that started no build gets rebuilt at once: [[workers-builds-parallel-race]].
@@ -33,7 +34,7 @@
 - **Big-change PRs: run skill `lyjwpage-pr-review` (own Devin swe-2-max reviewer, in the cloud container, replaced swe-loop) first, unasked:** [[pr-review-auto]].
 - **Verification → Haiku 5.5 high worker** (skill `lyjwpage-verify`), lead spot-checks one: [[verification-haiku-worker]]; first-screen changes also `site-verify reload`: [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; Haiku accepts animation frames (#490).
 - **Verify Action in GitHub Actions:** gaps warn, never block; state (labels, high effort, notes-only reuse, incremental re-verify): [[verify-action-state]]; design: [[verify-in-actions-plan]].
-- **Verify A/B live since 2026-10-26 (#665):** A = Claude Code verifier signs receipts; B = pi SDK verifier (`verify-pi` job, Haiku 5.5 via API key) only stores artifact `verify-ab-pi`, never blocks. Read by comparing `verify-ab-cc` / `verify-ab-pi` result.json via `reconcile`; #665's own 13 rounds counted separately. Duration and switch decision pending lyjw. Daily watch + report due 30 runs or 2026-11-09: [[verify-pi-ab-watch]]. Handoff doc: /mnt/user-data/uploads/hearth/8ba146e0-819b-438f-b75f-39f53f30b29e/8ba146e0-819b-438f-b75f-39f53f30b29e.md
+- **Verify A/B (#665) decided 2026-10-29 10:43 SGT: no switch.** A = Claude Code verifier keeps signing receipts; B = pi SDK verifier (`verify-pi` job, Haiku 5.5 via API key) keeps running as advisory only (artifact `verify-ab-pi`, never blocks, ~$3/day). Daily 21:07 watch stopped; re-read on request. Report: <private claude.ai link> (72 runs: B found 9 real minor issues, A steadier; B fails on UI-heavy PRs at 20-min cap): [[verify-pi-ab-watch]].
 - **Claude Actions stay on the subscription setup token;** no Max-plan API credit, no entrypoint stripping, no static API keys: [[claude-actions-billing-wif]].
 - **Throwaway test PRs get the `do-not-merge` label** (scripts read the label, never the title); gates block them.
 - **Chat testing never asks lyjw to send homepage chats;** use direct API calls, Turnstile test key, or ChatLog via Cloudflare MCP (workers/ai/README.md).
@@ -60,8 +61,8 @@
 - **lyjw.page** (bought 2026-10-29) 301-redirects to lyjw.me via Cloudflare (all one-level subdomains, path+query kept, null MX/SPF/DMARC reject); record in docs/ops-facts.md (#747).
 
 ## Routines
-- **All six moved to new threads 2026-10-28 06:33 SGT** (old signing key revoked); trigger/session/branch table and how to move again: [[routine-bindings]]. Old triggers disabled, not deleted.
-- 04:00 daily code review: [[lyjwpage-daily-review-routine]].
+- **All six moved to new threads 2026-10-28 06:33 SGT** (old signing key revoked); trigger/session/branch table and how to move again: [[routine-bindings]]. Old triggers disabled, not deleted. New routine sessions' auto mode blocks self-merge ([Merge Without Review]) because prompt text isn't lyjw's words; fix = lyjw's own approval written into the routine prompt (asked in 记忆镜像 thread 2026-10-29).
+- 04:00 daily code review: [[lyjwpage-daily-review-routine]]. CodeQL (2026-10-29): being reworked to the #185/#280 pattern — lyjw-opened standing issue (replacing bot-opened #761), bot only comments on alert changes, fix PRs `Refs #N`.
 - 04:53 skill-mining + drift review: [[skill-mining-routine]].
 - 08:41 Anthropic updates digest: [[anthropic-updates-routine]].
 - 4x daily collector superfan: [[collector-superfan-routine]].
@@ -72,7 +73,8 @@
 ## Decisions and state
 - **Aoko summon easter egg live** (#673 #690 #695, merge 55f94ba, 2026-10-27 01:20 SGT): dark mode, wide desktop, Konami code ↑↑↓↓←→←→BA Enter; runtime code in `src/components/space-backdrop/aoko*`; assets `public/mascots/aoko*.webp` (incl. `aoko-normal.webp`) prefetched on first key. Real normal-map lighting since #745 (2026-10-29; LIGHTS/GROUND in aoko-figure.ts). **Character-art production moved out (#738) to private repo LYJW131/character-art:** skill `.claude/skills/character-art`, export script `scripts/fx/aoko-fx-assets.ts`, preview `preview/index.html`; `.claude/rules/character-art.md` points there. When site Aoko shader constants/lights change, sync character-art `characters/aoko/coords.json`. Source library on lyjw's T9 drive, Jev catalog `~/Desktop/mahoyo-catalog/`. Unverified: real-GPU fps, real no-WebGL device. Summon not persisted (localStorage needs lyjw's OK). Handoff: /mnt/user-data/uploads/hearth/478f8dff-1229-4c8a-8ea4-be5c17177dc1/478f8dff-1229-4c8a-8ea4-be5c17177dc1.md
 - **PS5 in-game card live** (#743, 2026-10-29): uses n100 playstation-reporter presence; core infers session start.
-- **Limits history reads StateHub DO, D1 is archive-only** (#742, 2026-10-29); D1 has no public reader.
+- **MCP Code Mode live** (#766 #767, 2026-10-30 00:49 SGT): `https://lyjw.me/mcp?codemode=on` (any value but `off`; name/off copied from Cloudflare MCP portals) lists `run_site_code`; calling it needs lyjw's sign-in (`requiresSignIn`, lyjw「codemode强制要求登录」), anonymous → 401, no Dynamic Worker created. Prod binds Worker Loader `LOADER`. Gotcha: Worker Loader `env` only takes cloneable values/Service Bindings; pass an RpcTarget as an RPC argument (`code-sandbox.ts`), Miniflare test `code-sandbox.test.ts` loads it for real.
+- **Limits history reads StateHub DO, D1 is archive-only** (#742, 2026-10-29); D1 has no public reader. DO keeps Pulse 7 d, limit hours 23 d; D1 complete only since archiving began (most tables ~09-28, coding obs 09-21, limit_hours 10-21); gaps 10-03/05/06 nights likely Mac offline (checked 2026-10-29).
 - **Visitor build guards relaxed** (#710, lyjw「太过度防御了」): only paths executed or auto-loaded before merge are denied; others dropped/flagged for review: [[visitor-build-relaxed]].
 - Git history slimming parked: [[repo-history-slim]]. Chat tiers/consent/logs: [[chat-tiers]]. DO locations: [[do-physical-locations]].
 - Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn. `/image` upstream-timeout 502s (~1/day) are by design.
@@ -91,3 +93,4 @@
 - Jev comment check (advisory): [[jev-comment-check]]. Chat prefetch: [[idea-jev-context-prefetch]]. Chat web search: [[chat-web-search]].
 - .mjs→TS; no new `scripts/*.mjs`: [[mjs-to-ts-migration]].
 - **Baselines shrink-only;** only lyjw adds `baseline-exception`.
+- **HiTw93 rules 13/17/19 adopted** (lyjw 2026-10-29, #762): diagnose stops after 3 failed fixes and hands off to a new thread; a「回滚：」line in commits when git revert can't undo (merge-message carries it); `chat:probe` regression-set mode (rerun on model/prompt change). Report: <private claude.ai link>
