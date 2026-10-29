@@ -34,4 +34,4 @@
 - 根目录 `pnpm dev:worker` 启动包含 ai 的完整栈，`pnpm dev:local` 连接本地入口；AI 凭据放 `workers/ai/.dev.vars`，状态兜底和注入仍由 core 管理。
 - 本地配置用 `wrangler.test.toml`，从空命名空间创建对象；生产 transfer 配置不能用于初始化空的本地状态。
 - 验证：`pnpm --dir workers/ai typecheck`、`pnpm --dir workers/ai test`、`pnpm exec eslint workers/ai/src`；改跨 Worker 链路同时运行 core 的集成验证。
-- 改了 `src/mcp.ts` 的协议处理，单测之外要用真实客户端连接本地入口，命令见 `README.md`「MCP」；客户端按自己的 schema 严格校验结果。
+- 改 `src/mcp.ts` 协议处理用真实客户端验（`README.md`「MCP」），跨 Worker 绑定用 Miniflare 真加载验：普通对象替身测不出运行时错误。
