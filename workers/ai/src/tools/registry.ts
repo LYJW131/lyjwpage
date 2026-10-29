@@ -6,7 +6,7 @@ import { SITE_STATUS_TOOL, type ReadStatus } from "./site-status";
 
 export type CodeRun = { ok: true; result: unknown } | { ok: false; error: string };
 
-// runCode 只在 MCP_CODE_MODE 开启且有 Worker Loader 时才有；没有它 CODE_TOOL 不会出现在工具表里。
+// runCode 只在客户端连 /mcp?codemode 且有 Worker Loader 时才有；没有它 CODE_TOOL 不会出现在工具表里。
 // readHistory 只在 /mcp 带着有效令牌（只发给 lyjw）时才有。
 export type ToolIO = {
   readStatus: ReadStatus;

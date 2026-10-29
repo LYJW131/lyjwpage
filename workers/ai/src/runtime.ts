@@ -35,7 +35,6 @@ export interface Env {
   GITHUB_WEBHOOK_SECRET?: string;
   BUILD_REQUEST_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
-  MCP_CODE_MODE?: string;
   LOADER?: WorkerLoader;
   AI_DEV?: string;
   PREVIEW_WORKER?: string;
@@ -49,8 +48,4 @@ export function previewWorkerEnabled(env: Env): boolean {
 
 export function aiDevEnabled(env: Env): boolean {
   return env.AI_DEV?.trim() === "true" || previewWorkerEnabled(env);
-}
-
-export function mcpCodeModeEnabled(env: Env): boolean {
-  return env.MCP_CODE_MODE?.trim() === "true" && Boolean(env.LOADER);
 }

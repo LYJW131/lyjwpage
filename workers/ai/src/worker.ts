@@ -28,7 +28,7 @@ import { handleBuild, handleBuildIssue, handleBuildStatus, handleBuildUpload, ha
 import { handleMcp } from "./mcp";
 import { handleAuthorize, handleGithubCallback } from "./oauth/authorize";
 import { authorizationServer, mcpResourceServer } from "./oauth/server";
-import { mcpCodeModeEnabled, type Env } from "./runtime";
+import type { Env } from "./runtime";
 import type { ReadHistory } from "./tools/private-history";
 import { fetchProjectDoc } from "./tools/project-docs";
 import { sandboxRunner } from "./tools/code-sandbox";
@@ -45,9 +45,15 @@ const BUILD_HANDLERS = new Map<string, (request: Request, env: Env, fetcher?: ty
 ]);
 const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH]);
 
-function publicTools(env: Env): ToolIO {
+// 参数名与 off 照 Cloudflare MCP 门户：连接地址带 ?codemode（值不是 off）才开 Code Mode，工具表随连接地址变。
+const codeModeRequested = (request: Request) => {
+  const value = new URL(request.url).searchParams.get("codemode");
+  return value !== null && value !== "off";
+};
+
+function publicTools(request: Request, env: Env): ToolIO {
   const tools: ToolIO = { readStatus: (path) => env.PUBLIC_STATUS.readStatus(path), readDoc: fetchProjectDoc };
-  return mcpCodeModeEnabled(env) && env.LOADER ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools;
+  return env.LOADER && codeModeRequested(request) ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools;
 }
 
 const mcpVersion = (env: Env) => env.CF_VERSION_METADATA?.id ?? "dev";
@@ -56,13 +62,13 @@ const mcpVersion = (env: Env) => env.CF_VERSION_METADATA?.id ?? "dev";
 const signedInMcp = mcpResourceServer({
   fetch(request, env, ctx) {
     if (!ctx.auth.scope.includes(MCP_HISTORY_SCOPE)) {
-      return handleMcp(request, publicTools(env), mcpVersion(env), () => insufficientScope(ctx.auth, [MCP_HISTORY_SCOPE]));
+      return handleMcp(request, publicTools(request, env), mcpVersion(env), () => insufficientScope(ctx.auth, [MCP_HISTORY_SCOPE]));
     }
     const archive = env.PRIVATE_HISTORY;
     const readHistory: ReadHistory = archive
       ? (query) => archive.readHistory(query)
       : async () => ({ ok: false, error: "The history archive is not bound here." });
-    return handleMcp(request, { ...publicTools(env), readHistory }, mcpVersion(env));
+    return handleMcp(request, { ...publicTools(request, env), readHistory }, mcpVersion(env));
   },
 });
 
@@ -141,7 +147,7 @@ const worker = {
       if (request.headers.has("Authorization") && !env.OAUTH_KV) return withCors(signInOffline(), cors);
       response = request.headers.has("Authorization")
         ? await signedInMcp.fetch(request, env, ctx ?? noContext())
-        : await handleMcp(request, publicTools(env), mcpVersion(env));
+        : await handleMcp(request, publicTools(request, env), mcpVersion(env));
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       response = await handleChat(request, env, { readStatus: (path) => env.PUBLIC_STATUS.readStatus(path), readDoc: fetchProjectDoc }, ctx);

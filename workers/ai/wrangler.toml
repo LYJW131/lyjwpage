@@ -33,6 +33,10 @@ binding = "PRIVATE_HISTORY"
 service = "core"
 entrypoint = "PrivateHistory"
 
+# Code Mode 的沙箱（src/tools/code-sandbox.ts），只有连 /mcp?codemode 的客户端会用到。
+[[worker_loaders]]
+binding = "LOADER"
+
 # workers-oauth-provider 的授权、令牌与客户端登记（src/oauth/server.ts）。
 [[kv_namespaces]]
 binding = "OAUTH_KV"

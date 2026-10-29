@@ -101,7 +101,7 @@ function githubStub(userId: number): typeof fetch {
   };
 }
 
-async function signIn(env: Env, githubUserId: number): Promise<{ redirect: URL; verifier: string; clientId: string }> {
+async function signIn(env: Env, githubUserId: number, resource = `${SITE}/mcp`): Promise<{ redirect: URL; verifier: string; clientId: string }> {
   const browser = new Browser();
   const registered = await worker.fetch(new Request(`${SITE}/oauth/register`, {
     method: "POST",
@@ -115,7 +115,7 @@ async function signIn(env: Env, githubUserId: number): Promise<{ redirect: URL; 
   const authorize = new URL(`${SITE}/oauth/authorize`);
   for (const [key, value] of Object.entries({
     response_type: "code", client_id: clientId, redirect_uri: CLIENT_REDIRECT, scope: "history:read", state: "client-state",
-    code_challenge: challenge, code_challenge_method: "S256", resource: `${SITE}/mcp`,
+    code_challenge: challenge, code_challenge_method: "S256", resource,
   })) authorize.searchParams.set(key, value);
   const consent = await browser.fetch(env, authorize.href);
   assert.equal(consent.status, 200);
@@ -147,8 +147,8 @@ async function signIn(env: Env, githubUserId: number): Promise<{ redirect: URL; 
   }
 }
 
-function mcpCall(token: string | null, name: string, args: object = {}) {
-  return new Request(`${SITE}/mcp`, {
+function mcpCall(token: string | null, name: string, args: object = {}, url = `${SITE}/mcp`) {
+  return new Request(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "MCP-Protocol-Version": "2025-06-18", ...(token && { Authorization: `Bearer ${token}` }) },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
@@ -207,6 +207,27 @@ test("lyjw 的 GitHub 账号走完授权拿到令牌，带令牌读私有历史"
   assert.equal(body.result.isError, false);
   assert.match(body.result.content[0].text, /"startedAt":"2026-10-27 20:00 \(/);
   assert.deepEqual(queries, [{ table: "listening_plays", from: Date.parse("2026-10-26T16:00:00Z"), to: Date.parse("2026-10-27T16:00:00Z"), limit: 5 }]);
+});
+
+test("客户端拿 /mcp?codemode=on 当 resource 登录，令牌受众归到 /mcp，带令牌在同一地址照常用", async () => {
+  const env = { ...oauthEnv(), LOADER: { load: () => ({ getEntrypoint: () => ({ run: async () => JSON.stringify({ ok: true, result: 1 }) }) }) } as unknown as WorkerLoader };
+  const codeModeUrl = `${SITE}/mcp?codemode=on`;
+  const { redirect, verifier, clientId } = await signIn(env, 153256373, codeModeUrl);
+  const code = redirect.searchParams.get("code");
+  assert.ok(code);
+  const tokenResponse = await worker.fetch(new Request(`${SITE}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: CLIENT_REDIRECT, client_id: clientId, code_verifier: verifier, resource: codeModeUrl }),
+  }), env);
+  assert.equal(tokenResponse.status, 200);
+  const { access_token: token } = await tokenResponse.json() as { access_token: string };
+
+  const run = await worker.fetch(mcpCall(token, "run_site_code", { code: "return 1;" }, codeModeUrl), env);
+  assert.equal(run.status, 200);
+  assert.equal((await run.json() as { result: { content: { text: string }[] } }).result.content[0].text, "1");
+  const history = await worker.fetch(mcpCall(token, "read_private_history", { table: "listening_plays", from: "2026-10-27", to: "2026-10-28", limit: 5 }, codeModeUrl), env);
+  assert.equal((await history.json() as { result: { isError: boolean } }).result.isError, false);
 });
 
 test("别的 GitHub 账号在回调处被拒，客户端拿到 access_denied 而不是授权码", async () => {

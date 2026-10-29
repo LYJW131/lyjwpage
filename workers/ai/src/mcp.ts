@@ -20,7 +20,7 @@ const META_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities";
 const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
 
 const MAX_BODY_BYTES = 16 * 1024;
-// 新协议要求 server/discover、tools/list 带缓存提示，缺了客户端整张工具表都不认；工具表只随部署变。
+// 新协议要求 server/discover、tools/list 带缓存提示，缺了客户端整张工具表都不认；工具表只随部署和连接地址（?codemode）变。
 const CACHE_HINTS = { ttlMs: 60 * 60_000, cacheScope: "public" } as const;
 
 const PARSE_ERROR = -32700;

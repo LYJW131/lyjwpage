@@ -26,24 +26,6 @@ export function statusBridge(io: ToolIO, ledger: ToolLedger) {
   };
 }
 
-export function sandboxModule(code: string): string {
-  return [
-    "export default {",
-    "  async fetch(request, env) {",
-    "    try {",
-    "      const status = (view) => env.STATUS.read(view);",
-    "      const result = await (async () => {",
-    code,
-    "      })();",
-    "      return Response.json({ ok: true, result: result === undefined ? null : result });",
-    "    } catch (error) {",
-    "      return Response.json({ ok: false, error: String(error && error.message || error) });",
-    "    }",
-    "  },",
-    "};",
-  ].join("\n");
-}
-
 export function formatOutcome(outcome: CodeRun): { text: string; isError: boolean } {
   if (!outcome.ok) return { text: `Code failed: ${outcome.error}`, isError: true };
   const json = JSON.stringify(outcome.result) ?? "null";

@@ -290,6 +290,10 @@
   - 取了什么：完全替代 Sentry：心跳与在线条自建在 D1 `health_buckets`，报错数取 Observability 遥测查询，Vitals 取 Web Analytics，浏览器报错经 `/relay` 进 site Worker 日志，告警出口用 Workers Issues。
   - 已开：五个 Worker 的 Workers Issues（各自 wrangler 配置的 `observability.issues.enabled`；core 与 site 的分支预览关掉，见 [workers-builds](./workers-builds.md)「分支预览」），五个都开 `upload_source_maps` 让 Worker 调用栈对回源码。
   - 状态：采用（PR #198）。线上排查按根 [AGENTS.md](../AGENTS.md)「排查线上错误」；没有错误录像，浏览器栈要按 release 重新构建出 map 才能反解（见 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md)「取证」）。
+- **[MCP 门户的 Code Mode](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/#code-mode)** 与 **[Build a Code Mode MCP server](https://developers.cloudflare.com/agents/model-context-protocol/guides/build-codemode-mcp-server/)**（Cloudflare 文档）
+  - 是什么：MCP 服务端把工具换成代码执行工具，模型写的 JavaScript 在动态 Worker 里跑；门户由客户端在连接地址上加 `?codemode=…` 开启、`?codemode=off` 关闭。
+  - 取了什么：只取开关约定，`/mcp` 按连接地址的 `codemode` 查询参数决定给不给 `run_site_code`；沙箱是自写的（无网络、只留 `status(view)`），没用 `@cloudflare/codemode`，原有工具也不收起来。
+  - 状态：部分采用。落在 [worker.ts](../workers/ai/src/worker.ts) 的 `codeModeRequested` 与 [workers/ai/README.md](../workers/ai/README.md)「MCP」。
 - **[Durable Object 的 transfer 迁移](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)**（Cloudflare 文档）
   - 是什么：把 DO 类从一个 Worker 转到另一个。
   - 取了什么：聊天 DO 迁到 AI Worker 时的有序切换。
