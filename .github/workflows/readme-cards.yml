@@ -1,13 +1,11 @@
 name: README Cards
 
 # 量 README 里每张 /cards/<卡>.svg 的写死卡高和内容实高，底部留白或被裁就红。
-# 卡里的行数跟着上报数据变，改上报器的 PR 不碰卡片路由也会让卡高过时：部署后量一次，每天再量一次
+# 生产部署后量一次：卡高写在路由里，卡片组件或样式改了行高、行数，路由不跟着改就会对不上
 on:
   workflow_run:
     workflows: ["Purge ESA and Notify Pages on Deploy"]
     types: [completed]
-  schedule:
-    - cron: "17 1 * * *"
   workflow_dispatch:
 
 permissions:
