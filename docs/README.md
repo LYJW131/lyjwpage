@@ -12,7 +12,6 @@
 | [Worker 数据后端与首屏缓存](./state-storage.md) | reference | 状态分层存储（DO / KV / D1）、公开数据边界、首屏缓存与失效、配置 |
 | [Workers 原生 Git 部署](./workers-builds.md) | reference | Worker 的 Workers Builds 构建配置、监视路径与分支预览 |
 | [访客协作构建](./build-routine.md) | runbook | 首页设计对话、计划审查与 GitHub Actions 构建工作流、OIDC 回传与一次性上传、GitHub App、状态观察与配置 |
-| [CodeQL 告警自动修复](./codeql-autofix.md) | runbook | CodeQL 扫描后每条未关闭告警派一个 Cursor 云端 agent 修复并各开一个 PR |
 | [AI Worker 首次迁移](./ai-worker-migration.md) | runbook | 公开状态 RPC、聊天 DO 转移、密钥与构建配置的有序切换 |
 | [人与 agent 的开发工作流](./workflow.md) | reference | lyjw 与多个 Claude 怎么分工，规则分层与强制、验证回执、合并门槛、定时任务与访客构建的全貌 |
 | [API 命名与跨端契约](./api-contracts.md) | reference | 上报入口、状态端点、推送事件与跨来源字段的命名表和设计契约 |

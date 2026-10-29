@@ -18,6 +18,8 @@ Current state:
 - **main protection:** lyjw 2026-10-20 19:54 SGT reversed "允许我直推": main now requires a PR (0 approvals, no force push) plus conversation resolution; still no required status checks. Personal-repo protection has no bypass list, so `avatar-sync.yml` opens a PR and squash-merges it instead of committing to main.
 - **Merge gate:** don't wait for CodeQL on ordinary PRs. The bot-review gate ([[merge-requires-bot-review-pass]]) still covers Devin, Codex, Claude review and Bugbot.
 
-Related: [[lyjwpage-daily-review-routine]], whose prompt still lists CodeQL among the checks to wait for. That entry is stale but harmless.
+Related: [[lyjwpage-daily-review-routine]].
 
-Cloud sessions get 403 on the code-scanning alerts API. Read alerts through Mac Remote Control with lyjw's gh login (`gh api repos/LYJW131/lyjwpage/code-scanning/alerts?state=open`); worked 2026-10-23 for alerts #36–#38 without an approval click. Cursor Agent may auto-open `codeql-fix/alert-N` PRs; Devin Review on them tends to find more regex-vs-HTML edge cases (alert #35, fixed in #528, 2026-10-21).
+**Alert handling (lyjw 2026-10-29「撤掉 cursor 自动盯 codeql 并修复的 action，交给项目自身巡检任务每次看一眼 codeql」):** the Cursor-based CodeQL Autofix workflow (`codeql-autofix.yml` + scripts) was removed. Open CodeQL alerts are now looked at once per run by the daily code review routine; its prompt is changed only from its own session.
+
+Cloud sessions get 403 on the code-scanning alerts API. Read alerts through Mac Remote Control with lyjw's gh login (`gh api repos/LYJW131/lyjwpage/code-scanning/alerts?state=open`); worked 2026-10-23 for alerts #36–#38 without an approval click. Devin Review on CodeQL fix PRs tends to find more regex-vs-HTML edge cases (alert #35, fixed in #528, 2026-10-21).
