@@ -36,7 +36,6 @@ export function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"
   );
 }
 
-// 源：x.com 页面里的 X 标志。
 function XMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor" aria-hidden className={className}>
