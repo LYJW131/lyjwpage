@@ -1,5 +1,5 @@
-# 云端会话读 code-scanning 告警接口一律 403：main 上的 CodeQL 跑完后，lyjw131[bot] 把未关闭的告警写进一个带 Automation 标签的常驻 issue
-# （和 #185、#280 一样），每日代码审查读它、在下面评论处置
+# 云端会话读 code-scanning 告警接口一律 403：main 上的 CodeQL 跑完后，lyjw131[bot] 把未关闭的告警写进一个带 Automation 标签的常驻 issue，
+# 每日代码审查读它、在下面评论处置
 name: CodeQL Alerts
 
 on:

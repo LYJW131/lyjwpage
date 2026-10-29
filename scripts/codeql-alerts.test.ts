@@ -17,4 +17,5 @@ test("告警 issue 跟在 CodeQL 工作流之后，读告警报错时任务报�
   const update = /- name: Update the alert issue[\s\S]*?shell: (\S+)/.exec(sync);
   assert.equal(update?.[1], "bash");
   assert.match(sync, /gh issue create [^\n]*--label Automation/);
+  assert.match(read("issue-labels.yml"), /!contains\(github\.event\.issue\.labels\.\*\.name, 'Automation'\)/, "同一个 App 开的告警清单不能被当成首页对话的 issue 打 from-chat");
 });
