@@ -1,4 +1,5 @@
-# 云端会话读 code-scanning 告警接口一律 403，这里用 Action 的令牌导出成 artifact，每日代码审查下载来看
+# 云端会话读 code-scanning 告警接口一律 403：main 上的 CodeQL 跑完后，lyjw131[bot] 把未关闭的告警写进一个带 codeql-alerts 标签的草稿 PR，
+# 每日代码审查按标签找到它读清单、在 PR 下评论处置，修复走审查自己的 PR；草稿 PR 本身不合并，告警清零后由这里关掉
 name: CodeQL Alerts
 
 on:
@@ -16,20 +17,63 @@ concurrency:
   group: codeql-alerts
   cancel-in-progress: false
 
+env:
+  LABEL: codeql-alerts
+  BRANCH: codeql/alerts
+
 jobs:
-  export:
+  sync:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # 显式 bash 才带 pipefail：接口报错时任务要红，不能导出一份空数组被读成「没有告警」
-      - shell: bash
+      # 显式 bash 才带 pipefail：接口报错时任务要红，不能读成一份空数组当作「没有告警」去关 PR
+      - name: Read open alerts
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api --paginate "repos/$GITHUB_REPOSITORY/code-scanning/alerts?state=open&per_page=100" --jq '.[]' | jq -s . > codeql-alerts.json
+        run: gh api --paginate "repos/$GITHUB_REPOSITORY/code-scanning/alerts?state=open&per_page=100" --jq '.[]' | jq -s . > "$RUNNER_TEMP/alerts.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/create-github-app-token@v3
+        id: app
         with:
-          name: codeql-alerts
-          path: codeql-alerts.json
-          retention-days: 7
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      # 草稿 PR 只是告警清单的载体：没有提交差异开不了 PR，所以分支上放一个树与 main 相同的空提交。
+      # 每次 CodeQL 跑完都会改描述，贴 skip-verify 免得每次都派验证员；作者是机器人，开 PR 那一次 Claude 评审照跑。
+      - name: Open or update the draft PR as lyjw131[bot]
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          alerts="$RUNNER_TEMP/alerts.json"
+          count=$(jq length "$alerts")
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ "$count" -eq 0 ]; then
+            if [ -n "$number" ]; then
+              gh pr close "$number" --repo "$GITHUB_REPOSITORY" --comment "main 上已没有未关闭的 CodeQL 告警。"
+            fi
+            exit 0
+          fi
+          {
+            printf 'main 上 CodeQL 未关闭的告警共 %s 条（%s 更新）。每日代码审查读这份清单并在下面评论处置，修复走它自己的审查 PR；这个 PR 不合并，告警清零后自动关闭。\n\n' "$count" "$(TZ=Asia/Singapore date "+%F %R (SGT)")"
+            printf '| # | 规则 | 级别 | 位置 | 说明 |\n| --- | --- | --- | --- | --- |\n'
+            jq -r '.[] | "| [#\(.number)](\(.html_url)) | `\(.rule.id)` | \(.rule.security_severity_level // .rule.severity) | `\(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)` | \(.most_recent_instance.message.text | gsub("[\r\n]+"; " ") | gsub("\\|"; "\\|")) |"' "$alerts"
+          } > "$RUNNER_TEMP/body.md"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/body.md"
+            exit 0
+          fi
+          gh label create "$LABEL" --repo "$GITHUB_REPOSITORY" --color B60205 --description "lyjw131[bot] 开的 CodeQL 告警草稿 PR，每日代码审查来修" --force
+          main=$(gh api "$repo/commits/main" --jq .sha)
+          tree=$(gh api "$repo/git/commits/$main" --jq .tree.sha)
+          commit=$(gh api -X POST "$repo/git/commits" -f message="chore(security): CodeQL 告警清单" -f tree="$tree" -f "parents[]=$main" --jq .sha)
+          gh api -X DELETE "$repo/git/refs/heads/$BRANCH" >/dev/null 2>&1 || true
+          gh api -X POST "$repo/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" >/dev/null
+          gh pr create --repo "$GITHUB_REPOSITORY" --draft --base main --head "$BRANCH" --label "$LABEL" --label skip-verify \
+            --title "chore(security): CodeQL 告警清单" --body-file "$RUNNER_TEMP/body.md"
