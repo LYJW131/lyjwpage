@@ -4,7 +4,7 @@
 
 Worker 的运行时配置在各目录的 `wrangler.toml`，Workers Builds 的连接、命令和监视路径需在 Cloudflare 控制台设置。下表是与仓库代码配套的配置；已核对的远端状态见 [仓库外事实](./ops-facts.md)。接入 `ai` 及聊天命名空间切换按 [AI Worker 首次迁移](./ai-worker-migration.md) 执行，提交代码不会自动配置连接、Secret 或监视路径。
 
-GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 Cloudflare GitHub App 触发，构建状态通过 GitHub check run 回传。站点由 `site` Worker（根目录 `wrangler.jsonc`）的 Workers Builds 发布；ESA 首页刷新与 `version` 通知由 `.github/workflows/purge-esa.yml` 在 `Workers Builds: site` 的成功检查或手动完整 SHA 上执行。它成功后 `.github/workflows/region-check.yml` 用 `scripts/region-check.ts` 从 Pine Computer 的多地区住宅出口各开一次 `https://lyjw.me` 巡检（密钥见 [ops-facts](./ops-facts.md#github)），只报不挡；`.github/workflows/readme-cards.yml` 也在它成功后用 `node scripts/site-verify.ts readme-cards` 量 README 卡片的卡高，底部留白或被裁就红，同样不挡。GitHub Pages 保持原生集成与现有工作流。
+GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 Cloudflare GitHub App 触发，构建状态通过 GitHub check run 回传。站点由 `site` Worker（根目录 `wrangler.jsonc`）的 Workers Builds 发布；ESA 首页刷新与 `version` 通知由 `.github/workflows/purge-esa.yml` 在 `Workers Builds: site` 的成功检查或手动完整 SHA 上执行。它成功后 `.github/workflows/region-check.yml` 用 `scripts/region-check.ts` 从 Pine Computer 的多地区住宅出口各开一次 `https://lyjw.me` 巡检（密钥见 [ops-facts](./ops-facts.md#github)），只报不挡。GitHub Pages 保持原生集成与现有工作流。
 
 ## 构建配置
 

@@ -126,7 +126,7 @@ node scripts/site-verify.ts readme-cards --url <预览地址>              # REA
 - 改到 canvas、WebGL 或按窗口宽度挂载的动画时，页面开着用 `page.setViewportSize` 把宽度拉过它的断点再拉回，截图确认画面还在、按新尺寸重画；有无 WebGL 的回退路径的，再用 `--disable-webgl` 启动的 Chromium 把触发和调宽再走一遍。
 - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的环境噪声，脚本单列为 `envNoise`，不算站点错误。页面常开 WebSocket、在轮询，没有 networkidle：脚本按 `--settle` 毫秒等待（默认 4000），别自己写 networkidle。
 - 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；lyjw 一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
-- 改到 README 卡片（`src/app/cards/`，或卡里用到的首页组件改了行高、行数）时，对分支预览跑一次 `readme-cards`（`pnpm dev` 里 NumberFlow 是空壳，高度量不准）。
+- 做 UI 浏览器验证时顺手对分支预览跑一次 `readme-cards`：README 卡的高度写死在路由里，卡里的组件、样式或上报数据变了行数、行高都会对不上（`pnpm dev` 里 NumberFlow 是空壳，高度量不准）。
 - 首屏跳动用 `reload`：先加载一次暖缓存再刷新，报三样东西——首帧时还没加载完的字体（`fontsAfterPaint`）、首帧后只变了一两次的文字（`textJumps`，带 before → after）、录屏里只变了一两次的画面（`frameJumps`，带前后帧文件）。浏览器时钟默认拨快 2 分钟（`--skew`），模拟 lyjw 刷到的是缓存过几分钟的首屏 HTML；只开一次页面、不刷新、时钟和服务端一致时，这类跳动根本不出现。
   ```bash
   node scripts/site-verify.ts reload --url http://localhost:3300 --out /tmp/reload                  # Chromium：录屏 + 文字 + 字体
