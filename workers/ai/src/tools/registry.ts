@@ -1,18 +1,11 @@
 import type { StatusViewKey } from "@shared/status-views";
 
-import type { ReadHistory } from "./private-history";
 import { PROJECT_DOC_TOOL, type ProjectDocKey, type ReadDoc } from "./project-docs";
 import { SITE_STATUS_TOOL, type ReadStatus } from "./site-status";
 
-export type CodeRun = { ok: true; result: unknown } | { ok: false; error: string };
-
-// runCode 只在客户端连 /mcp?codemode 且有 Worker Loader 时才有；没有它 CODE_TOOL 不会出现在工具表里。
-// readHistory 只在 /mcp 带着有效令牌（只发给 lyjw）时才有。
 export type ToolIO = {
   readStatus: ReadStatus;
   readDoc: ReadDoc;
-  readHistory?: ReadHistory;
-  runCode?: (code: string, status: (view: unknown) => Promise<unknown>) => Promise<CodeRun>;
 };
 
 // 读取额度的账本：首页对话一条回复共用一本，所有调用累计；MCP 每次调用各开一本新的。
@@ -32,8 +25,6 @@ export type SiteTool = {
   description: string;
   // 账本跨整条回复时才成立的上限说明（首页对话附在 description 后面）；MCP 每次调用一本新账本，不给。
   replyCap?: string;
-  // 只在 MCP 上列出；没有 readHistory 时 MCP 回 HTTP 401 登录挑战，不交给 run。
-  requiresSignIn?: true;
   inputSchema: {
     type: "object";
     properties: Record<string, unknown>;

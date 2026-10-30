@@ -293,7 +293,7 @@
 - **[MCP 门户的 Code Mode](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/mcp-portals/#code-mode)** 与 **[Build a Code Mode MCP server](https://developers.cloudflare.com/agents/model-context-protocol/guides/build-codemode-mcp-server/)**（Cloudflare 文档）
   - 是什么：MCP 服务端把工具换成代码执行工具，模型写的 JavaScript 在动态 Worker 里跑；门户由客户端在连接地址上加 `?codemode=…` 开启、`?codemode=off` 关闭。
   - 取了什么：只取开关约定，`/mcp` 按连接地址的 `codemode` 查询参数决定给不给 `run_site_code`；沙箱是自写的（无网络、只留 `status(view)`），没用 `@cloudflare/codemode`，原有工具也不收起来。
-  - 状态：部分采用。落在 [worker.ts](../workers/ai/src/worker.ts) 的 `codeModeRequested` 与 [workers/ai/README.md](../workers/ai/README.md)「MCP」。
+  - 状态：不再使用。`/mcp` 只列公开的只读工具，不执行模型写的代码（[workers/ai/README.md](../workers/ai/README.md)「MCP」）。
 - **[Durable Object 的 transfer 迁移](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)**（Cloudflare 文档）
   - 是什么：把 DO 类从一个 Worker 转到另一个。
   - 取了什么：聊天 DO 迁到 AI Worker 时的有序切换。
@@ -317,7 +317,7 @@
 - **[MCP Authorization（规范 2026-07-28）](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)** 与 **[workers-oauth-provider](https://github.com/cloudflare/workers-oauth-provider)**（Cloudflare） <!-- allow: 规范版本号 -->
   - 是什么：MCP 的 OAuth 2.1 授权规范（资源元数据 RFC 9728、受众绑定 RFC 8707、PKCE、首选 CIMD），以及 Cloudflare 在 Workers 上实现授权服务器与资源服务器的库。
   - 取了什么：同一个 `/mcp` 公开工具不用登录、私有工具没登录时回 401 挑战；ai Worker 兼作授权服务器，上游走站点的 GitHub App，只放行 lyjw 的账号；同意页先于 GitHub 登录（防混淆代理）。
-  - 状态：采用。落在 [workers/ai/src/oauth/](../workers/ai/src/oauth/) 与 [workers/ai/README.md](../workers/ai/README.md)「MCP 登录」。
+  - 状态：不再使用。`/mcp` 无鉴权；不公开的长期历史经 core 的 `PrivateHistory` 读，见 [core 说明](../workers/core/README.md)「AI 路由与公开状态 RPC」。
 
 ## 联网搜索与文档检索
 
