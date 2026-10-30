@@ -40,11 +40,11 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `limit_hours` | 各厂商限额每小时快照（UTC 整点） | 状态核心 | `(agent, limit_key, hour_at)`，取该小时最后一次读数 |
 | `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存（含可用内存最低值）、磁盘、速率峰值、网卡累计字节与周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；只收观测时刻晚于该小时最后观测时刻的样本，重放和乱序晚到的旧样本都不累加 |
 | `server_identity` | 服务器的公网 IP、归属地、系统与内核，每种组合一行，记首末观测时刻 | 上报入口 | `(host, public_ip, os, kernel)` |
-| `watching_events` | Emby 每封上报一行：条目、暂停、进度、客户端、设备、播放方式、媒体参数；停止那封条目为空 | 上报入口 | `observed_at` |
+| `watching_events` | Emby 每封带 `playing` 的上报一行：条目、暂停、进度、客户端、设备、播放方式、媒体参数；停止那封条目为空 | 上报入口 | `observed_at` |
 | `game_play_snapshots` | PlayStation 每款游戏的累计时长与次数，时长变了才多一行 | 上报入口 | `(title_id, play_duration_ms)` |
 | `trophy_profile_days` | 奖杯等级、点数与各级奖杯数（Asia/Shanghai 日） | 上报入口 | `date`，取当天最晚一封 |
 | `quest_activities` | Quest 每段 Rich Presence 文字（游戏、details、state），记首末观测时刻 | 上报入口 | `(started_at, title_key, details, state)` |
-| `homepod_events` | HomePod 每封上报：哪个 Home Assistant 实体、播放状态、曲目、进度 | 上报入口 | `(entity_id, observed_at)` |
+| `homepod_events` | HomePod 每封带实体 id 的上报一行：哪个 Home Assistant 实体、播放状态、曲目、进度 | 上报入口 | `(entity_id, observed_at)` |
 | `powerbank_minutes` / `charging_port_minutes` | 充电宝读数、充电头每个在用口的读数，每分钟留最后一次 | 上报入口 | `minute_at` / `(minute_at, port)` |
 | `desktop_changes` / `timezone_changes` / `focus_changes` | Mac 前台应用（含 Bundle ID 与放行的窗口标题）、Mac 时区、iPhone 专注模式，每次变化一行 | 上报入口 | `t` |
 | `listening_plays` | 实测在放的每一段（mac / homepod）与「最近播放的歌」里每首新播所在的刷新窗口（`certain = 0`） | 状态核心 | `(source, started_at)` |

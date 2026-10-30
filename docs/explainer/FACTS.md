@@ -131,10 +131,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 |---|---|---|
 | 实时 | `CORE.commitIngest` → StateHub | desktop、Apple Music、充电、编码、HomePod、PS、Emby、Cursor、限额整点读数 |
 | 可滞后 | KV `LAG` | server（整封只走可滞后和归档两路）、限额、时区、圆环读数、训练列表、上报器账本 |
-| 归档 | D1 `HISTORY` | 训练、圆环日读数、服务器小时汇总；只给 `PrivateHistory` 读的私有事实（Emby 每封、PS 累计时长、Quest 状态文字、充电宝与充电口每分钟、前台应用、专注模式等） |
+| 归档 | D1 `HISTORY` | 训练、圆环日读数、服务器小时汇总；只给 `PrivateHistory` 读的私有事实（Emby 每封带播放状态的上报、PS 累计时长、Quest 状态文字、充电宝与充电口每分钟、前台应用、专注模式等） |
 | 凭据 | KV `CREDENTIALS` | Mac 推来的 Apple Music user token |
 
-- `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总归档进 D1（`shared/ingest/prepare.ts#CoreCommand`；`workers/ingress/src/worker.ts#commitIngest`；`workers/ingress/src/ingest-archive.ts#ingestHistoryStatements`）。
+- `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总和公网 IP、系统等身份行归档进 D1（`shared/ingest/prepare.ts#CoreCommand`；`workers/ingress/src/worker.ts#commitIngest`；`workers/ingress/src/ingest-archive.ts#ingestHistoryStatements`；`workers/ingress/src/private-archive.ts#privateStatements`）。
 - 四路都按自然键幂等，重发不会重复写。
 - 谁来写：可滞后、归档、凭据三路由入口自己写；只有实时那一半交出去，给状态核心（下一节）。
 
