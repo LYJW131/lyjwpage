@@ -4,8 +4,8 @@ import { test } from "node:test";
 
 type Vector = { name: string; service: string; message: string; status?: number; signature: string; hash: string };
 type Event = Record<string, unknown>;
-type Request = { body: { timeframe: { from: number; to: number }; offset?: string; limit: number } };
-type Signature = { signature: string; text: string; service: string; count: number; firstSeen: number; lastSeen: number; sample: { message: string; status: number | null } };
+type Request = { body: { timeframe: { from: number; to: number }; offset?: string; limit: number; parameters: { datasets: string[] } } };
+type Signature = { signature: string; text: string; service: string; count: number; firstSeen: number; lastSeen: number; sample: { message: string; status: number | null; log: string } };
 type Result = { window: { from: number; to: number }; events: number; previews: Record<string, number>; queries: number; sampled: boolean; truncated: boolean; signatures: Signature[] };
 
 const source = readFileSync(new URL("./errors-query.js", import.meta.url), "utf8");
@@ -25,11 +25,12 @@ function run(window: { from: number; to: number }, respond: (request: Request) =
   return query({ request }, "account");
 }
 
-function event(id: string, at: number, service: string, message: string, extra: { status?: number; preview?: string; error?: string } = {}): Event {
+function event(id: string, at: number, service: string, message: string, extra: { status?: number; preview?: string; error?: string; requestId?: string } = {}): Event {
   return {
+    dataset: "cloudflare-workers",
     timestamp: at,
     source: { message },
-    $metadata: { id, service, level: "error", message, ...(extra.error ? { error: extra.error } : {}), trigger: "GET /x" },
+    $metadata: { id, service, level: "error", message, ...(extra.error ? { error: extra.error } : {}), trigger: "GET /x", requestId: extra.requestId },
     $workers: {
       scriptName: service,
       scriptVersion: { id: "v1" },
@@ -60,6 +61,40 @@ test("同一签名合并计数与首末时间，预览只计数，$metadata.erro
   assert.deepEqual([lost?.count, lost?.firstSeen, lost?.lastSeen], [3, TO - 30, TO - 10]);
   assert.deepEqual(result.previews, { core: 1 });
   assert.deepEqual(result.signatures.map((s) => s.text).sort(), ["ai: TypeError: x is undefined", "core: Network connection lost."]);
+});
+
+// Workers Issues 给同一请求另记一条事件，$metadata.error 是「类型 · 消息 · 首帧文件」。
+function issue(id: string, at: number, requestId: string, error: string): Event {
+  return { dataset: "real-time-issues", timestamp: at, $metadata: { id, requestId, service: "site", level: "error", message: error.split(" · ")[1], error } };
+}
+
+test("浏览器报错按同一请求的 Issues 消息归签名，跨发布不变；对不上时退回调用栈", async () => {
+  const hasOwn = "TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page<hash>.js";
+  const tags = ' {"source":"boundary","url":"https://lyjw.me/","release":"r1","tags":{"card":"Activity"}}';
+  const datasets: string[][] = [];
+  const events = [
+    event("a", TO - 40, "site", `[browser-error]     at Ll (https://lyjw.me/assets/page-BXB8OhJl.js:20:14710)${tags}`, { requestId: "r1" }),
+    issue("a2", TO - 40, "r1", hasOwn),
+    event("b", TO - 30, "site", `[browser-error]     at Pb (https://lyjw.me/assets/page-Cq7Zk2xA.js:22:128945)${tags}`, { requestId: "r2" }),
+    issue("b2", TO - 30, "r2", hasOwn),
+    event("c", TO - 20, "site", `[browser-error]     at t (https://lyjw.me/assets/chat-archive-DVdONhA6.js:2:5596)${tags}`, { requestId: "r3" }),
+    event("d", TO - 10, "site", "[image] The operation was aborted due to timeout", { requestId: "r4" }),
+    issue("d2", TO - 10, "r4", "Error · [image] The operation was aborted due to timeout · "),
+  ];
+  const result = await run({ from: TO - HOUR, to: TO }, ({ body }) => {
+    datasets.push(body.parameters.datasets);
+    return { events };
+  });
+  assert.deepEqual(datasets, [["cloudflare-workers", "real-time-issues"]]);
+  assert.equal(result.events, 4);
+  const byText = new Map(result.signatures.map((s) => [s.text, s]));
+  const signed = byText.get(`site: [browser-error] ${hasOwn}`);
+  assert.equal(signed?.count, 2);
+  assert.equal(signed?.signature, vectors.find((v) => v.name === "browser error signed by its Workers Issues message")?.hash);
+  assert.equal(signed?.sample.message, `[browser-error] ${hasOwn}`);
+  assert.match(signed?.sample.log ?? "", /at Pb .*"card":"Activity"/);
+  assert.ok([...byText.keys()].some((text) => text.startsWith("site: [browser-error] at t (https://lyjw.me/assets/chat-archive-<hash>.js:<n>:<n>)")));
+  assert.ok(byText.has("site: [image] The operation was aborted due to timeout"));
 });
 
 test("抽样的时间段对半拆开重查，落在拆分点上的事件只算一次", async () => {

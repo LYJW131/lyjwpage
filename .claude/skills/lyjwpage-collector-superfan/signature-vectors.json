@@ -132,5 +132,12 @@
     "message": "a\u000b\fb",
     "signature": "ai: a b",
     "hash": "458ccba71e0c"
+  },
+  {
+    "name": "browser error signed by its Workers Issues message",
+    "service": "site",
+    "message": "[browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page<hash>.js",
+    "signature": "site: [browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page<hash>.js",
+    "hash": "04762b4aace3"
   }
 ]

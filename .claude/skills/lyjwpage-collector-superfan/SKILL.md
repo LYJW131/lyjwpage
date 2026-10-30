@@ -92,7 +92,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 python3 -I "$SCRATCH/check.py" --triage "$SCRATCH/errors.json" > "$SCRATCH/triage.json"
 ```
 
-查询读 `core`、`site`、`ai`、`ingress` 的 `$metadata.level = error` 事件，时间窗同第 3 步，按 Worker 加错误消息归成签名：把 URL 查询串、UUID、时间戳、请求 id 这类长串和 10 位以上的数字，以及每次部署都变的调用栈行列号、构建产物文件名里的哈希换成占位；HTTP 状态码和其他决定错误类别的数字保留（调用日志的响应状态码接在末尾）；再截到 `errors-query.js#SIGNATURE_CHARS` 个字符。签名哈希是签名文本 SHA-256 的前 12 位十六进制。规则在 `errors-query.js#SIGNATURE_RULES`，`check.py#SIGNATURE_RULES` 是同一份。每个签名给出次数、首末时间、所属 Worker、出现过的 `versions`（`$workers.scriptVersion`）和最近一条样例。分支预览（带 `$workers.preview`）的错误不归签名，只在 `previews` 里按 Worker 计数，归开分支的线程管。查询失败同第 3 步：报告里写明没读到，本次不推进 `lastRunAt`。
+查询读 `core`、`site`、`ai`、`ingress` 的 `$metadata.level = error` 事件，时间窗同第 3 步，按 Worker 加错误消息归成签名：把 URL 查询串、UUID、时间戳、请求 id 这类长串和 10 位以上的数字，以及每次部署都变的调用栈行列号、构建产物文件名里的哈希换成占位；HTTP 状态码和其他决定错误类别的数字保留（调用日志的响应状态码接在末尾）；再截到 `errors-query.js#SIGNATURE_CHARS` 个字符。签名哈希是签名文本 SHA-256 的前 12 位十六进制。规则在 `errors-query.js#SIGNATURE_RULES`，`check.py#SIGNATURE_RULES` 是同一份。浏览器上报的 `[browser-error]` 日志行只有压缩后的调用栈，每次发布都变，所以签名改用同一请求在 Workers Issues 数据集（`errors-query.js#ISSUES_DATASET`）里的「错误类型 · 消息 · 首帧文件」；对不上同一请求的 Issues 事件时退回调用栈，样例的 `log` 留日志原文（卡片名、release 在里面）。每个签名给出次数、首末时间、所属 Worker、出现过的 `versions`（`$workers.scriptVersion`）和最近一条样例。分支预览（带 `$workers.preview`）的错误不归签名，只在 `previews` 里按 Worker 计数，归开分支的线程管。查询失败同第 3 步：报告里写明没读到，本次不推进 `lastRunAt`。
 
 `$SCRATCH/triage.json` 分成几堆：
 
