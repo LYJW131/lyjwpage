@@ -3,6 +3,8 @@ export const THEME_STORAGE_KEY = "theme";
 export const THEME_CHOICES = ["light", "dark", "system"] as const;
 export type ThemeChoice = (typeof THEME_CHOICES)[number];
 export type ResolvedTheme = "light" | "dark";
+export const DEFAULT_THEME_CHOICE: ThemeChoice = "dark";
+export const THEME_COLOR = "#0a0a0a";
 
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 
@@ -13,7 +15,7 @@ type ThemeRoot = {
 };
 
 export function parseThemeChoice(raw: string | null | undefined): ThemeChoice {
-  return raw === "light" || raw === "dark" ? raw : "system";
+  return raw === "light" || raw === "dark" || raw === "system" ? raw : DEFAULT_THEME_CHOICE;
 }
 
 export function resolveTheme(choice: ThemeChoice, systemDark: boolean): ResolvedTheme {
@@ -44,7 +46,7 @@ export function themeBootScript(): string {
   return (
     `(function(){var d=document.documentElement,s=null;` +
     `try{s=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})}catch(e){}` +
-    `var c=s==="light"||s==="dark"?s:"system",` +
+    `var c=s==="light"||s==="dark"||s==="system"?s:${JSON.stringify(DEFAULT_THEME_CHOICE)},` +
     `r=c==="system"?(matchMedia(${JSON.stringify(SYSTEM_DARK_QUERY)}).matches?"dark":"light"):c;` +
     `d.dataset.themeChoice=c;d.classList.remove("light","dark");d.classList.add(r);d.style.colorScheme=r})();`
   );
@@ -58,7 +60,7 @@ export function readThemeChoice(): ThemeChoice {
   try {
     return parseThemeChoice(localStorage.getItem(THEME_STORAGE_KEY));
   } catch {
-    return "system";
+    return DEFAULT_THEME_CHOICE;
   }
 }
 
