@@ -201,7 +201,9 @@ function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZ
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
   if (!forecast && newWeek) return { headline: "New week", detail: "Waiting for the first reading" };
   if (!forecast) return { headline: "No forecast yet", detail: "Waiting for a weekly reading" };
-  const window = `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
+  const window = forecast.cardAt != null
+    ? `Used ${Math.round(forecast.usedPercent)}% since the reset card ${clock.format(forecast.cardAt)}`
+    : `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
   if (forecast.ranOut && forecast.runOutAt != null) {
     return { headline: `Ran out ${clock.format(forecast.runOutAt)}`, detail: `Locked until ${clock.format(forecast.resetAt)}` };
   }
