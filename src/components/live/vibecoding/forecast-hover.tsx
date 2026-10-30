@@ -80,7 +80,7 @@ export function ForecastHover({
   const dots = sample == null
     ? []
     : [
-        { key: "even", percent: sample.even, className: "bg-muted-foreground" },
+        sample.even != null && { key: "even", percent: sample.even, className: "bg-muted-foreground" },
         sample.target != null && { key: "target", percent: sample.target, className: "bg-signal-green" },
         sample.phase === "locked"
           ? { key: "value", percent: 100, className: "bg-signal-red" }
@@ -178,7 +178,7 @@ export function ForecastHover({
                 />
               )}
               {sample.target != null && <Row swatch={<Swatch line="dashed" className="border-signal-green" />} label="Lasts the week" value={percent(sample.target)} />}
-              <Row swatch={<Swatch line="dotted" className="border-muted-foreground" />} label="Even pace" value={percent(sample.even)} />
+              {sample.even != null && <Row swatch={<Swatch line="dotted" className="border-muted-foreground" />} label="Even pace" value={percent(sample.even)} />}
             </div>
           </div>
         </AnchoredTooltip>

@@ -103,7 +103,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
         )}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-hidden>
           <line
-            x1="0" y1="100" x2="100" y2="0"
+            x1={x(forecast.cardAt ?? forecast.startAt)} y1="100" x2="100" y2="0"
             className="text-muted-foreground" stroke="currentColor" strokeWidth="1" strokeDasharray="1 3"
             vectorEffect="non-scaling-stroke"
           />
