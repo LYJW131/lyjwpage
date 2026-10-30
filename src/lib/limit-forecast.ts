@@ -19,6 +19,8 @@ const MIN_ELAPSED_MS = 6 * HOUR_MS;
 // 读数到 100 才算用完；停在 98 左右的日子是没怎么用，不是被锁。
 const RUN_OUT_PERCENT = 100;
 const SAME_RESET_SLACK_S = 3_600;
+// 速度和整周均速相差不到这个比例时，线跟匀速线几乎重合，不画；对应 Pace 显示 0.9x–1.1x。
+const NEAR_EVEN_TOLERANCE = 0.15;
 
 export type UsageInterval = {
   from: number;
@@ -45,8 +47,15 @@ export type LimitForecast = {
   ranOut: boolean;
   lockedMs: number | null;
   percentAtReset: number | null;
+  // 预测线与「用到重置正好 100%」那条线，只在偏离整周均速时画；预测会用完时总要画。
+  drawProjection: boolean;
+  drawTarget: boolean;
   window: Array<[at: number, usedPercent: number]>;
 };
+
+function nearEven(rate: number, evenRate: number) {
+  return Math.abs(rate / evenRate - 1) < NEAR_EVEN_TOLERANCE;
+}
 
 function sameWindow(left: number | null, right: number | null) {
   return left != null && right != null && Math.abs(left - right) <= SAME_RESET_SLACK_S;
@@ -120,6 +129,7 @@ export function forecastLimit(
   const evenRate = 100 / (resetAt - periodStart);
 
   const ranOutPoint = (cardAt == null ? readings : readings.slice(cardIndex)).find(([, used]) => used >= RUN_OUT_PERCENT);
+  const targetRate = (RUN_OUT_PERCENT - usedPercent) / (resetAt - now);
   const base = {
     startAt,
     resetAt,
@@ -128,6 +138,7 @@ export function forecastLimit(
     cardAt,
     elapsedFraction: elapsed / (resetAt - periodStart),
     evenRate,
+    drawTarget: usedPercent < RUN_OUT_PERCENT && !nearEven(targetRate, evenRate),
     window,
   };
   if (ranOutPoint) {
@@ -138,6 +149,7 @@ export function forecastLimit(
       ranOut: true,
       lockedMs: resetAt - ranOutPoint[0],
       percentAtReset: 100,
+      drawProjection: false,
     };
   }
 
@@ -151,7 +163,7 @@ export function forecastLimit(
   if (rate != null && momentum != null) rate = (rate + momentum) / 2;
 
   if (rate == null) {
-    return { ...base, rate: null, runOutAt: null, ranOut: false, lockedMs: null, percentAtReset: null };
+    return { ...base, rate: null, runOutAt: null, ranOut: false, lockedMs: null, percentAtReset: null, drawProjection: false };
   }
   const runOutAt = rate > 0 ? now + (RUN_OUT_PERCENT - usedPercent) / rate : null;
   const runsOut = runOutAt != null && runOutAt < resetAt;
@@ -162,15 +174,16 @@ export function forecastLimit(
     ranOut: false,
     lockedMs: runsOut ? resetAt - runOutAt : null,
     percentAtReset: runsOut ? 100 : Math.min(100, usedPercent + rate * (resetAt - now)),
+    drawProjection: runsOut || !nearEven(rate, evenRate),
   };
 }
 
 export type ForecastSample = {
   at: number;
   phase: "used" | "projected" | "locked";
-  // used：实际读数插值；projected：按预测速度外推；locked 与没出预测时为 null。
+  // used：实际读数插值；projected：按预测速度外推；locked、没出预测或预测线不画时为 null。
   percent: number | null;
-  // 从现在起匀速用到重置正好 100% 的那条线，只在现在及之后、还没用完时有值。
+  // 从现在起匀速用到重置正好 100% 的那条线，只在现在及之后、这条线要画时有值。
   target: number | null;
   // 用了重置卡时只从卡那一刻起有值。
   even: number | null;
@@ -179,7 +192,7 @@ export type ForecastSample = {
 export function sampleForecast(forecast: LimitForecast, at: number): ForecastSample {
   const evenFrom = forecast.cardAt ?? forecast.startAt;
   const even = at >= evenFrom ? (100 * (at - evenFrom)) / (forecast.resetAt - evenFrom) : null;
-  const target = at >= forecast.now && forecast.usedPercent < 100
+  const target = at >= forecast.now && forecast.drawTarget
     ? forecast.usedPercent + ((100 - forecast.usedPercent) * (at - forecast.now)) / (forecast.resetAt - forecast.now)
     : null;
   if (forecast.runOutAt != null && at >= forecast.runOutAt) return { at, phase: "locked", percent: null, target, even };
@@ -191,6 +204,6 @@ export function sampleForecast(forecast: LimitForecast, at: number): ForecastSam
     const percent = toAt > fromAt ? fromUsed + ((toUsed - fromUsed) * (at - fromAt)) / (toAt - fromAt) : toUsed;
     return { at, phase: "used", percent, target, even };
   }
-  const percent = forecast.rate == null ? null : Math.min(100, forecast.usedPercent + forecast.rate * (at - forecast.now));
+  const percent = forecast.rate == null || !forecast.drawProjection ? null : Math.min(100, forecast.usedPercent + forecast.rate * (at - forecast.now));
   return { at, phase: "projected", percent, target, even };
 }
