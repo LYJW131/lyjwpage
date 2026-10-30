@@ -5,6 +5,7 @@ import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collect
 import { jsonResponse } from "@shared/http-origins";
 import { describeRejections } from "@shared/ingest/coding";
 import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
+import { preparePrivateFacts } from "@shared/ingest/private";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 
 import { authorize } from "./access-auth";
@@ -129,7 +130,7 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
       }
     }
     // 归档须先于 KV 写入启动，避免 KV 失败使状态核心已接受的数据漏归档。
-    if (env.HISTORY) ctx.waitUntil(archiveIngest(env.HISTORY, command));
+    if (env.HISTORY) ctx.waitUntil(archiveIngest(env.HISTORY, command, preparePrivateFacts(source, body)));
     if (env.LAG) {
       const tags = await commitLagIngest(env.LAG, command);
       if (tags.length) ctx.waitUntil(env.CORE.revalidate(tags).catch((error: unknown) => console.error("[revalidate]", reason(error))));

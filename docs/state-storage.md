@@ -38,7 +38,15 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `activity_days` | 每天活动圆环的终值（手表本地日） | 上报入口 | `date`，同一天取最晚一封 |
 | `limit_snapshots` | 各厂商限额每日快照（Asia/Shanghai 日） | 状态核心 | `(date, agent, limit_key)`，取当天最后一次读数 |
 | `limit_hours` | 各厂商限额每小时快照（UTC 整点） | 状态核心 | `(agent, limit_key, hour_at)`，取该小时最后一次读数 |
-| `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存、速率峰值、周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；只收观测时刻晚于该小时最后观测时刻的样本，重放和乱序晚到的旧样本都不累加 |
+| `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存（含可用内存最低值）、磁盘、速率峰值、网卡累计字节与周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；只收观测时刻晚于该小时最后观测时刻的样本，重放和乱序晚到的旧样本都不累加 |
+| `server_identity` | 服务器的公网 IP、归属地、系统与内核，每种组合一行，记首末观测时刻 | 上报入口 | `(host, public_ip, os, kernel)` |
+| `watching_events` | Emby 每封上报一行：条目、暂停、进度、客户端、设备、播放方式、媒体参数；停止那封条目为空 | 上报入口 | `observed_at` |
+| `game_play_snapshots` | PlayStation 每款游戏的累计时长与次数，时长变了才多一行 | 上报入口 | `(title_id, play_duration_ms)` |
+| `trophy_profile_days` | 奖杯等级、点数与各级奖杯数（Asia/Shanghai 日） | 上报入口 | `date`，取当天最晚一封 |
+| `quest_activities` | Quest 每段 Rich Presence 文字（游戏、details、state），记首末观测时刻 | 上报入口 | `(started_at, title_key, details, state)` |
+| `homepod_events` | HomePod 每封上报：哪个 Home Assistant 实体、播放状态、曲目、进度 | 上报入口 | `(entity_id, observed_at)` |
+| `powerbank_minutes` / `charging_port_minutes` | 充电宝读数、充电头每个在用口的读数，每分钟留最后一次 | 上报入口 | `minute_at` / `(minute_at, port)` |
+| `desktop_changes` / `timezone_changes` / `focus_changes` | Mac 前台应用（含 Bundle ID 与放行的窗口标题）、Mac 时区、iPhone 专注模式，每次变化一行 | 上报入口 | `t` |
 | `listening_plays` | 实测在放的每一段（mac / homepod）与「最近播放的歌」里每首新播所在的刷新窗口（`certain = 0`） | 状态核心 | `(source, started_at)` |
 | `watching_sessions` | 同一条目首尾相接的播放 + 暂停，含实际在播秒数 | 状态核心 | `(item_id, started_at)`，延续时改写同一行 |
 | `game_sessions` | 在游戏里的时段 | 状态核心 | `(title_id, started_at)` |
@@ -52,7 +60,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `coding_token_buckets` / `agent_usage_days` | 单来源（Mac）时代的桶与每日汇总，冻结不再写（`0008` 把桶和活跃秒数复制进新表） | — | — |
 | `pulse_samples` | 档位时代（Pulse 改成事实时间线之前）的旧数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
 
-上报入口的三张表（训练、圆环日读数、服务器小时汇总）由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。限额两张表上报入口不写：限额读数先按整点记进 StateHub，再由状态核心走下面的 pulse 归档（`limits` 一路，语句同样在 `shared/history-ingest.ts`）。迁移 `0005_history_ingest.sql` 建前四张，`0010_limit_hours.sql` 建 `limit_hours`，部署写这些表的版本之前先应用。
+上报入口的三张表（训练、圆环日读数、服务器小时汇总）由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。`server_identity` 起的私有事实表另成一批（`workers/ingress/src/private-archive.ts`），写坏只记 `[history:private]`，不拖累前一批。这些列不进状态核心、KV 和公开端点：大多取自已经 prepare 好的命令，命令里没有的（HomePod 的实体 id）由 `shared/ingest/private.ts#preparePrivateFacts` 从原始请求体另取，交给状态核心的命令不变。限额两张表上报入口不写：限额读数先按整点记进 StateHub，再由状态核心走下面的 pulse 归档（`limits` 一路，语句同样在 `shared/history-ingest.ts`）。迁移 `0005_history_ingest.sql` 建前四张，`0010_limit_hours.sql` 建 `limit_hours`，`0011_private_facts.sql` 建私有事实表并给 `server_hours` 加列，部署写这些表的版本之前先应用。
 
 - Pulse 事实表由状态核心写：cron 每 5 分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 按自然键拼成 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写；活动桶另有受版本保护的范围删除）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`（coding 用量与桶两路是修订号，其余是时刻），确认按 max 单调前进；失败留待下一轮重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/core/README.md#长期归档d1)，迁移 `0007_history_pulse.sql` 与 coding 用量的 `0008_coding_usage.sql`（`0006` 留给采集 Worker）。
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是实时层的唯一权威，只留 `PULSE_TTL_MS` 那么久，归档保留全部历史。

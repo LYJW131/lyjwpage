@@ -1,48 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
-import type { HistoryDb } from "@shared/history-ingest";
 import type { ReportedServerStatus, ReportedWorkout } from "@shared/types";
 import { archiveIngest } from "./ingest-archive";
 import type { PreparedIngest } from "@shared/ingest/prepare";
-
-type Statement = { query: string; values: unknown[] };
-
-function historyDb() {
-  const sqlite = new DatabaseSync(":memory:");
-  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../core/migrations/`;
-  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
-    sqlite.exec(readFileSync(`${migrations}${file}`, "utf8"));
-  }
-  let changes = 0;
-  const db: HistoryDb = {
-    prepare: (query) => {
-      const statement: Statement & { bind(...values: unknown[]): typeof statement } = {
-        query,
-        values: [],
-        bind: (...values) => ({ ...statement, values }),
-      };
-      return statement;
-    },
-    async batch(statements) {
-      sqlite.exec("BEGIN");
-      for (const { query, values } of statements as unknown as Statement[]) {
-        changes += Number(sqlite.prepare(query).run(...(values as (string | number | null)[])).changes);
-      }
-      sqlite.exec("COMMIT");
-      return [];
-    },
-  };
-  return {
-    db,
-    all: (query: string) => sqlite.prepare(query).all(),
-    changes: () => changes,
-  };
-}
+import { historyDb } from "./testing/history-db";
 
 const T0 = Date.UTC(2026, 8, 28, 3, 0, 0);
 
@@ -188,6 +150,6 @@ test("ingest archive: replaying an older server reading after a newer one (A, B,
 
 test("ingest archive: sources without long-term facts do not touch D1", async () => {
   const world = historyDb();
-  await archiveIngest(world.db, { source: "homepod", receivedAt: T0 } as unknown as PreparedIngest);
+  await archiveIngest(world.db, { source: "agents", receivedAt: T0 } as unknown as PreparedIngest);
   assert.equal(world.changes(), 0);
 });
