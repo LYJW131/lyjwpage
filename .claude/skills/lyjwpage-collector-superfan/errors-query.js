@@ -21,6 +21,9 @@ async () => {
   const MIN_CHUNK_MS = 15 * 60_000;
   const CONCURRENCY = 4;
   const SAMPLE_CHARS = 4000;
+  // site 记 [browser-error] 时 Observability 只留调用栈（压缩后的函数名每次发布都变），错误类型与消息在同一请求的 Workers Issues 事件里，签名改用它。
+  const BROWSER_ERROR = "[browser-error]";
+  const ISSUES_DATASET = "real-time-issues";
 
   const to = WINDOW.to ?? Date.now();
   const from = WINDOW.from ?? to - 24 * 3_600_000;
@@ -47,7 +50,7 @@ async () => {
       limit: PAGE,
       ...(offset ? { offset, offsetDirection: "next" } : {}),
       parameters: {
-        datasets: ["cloudflare-workers"],
+        datasets: ["cloudflare-workers", ISSUES_DATASET],
         filters: [
           { key: "$metadata.level", operation: "eq", type: "string", value: "error" },
           { key: "$workers.scriptName", operation: "in", type: "string", value: WORKERS.join(",") },
@@ -86,6 +89,7 @@ async () => {
   const seen = new Set();
   const groups = new Map();
   const previews = {};
+  const issues = new Map();
   let counted = 0;
 
   const add = (event) => {
@@ -102,7 +106,9 @@ async () => {
       return;
     }
     const source = event.source;
-    const message = String(meta.error || meta.message || (typeof source === "string" ? source : source?.message) || JSON.stringify(source ?? null));
+    const log = String(meta.error || meta.message || (typeof source === "string" ? source : source?.message) || JSON.stringify(source ?? null));
+    const issue = log.startsWith(BROWSER_ERROR) && meta.requestId ? issues.get(meta.requestId) : undefined;
+    const message = issue ? `${BROWSER_ERROR} ${issue}` : log;
     const status = workers.event?.response?.status;
     const at = event.timestamp ?? Number(meta.timestampNs ?? 0) / 1e6;
     const text = signatureText(service, message, status);
@@ -120,6 +126,7 @@ async () => {
       group.sample = {
         at,
         message: message.slice(0, SAMPLE_CHARS),
+        log: log.slice(0, SAMPLE_CHARS),
         status: typeof status === "number" ? status : null,
         trigger: meta.trigger ?? null,
         requestId: meta.requestId ?? null,
@@ -129,6 +136,7 @@ async () => {
     group.lastSeen = Math.max(group.lastSeen, at);
   };
 
+  const read = [];
   let chunks = [];
   for (let t = from; t < to; t += START_CHUNK_MS) chunks.push([t, Math.min(t + START_CHUNK_MS, to)]);
   while (chunks.length) {
@@ -142,12 +150,18 @@ async () => {
           const mid = Math.floor((t0 + t1) / 2);
           next.push([t0, mid], [mid, t1]);
         } else {
-          result.events.forEach(add);
+          read.push(...result.events);
         }
       });
     }
     chunks = next;
   }
+  // Issues 事件只给配对用，不单独计数。
+  for (const event of read) {
+    const meta = event.$metadata ?? {};
+    if (event.dataset === ISSUES_DATASET && meta.requestId) issues.set(meta.requestId, String(meta.error || meta.message || ""));
+  }
+  read.filter((event) => event.dataset !== ISSUES_DATASET).forEach(add);
 
   const signatures = await Promise.all([...groups.values()].map(async (group) => ({
     signature: await signatureHash(group.text),
