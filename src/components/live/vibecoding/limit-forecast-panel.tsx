@@ -43,7 +43,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
   const y = (percent: number) => 100 - Math.min(100, Math.max(0, percent));
   const used = forecast.window.map(([at, percent]) => `${x(at)},${y(percent)}`).join(" ");
   const nowX = x(forecast.now);
-  const projectionEnd = forecast.ranOut
+  const projectionEnd = !forecast.drawProjection
     ? null
     : forecast.runOutAt != null
       ? { at: forecast.runOutAt, percent: 100 }
@@ -107,7 +107,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             className="text-muted-foreground" stroke="currentColor" strokeWidth="1" strokeDasharray="1 3"
             vectorEffect="non-scaling-stroke"
           />
-          {forecast.usedPercent < 100 && (
+          {forecast.drawTarget && (
             <line
               x1={nowX} y1={y(forecast.usedPercent)} x2="100" y2="0"
               className="text-signal-green" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3"
@@ -134,7 +134,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
           className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground"
           style={{ left: `${nowX}%`, top: `${y(forecast.usedPercent)}%` }}
         />
-        {forecast.usedPercent < 100 && (
+        {forecast.drawTarget && (
           <span aria-hidden className="absolute top-0 right-0 size-2 translate-x-1/2 -translate-y-1/2 rounded-full bg-signal-green" />
         )}
         {lockedFrom != null && (

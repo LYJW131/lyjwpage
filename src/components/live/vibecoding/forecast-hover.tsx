@@ -169,7 +169,7 @@ export function ForecastHover({
                 </>
               ) : sample.phase === "used" ? (
                 <Row strong swatch={<Swatch line="solid" className="border-foreground" />} label="Used" value={percent(sample.percent!)} />
-              ) : (
+              ) : (sample.percent != null || forecast.rate == null) && (
                 <Row
                   strong
                   swatch={<Swatch line="dashed" className={runsOut ? "border-signal-red" : "border-muted-foreground"} />}
