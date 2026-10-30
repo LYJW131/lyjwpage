@@ -1,4 +1,3 @@
-import type { PrivateHistoryRpc } from "@shared/private-history";
 import type { PublicStatusRpc } from "@shared/public-status";
 
 import type { BuildCoordinator } from "./build/coordinator";
@@ -8,9 +7,6 @@ import type { ChatLog } from "./chat/transcripts";
 
 export interface Env {
   PUBLIC_STATUS: PublicStatusRpc;
-  // 只在 /mcp 带着 lyjw 的 OAuth 令牌时才调；OAUTH_KV 存授权、令牌与客户端登记（workers-oauth-provider 的存储格式）。
-  PRIVATE_HISTORY?: PrivateHistoryRpc;
-  OAUTH_KV?: KVNamespace;
   AI?: Ai;
   ALLOWED_ORIGINS?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
@@ -35,7 +31,6 @@ export interface Env {
   GITHUB_WEBHOOK_SECRET?: string;
   BUILD_REQUEST_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
-  LOADER?: WorkerLoader;
   AI_DEV?: string;
   PREVIEW_WORKER?: string;
   CHAT_RATE_LIMIT?: string;

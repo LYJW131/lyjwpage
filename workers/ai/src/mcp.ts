@@ -1,12 +1,8 @@
-import { MCP_RESOURCE_METADATA_PATH } from "@shared/ai-paths";
 import { object } from "@shared/json";
-import { MCP_HISTORY_SCOPE } from "@shared/mcp-auth";
 import { site } from "@shared/site";
 
 import { readJsonBody } from "./chat/guard";
-import { CODE_TOOL } from "./tools/code-mode";
-import { PRIVATE_HISTORY_TOOL } from "./tools/private-history";
-import { SITE_TOOLS, newLedger, type SiteTool, type ToolIO } from "./tools/registry";
+import { SITE_TOOLS, newLedger, type ToolIO } from "./tools/registry";
 
 // 新协议每个请求在 _meta 里自带版本、没有 initialize；旧协议先握手。两代都收，都不发会话 ID。
 const MODERN_VERSIONS = ["2026-07-28"];
@@ -20,7 +16,7 @@ const META_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities";
 const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
 
 const MAX_BODY_BYTES = 16 * 1024;
-// 新协议要求 server/discover、tools/list 带缓存提示，缺了客户端整张工具表都不认；工具表只随部署和连接地址（?codemode）变。
+// 新协议要求 server/discover、tools/list 带缓存提示，缺了客户端整张工具表都不认；工具表只随部署变。
 const CACHE_HINTS = { ttlMs: 60 * 60_000, cacheScope: "public" } as const;
 
 const PARSE_ERROR = -32700;
@@ -36,20 +32,16 @@ const INSTRUCTIONS = [
   `Image paths that start with /img/ are relative to ${site.url}.`,
   `Use read_project_doc for how the site works; its source is open at ${site.repo}.`,
   "Requests are rate-limited per IP, so read only the views you need.",
-  "read_private_history and run_site_code need sign-in with LYJW's own GitHub account; for anyone else they always fail, so do not offer them.",
   'Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA".',
 ].join(" ");
 
-// 私有工具总在表里，工具表因此人人一样、可按 public 缓存；没登录时调用它才回 401，客户端据此弹登录。
-const toolsFor = (io: ToolIO): readonly SiteTool[] => [...SITE_TOOLS, PRIVATE_HISTORY_TOOL, ...(io.runCode ? [CODE_TOOL] : [])];
-
-const describe = ({ name, title, description, inputSchema }: SiteTool) => ({
+const TOOLS = SITE_TOOLS.map(({ name, title, description, inputSchema }) => ({
   name,
   title,
   description,
   inputSchema,
   annotations: { title, readOnlyHint: true, openWorldHint: false },
-});
+}));
 
 type Id = string | number;
 type Params = Record<string, unknown>;
@@ -69,19 +61,6 @@ class RpcError extends Error {
     this.data = data;
   }
 }
-
-// 和 OAuthResourceServer 自己的 401 一样指向资源元数据（RFC 9728），MCP 客户端据此去登录再重试。
-function signInRequired(): Response {
-  return Response.json({ error: "invalid_token", error_description: `Sign in with ${site.shortName}'s GitHub account to use this tool.` }, {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": `Bearer resource_metadata="${site.url}${MCP_RESOURCE_METADATA_PATH}", scope="${MCP_HISTORY_SCOPE}"`,
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
-class SignInRequired extends Error {}
 
 function rpcResponse(status: number, body: unknown): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -127,9 +106,8 @@ function eraOf(request: Request, method: string, params: Params): Era {
 }
 
 async function callTool(params: Params, io: ToolIO) {
-  const tool = toolsFor(io).find((candidate) => candidate.name === params.name);
+  const tool = SITE_TOOLS.find((candidate) => candidate.name === params.name);
   if (!tool) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${String(params.name)}`, 200);
-  if (tool.requiresSignIn && !io.readHistory) throw new SignInRequired();
   if (params.arguments !== undefined && !isObject(params.arguments)) {
     throw new RpcError(INVALID_PARAMS, "arguments must be an object", 200);
   }
@@ -154,17 +132,16 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
     case "ping":
       return {};
     case "tools/list":
-      return { tools: toolsFor(io).map(describe), ...(era === "modern" && CACHE_HINTS) };
+      return { tools: TOOLS, ...(era === "modern" && CACHE_HINTS) };
     case "tools/call":
       return callTool(params, io);
   }
   throw new RpcError(METHOD_NOT_FOUND, `Method not found: ${method}`, era === "modern" ? 404 : 200);
 }
 
-// denied：要登录的工具在没有 readHistory 时的回应；匿名是 401 登录挑战，带了令牌但缺 scope 由调用方换成 403。
-export async function handleMcp(request: Request, io: ToolIO, version: string, denied: () => Response = signInRequired): Promise<Response> {
+export async function handleMcp(request: Request, io: ToolIO, version: string): Promise<Response> {
   if (request.method !== "POST") {
-    return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST. Public tools need no auth; read_private_history and run_site_code need OAuth sign-in.\n", {
+    return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST; no auth needed.\n", {
       status: 405,
       headers: { Allow: "POST", "Content-Type": "text/plain; charset=utf-8" },
     });
@@ -194,7 +171,6 @@ export async function handleMcp(request: Request, io: ToolIO, version: string, d
     });
   } catch (error) {
     if (error instanceof RpcError) return errorResponse(id as Id, error);
-    if (error instanceof SignInRequired) return denied();
     throw error;
   }
 }
