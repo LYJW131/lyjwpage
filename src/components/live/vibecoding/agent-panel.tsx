@@ -90,7 +90,7 @@ export function AgentPanel({
           )}
         </div>
         <span className="flex min-w-0 flex-col items-end gap-1">
-          {active ? <ActiveBadge sources={sources} /> : <span className="label-mono text-muted-foreground">Inactive</span>}
+          {active ? <ActiveBadge sources={sources} /> : <span className="label-mono flex h-3.5 items-center text-muted-foreground">Inactive</span>}
           <span
             className={cn("label-mono truncate", active ? "text-live-ink" : "text-muted-foreground")}
             title={row.usage?.models.join(" · ") || undefined}

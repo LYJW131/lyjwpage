@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseCommand, parseWidths, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.ts";
+import { cardFitProblem, classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, innerCardSvg, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseCommand, parseWidths, readmeCardNames, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.ts";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -156,6 +156,7 @@ const REJECTED_ARGS: [string, string[], RegExp][] = [
   ["枚举值拼错", ["shot", "--out", "/tmp/sv-never", "--theme", "darkk"], /--theme/],
   ["both 只有 shot 认", ["cards", "--theme", "both"], /--theme/],
   ["引擎值拼错", ["skew", "--engine", "firefox"], /--engine/],
+  ["readme-cards 的 --theme 拼错", ["readme-cards", "--theme", "blue"], /--theme/],
   ["选项名拼错", ["reload", "--out", "/tmp/sv-never", "--engin", "webkit"], /--engin/],
   ["未知选项", ["shot", "--out", "/tmp/sv-never", "--unknown-flag", "1"], /--unknown-flag/],
   ["别的子命令的选项", ["cards", "--out", "/tmp/sv-never"], /--out/],
@@ -356,4 +357,54 @@ test("skewVerdict：存档模式要求一次加载且资源全到，刷新模式
   assert.deepEqual(skewVerdict({ mode: "recover", documents: 2, ...good }), []);
   assert.equal(skewVerdict({ mode: "recover", documents: 3, ...good }).length, 1);
   assert.equal(skewVerdict({ mode: "recover", documents: 2, ...good, styled: false, hydrated: false }).length, 2);
+});
+
+test("readme-cards 的判据：放开高度后超出算被裁，卡片底边没到卡高算留白，1px 内不算", () => {
+  assert.equal(cardFitProblem({ declared: 925, filled: 925, natural: 925 }), null);
+  assert.equal(cardFitProblem({ declared: 396, filled: 396, natural: 165 }), null, "撑满槽高的卡放开后变矮不算问题");
+  assert.equal(cardFitProblem({ declared: 925, filled: 924.5, natural: 924.5 }), null);
+  assert.match(cardFitProblem({ declared: 1032, filled: 925, natural: 925 }) ?? "", /留白 107px/);
+  assert.match(cardFitProblem({ declared: 74, filled: 74, natural: 86 }) ?? "", /被裁 12px/);
+});
+
+test("readme-cards 的卡片列表取自根 README，量的是 <image> 里那张内层 SVG", () => {
+  const names = readmeCardNames(fs.readFileSync(path.join(ROOT, "README.md"), "utf8"));
+  assert.ok(names.includes("vibe-coding") && names.includes("site-status"), names.join(","));
+  assert.equal(new Set(names).size, names.length);
+  const inner = "<svg xmlns=\"http://www.w3.org/2000/svg\"/>";
+  assert.equal(innerCardSvg(`<svg><image href="data:image/svg+xml;base64,${Buffer.from(inner).toString("base64")}"/></svg>`), inner);
+  assert.equal(innerCardSvg("<svg/>"), null);
+});
+
+function fakeCardSvg(declared: number, cardHeight: number) {
+  const inner =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="${declared + 4}"><foreignObject x="0" y="0" width="100" height="${declared + 4}">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:96px;height:${declared}px;display:flex;flex-direction:column">` +
+    `<div style="position:relative;flex:1;display:flex;flex-direction:column"><div class="paper-card" style="height:${cardHeight}px"></div></div>` +
+    `</div></foreignObject></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="${declared + 4}"><image width="100" height="${declared + 4}" href="data:image/svg+xml;base64,${Buffer.from(inner).toString("base64")}"/></svg>`;
+}
+
+test("readme-cards 在浏览器里量出卡高写多了的那张：退出码 1，next 点名它", async (t) => {
+  const pw = await resolvePlaywright();
+  if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
+  const cards: Record<string, string> = { fits: fakeCardSvg(200, 200), blank: fakeCardSvg(200, 150), clipped: fakeCardSvg(200, 230) };
+  const server = http.createServer((req, res) => {
+    const name = /^\/cards\/([a-z-]+)\.svg/.exec(req.url ?? "")?.[1];
+    if (name && cards[name]) res.writeHead(200, { "content-type": "image/svg+xml" }).end(cards[name]);
+    else res.writeHead(404).end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+  t.after(() => server.close());
+  const url = `http://localhost:${(server.address() as AddressInfo).port}`;
+  const result = await runAsync(["readme-cards", "--url", url, "--card", "fits,blank,clipped,missing"]);
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.ok, false);
+  assert.equal(body.cards.fits.ok, true);
+  assert.match(body.cards.blank.problem, /留白 50px/);
+  // 卡片自己写死 230px 高、外层容器不裁：放开容器高度后量到 230
+  assert.match(body.cards.clipped.problem, /被裁 30px/);
+  assert.match(body.cards.missing.problem, /没量成：HTTP 404/);
+  assert.match(body.next, /blank/);
 });

@@ -89,6 +89,7 @@
 - 贴 `skip-verify` 标签的 PR 不跑 Verify Action，你定给改立绘这类和站点 UI 关系不大的改动用：合并前线程自己手动验一遍，摘掉标签就照常验。
 - PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动现算，不读这个标签；你的账号开的 PR 里只改了注释的 JS / TS 文件门槛按文档算（不截图），标签仍只看路径。改了验证员、门槛、合并钩子、这个贴标签的代码，或判定员照读的根 `AGENTS.md`、`REVIEW.md` 的 PR 另贴红色 `verifier-changed`：这种 PR 的验证与判定跑的是被改过的那份（签发回执的一步只跑 main 上的脚本），你定了不堵，只标出来，合并前你看一眼。
 - 只为试一下、不打算合的测试 PR，Claude 开的时候就贴上黑色的 `do-not-merge` 标签：`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。脚本只认标签，不读标题。你手动贴上也一样拦；真要合，摘掉标签。
+- README 卡片的高度写死在路由里：每个 PR 等分支预览部署好后，`readme-cards` 这项检查（`.github/workflows/readme-cards.yml`）量每张卡，明暗两种主题下底部留白或被裁超过 1px 就红，`pr-gate` 不放行。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
 - 上面「文档、skill 和小改动」的轻门槛只给你的账号开的 PR：别人开的 PR，或碰到 `.claude/` 的 settings、launch、hooks、`feature-map.json`、`docs/` 下的脚本与依赖清单、`public/` 下的 js、html、svg、xml、`_headers`，`pr-gate.ts` 一律按逻辑档算，要 `unit-test-verified` 回执；判定员和机器评审，别人开的 PR 都要，你的账号开的只在 Claude 判为大改、贴了 `needs-judge` 时要。
 - 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用，也拦带 `do-not-merge` 标签的 PR；Action 签的回执与判定没盖住 head 时只提醒、不拦：回执等级按分档定，界面档要 `live-ui-verified`，逻辑档要 `unit-test-verified`，贴了 `needs-judge` 的还要判定 PASS。head 上 Jev 的注释检查列出可能该删的新注释、或该跑却没跑成时也只提醒。提醒会弹给你看，Claude 照样能合，合了要在汇报里说差哪一项、为什么还合）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。
