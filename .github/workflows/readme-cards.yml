@@ -1,0 +1,54 @@
+name: README Cards
+
+# README 卡的高度写死在 src/app/cards/route.tsx，卡里的组件、样式或上报数据变了行数行高就会对不上。
+# 等分支预览部署到 head 后量每张卡，留白或被裁就红；红了 pr-gate 不放行合并。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: readme-cards-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  readme-cards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - id: preview
+        run: node scripts/verify-action.ts wait-preview --pr "$PR" --timeout-min 20
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ github.token }}
+      # 碰站点却等不到预览（构建失败或超时）按不通过收口，不当成没东西可量
+      - if: steps.preview.outputs.site == 'true' && steps.preview.outputs.preview == ''
+        run: |
+          echo "::error::站点分支预览没就绪，README 卡片没量成"
+          exit 1
+      # 只要 Playwright 的 API：浏览器用 runner 自带的 Google Chrome（site-verify 先试 channel chrome）
+      - if: steps.preview.outputs.preview != ''
+        run: npm install -g --no-audit --no-fund playwright@1.63.0
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - if: steps.preview.outputs.preview != ''
+        run: |
+          set +e
+          node scripts/site-verify.ts readme-cards --url "$PREVIEW" --theme light; light=$?
+          node scripts/site-verify.ts readme-cards --url "$PREVIEW" --theme dark; dark=$?
+          exit $((light | dark))
+        env:
+          PREVIEW: ${{ steps.preview.outputs.preview }}

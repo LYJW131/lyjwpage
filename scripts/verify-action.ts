@@ -41,7 +41,7 @@ const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选
                                结果写进 DIR/work/revert-proof.json，摘要输出成 proof。不读 GitHub、不要令牌
   ci --head SHA [--timeout-min N]
                                等 head 上 CI 的 check 跑完（默认 20 分钟，工作流里给 5），输出它的结论（没跑完是 pending，没有是 none）
-  wait-preview [--timeout-min N]  等站点分支预览部署到 head（默认 20 分钟），输出 preview 地址；没就绪输出空
+  wait-preview [--timeout-min N]  等站点分支预览部署到 head（默认 20 分钟），输出 preview 地址（没就绪输出空）与 site（PR 碰不碰站点预览）
   prompt --role verifier|judge [--preview URL] [--out-dir DIR]
                                输出 prompt 与 schema（结构化结果的 JSON Schema）；验证员这边有上一份能当底的回执时（verify-action/previous.ts），
                                提示词只要求复验没过的与之后改动碰得到的项，其余沿用
@@ -133,6 +133,7 @@ async function waitPreview(gh: Client, pr: number, timeoutMin: number) {
     const builds = await buildCoverage({ gh, files, head, headRuns: runs.check_runs ?? [], commits: commits.map((commit) => commit.sha) });
     const origin = previewWorkerOrigin(pull.head.ref, SITE_PREVIEW_WORKER_SCRIPT) ?? "";
     const gap = builds.missing.find((item) => item.worker === "site");
+    setOutput("site", String(builds.expected.includes("site")));
     if (!builds.expected.includes("site")) {
       console.log("这个 PR 不碰站点的预览监视路径，没有站点预览可等");
       setOutput("preview", "");
