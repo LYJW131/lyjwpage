@@ -61,11 +61,11 @@ function runBootScript(stored: string | null | "throws", systemDark: boolean, ro
   return root;
 }
 
-test("存储值只认 light / dark，其余（含缺失）都是 system", () => {
+test("存储值只认 light / dark / system，其余（含缺失）都是默认的 dark", () => {
   assert.equal(parseThemeChoice("light"), "light");
   assert.equal(parseThemeChoice("dark"), "dark");
   assert.equal(parseThemeChoice("system"), "system");
-  for (const bad of [null, undefined, "", "Dark", "auto"]) assert.equal(parseThemeChoice(bad), "system");
+  for (const bad of [null, undefined, "", "Dark", "auto"]) assert.equal(parseThemeChoice(bad), "dark");
 });
 
 test("system 跟随系统偏好，显式选择不受系统影响", () => {
@@ -80,7 +80,7 @@ test("首屏脚本与运行时 applyThemeToRoot 对同一输入落到同一份�
   for (const value of stored) {
     for (const systemDark of [true, false]) {
       const booted = runBootScript(value, systemDark, fakeRoot(["light", "h-full"]));
-      const choice: ThemeChoice = value === "throws" ? "system" : parseThemeChoice(value);
+      const choice: ThemeChoice = value === "throws" ? "dark" : parseThemeChoice(value);
       const applied = fakeRoot(["light", "h-full"]);
       applyThemeToRoot(applied, choice, systemDark);
       assert.deepEqual([...booted.classes].sort(), [...applied.classes].sort(), `${value}/${systemDark}`);

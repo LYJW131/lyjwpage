@@ -9,10 +9,11 @@ import {
   subscribeSystemDark,
   subscribeThemeChoice,
   syncThemeToDocument,
+  DEFAULT_THEME_CHOICE,
   type ThemeChoice,
 } from "@/lib/theme";
 
-const serverChoice = (): ThemeChoice => "system";
+const serverChoice = (): ThemeChoice => DEFAULT_THEME_CHOICE;
 const serverSystemDark = (): boolean => false;
 
 export function useTheme(): { theme: ThemeChoice; setTheme: (next: ThemeChoice) => void } {
@@ -23,7 +24,7 @@ export function useTheme(): { theme: ThemeChoice; setTheme: (next: ThemeChoice) 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
   const systemDark = useSyncExternalStore(subscribeSystemDark, readSystemDark, serverSystemDark);
-  // 水合那一轮拿到的是服务端快照（system、非深色），按它写会把已是深色的首屏刷成浅色一帧；只用作触发，值现读。
+  // 水合那一轮拿到的是服务端快照（默认选择、系统非深色），按它写会把已是深色的首屏刷成浅色一帧；只用作触发，值现读。
   useLayoutEffect(() => syncThemeToDocument(readThemeChoice(), readSystemDark()), [theme, systemDark]);
   return children;
 }

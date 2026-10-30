@@ -114,8 +114,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta httpEquiv="origin-trial" content={WEBMCP_ORIGIN_TRIAL_TOKEN} />
         {commitSha ? <meta name={DOCUMENT_COMMIT_META} content={commitSha} /> : null}
-        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
-        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+        <meta name="theme-color" content="#0a0a0a" />
         <Meta />
         <script dangerouslySetInnerHTML={{ __html: assetRecoveryScript() }} />
         <Links />
