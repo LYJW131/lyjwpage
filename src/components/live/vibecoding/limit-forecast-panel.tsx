@@ -103,7 +103,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
         )}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-hidden>
           <line
-            x1="0" y1="100" x2="100" y2="0"
+            x1={x(forecast.cardAt ?? forecast.startAt)} y1="100" x2="100" y2="0"
             className="text-muted-foreground" stroke="currentColor" strokeWidth="1" strokeDasharray="1 3"
             vectorEffect="non-scaling-stroke"
           />
@@ -201,7 +201,9 @@ function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZ
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
   if (!forecast && newWeek) return { headline: "New week", detail: "Waiting for the first reading" };
   if (!forecast) return { headline: "No forecast yet", detail: "Waiting for a weekly reading" };
-  const window = `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
+  const window = forecast.cardAt != null
+    ? `Used ${Math.round(forecast.usedPercent)}% since the reset card ${clock.format(forecast.cardAt)}`
+    : `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
   if (forecast.ranOut && forecast.runOutAt != null) {
     return { headline: `Ran out ${clock.format(forecast.runOutAt)}`, detail: `Locked until ${clock.format(forecast.resetAt)}` };
   }

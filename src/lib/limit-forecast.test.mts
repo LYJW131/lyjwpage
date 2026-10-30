@@ -96,3 +96,16 @@ test("sampling the chart reads actual use before now, the projection after, and 
   assert.equal(locked.percent, null);
   assert.ok(locked.target! > 0 && locked.target! < 100);
 });
+
+test("a reset card mid-window restarts the pace, the even line and the run-out check from the card", () => {
+  const cardAt = start + 3 * DAY + 23 * HOUR;
+  const now = cardAt + 12 * HOUR;
+  const forecast = forecastLimit(weekly(12), [...readings([25, 50, 75, 100])], now)!;
+  assert.equal(forecast.cardAt, cardAt);
+  assert.equal(forecast.ranOut, false);
+  assert.ok(Math.abs(forecast.rate! * DAY - 24) < 2);
+  assert.ok(Math.abs(forecast.elapsedFraction - 12 * HOUR / (forecast.resetAt - cardAt)) < 1e-9);
+  assert.deepEqual(forecast.window.slice(-3), [[cardAt, 100], [cardAt, 0], [now, 12]]);
+  assert.equal(sampleForecast(forecast, cardAt - HOUR).even, null);
+  assert.equal(sampleForecast(forecast, forecast.resetAt).even, 100);
+});

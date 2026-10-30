@@ -35,6 +35,8 @@ export type LimitForecast = {
   resetAt: number;
   now: number;
   usedPercent: number;
+  // 窗口中途用了重置卡的时刻（同一个 resetsAt 下读数往下掉）；之后的经过时间、匀速线、用完判断都从这里算。
+  cardAt: number | null;
   elapsedFraction: number;
   // 百分点 / 毫秒；null 表示数据不够，不出预测。
   rate: number | null;
@@ -105,20 +107,26 @@ export function forecastLimit(
   if (windowMs <= 0 || now >= resetAt || now < startAt) return null;
 
   const usedPercent = limit.usedPercent;
-  const elapsed = now - startAt;
-  const evenRate = 100 / windowMs;
   const past = history.filter(([at]) => at < now);
   const intervals = usageIntervals([...past, [now, usedPercent, limit.resetsAt]], windowMs);
   const inWindow = past.filter(([at, , resetsAt]) => at > startAt && sameWindow(resetsAt, limit.resetsAt));
-  const window: Array<[number, number]> = [[startAt, 0], ...inWindow.map(([at, used]): [number, number] => [at, used]), [now, usedPercent]];
+  const readings: Array<[number, number]> = [[startAt, 0], ...inWindow.map(([at, used]): [number, number] => [at, used]), [now, usedPercent]];
+  // 重置卡只把用量清零、不动 resetsAt；卡用在两次读数之间，取前一次读数的时刻，画成一条竖直落差。
+  const cardIndex = readings.findLastIndex(([, used], index) => index > 0 && used < readings[index - 1]![1] - 1);
+  const cardAt = cardIndex > 0 ? readings[cardIndex - 1]![0] : null;
+  const window = cardAt == null ? readings : [...readings.slice(0, cardIndex), [cardAt, 0] as [number, number], ...readings.slice(cardIndex)];
+  const periodStart = cardAt ?? startAt;
+  const elapsed = now - periodStart;
+  const evenRate = 100 / (resetAt - periodStart);
 
-  const ranOutPoint = window.find(([, used]) => used >= RUN_OUT_PERCENT);
+  const ranOutPoint = (cardAt == null ? readings : readings.slice(cardIndex)).find(([, used]) => used >= RUN_OUT_PERCENT);
   const base = {
     startAt,
     resetAt,
     now,
     usedPercent,
-    elapsedFraction: elapsed / windowMs,
+    cardAt,
+    elapsedFraction: elapsed / (resetAt - periodStart),
     evenRate,
     window,
   };
@@ -133,12 +141,12 @@ export function forecastLimit(
     };
   }
 
-  const prior = recentRate(intervals.filter((interval) => interval.to <= startAt + 1), now);
+  const prior = recentRate(intervals.filter((interval) => interval.to <= periodStart + 1), now);
   let rate: number | null;
   if (prior != null) rate = (usedPercent + prior * PRIOR_MS) / (elapsed + PRIOR_MS);
   else rate = elapsed >= MIN_ELAPSED_MS ? usedPercent / elapsed : null;
   const momentum = elapsed >= MOMENTUM_MIN_ELAPSED_MS
-    ? recentRate(intervals.filter((interval) => interval.to > startAt), now, MOMENTUM_HALF_LIFE_MS)
+    ? recentRate(intervals.filter((interval) => interval.to > periodStart), now, MOMENTUM_HALF_LIFE_MS)
     : null;
   if (rate != null && momentum != null) rate = (rate + momentum) / 2;
 
@@ -164,11 +172,13 @@ export type ForecastSample = {
   percent: number | null;
   // 从现在起匀速用到重置正好 100% 的那条线，只在现在及之后、还没用完时有值。
   target: number | null;
-  even: number;
+  // 用了重置卡时只从卡那一刻起有值。
+  even: number | null;
 };
 
 export function sampleForecast(forecast: LimitForecast, at: number): ForecastSample {
-  const even = (100 * (at - forecast.startAt)) / (forecast.resetAt - forecast.startAt);
+  const evenFrom = forecast.cardAt ?? forecast.startAt;
+  const even = at >= evenFrom ? (100 * (at - evenFrom)) / (forecast.resetAt - evenFrom) : null;
   const target = at >= forecast.now && forecast.usedPercent < 100
     ? forecast.usedPercent + ((100 - forecast.usedPercent) * (at - forecast.now)) / (forecast.resetAt - forecast.now)
     : null;
