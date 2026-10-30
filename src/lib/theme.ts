@@ -4,6 +4,7 @@ export const THEME_CHOICES = ["light", "dark", "system"] as const;
 export type ThemeChoice = (typeof THEME_CHOICES)[number];
 export type ResolvedTheme = "light" | "dark";
 export const DEFAULT_THEME_CHOICE: ThemeChoice = "dark";
+export const THEME_COLOR = "#0a0a0a";
 
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 

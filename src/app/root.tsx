@@ -36,7 +36,7 @@ import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-prefer
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { ogImage, site } from "@shared/site";
-import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
+import { readSystemDark, readThemeChoice, syncThemeToDocument, THEME_COLOR, themeBootScript } from "@/lib/theme";
 
 // 须与 src/app/styles/theme.css 的 Geist Mono 子集指向同一个文件，预加载才会被字体规则复用。
 import geistMonoUrl from "@/assets/fonts/GeistMono-LatinUi-Variable.woff2?url";
@@ -114,7 +114,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta httpEquiv="origin-trial" content={WEBMCP_ORIGIN_TRIAL_TOKEN} />
         {commitSha ? <meta name={DOCUMENT_COMMIT_META} content={commitSha} /> : null}
-        <meta name="theme-color" content="#0a0a0a" />
+        <meta name="theme-color" content={THEME_COLOR} />
         <Meta />
         <script dangerouslySetInnerHTML={{ __html: assetRecoveryScript() }} />
         <Links />
