@@ -117,7 +117,6 @@ function LimitReadout({ limit, cap, title, href, label }: { limit: VibeCodingLim
   );
 }
 
-// 每档限额一列：标签、大号读数、轨道、重置时间上下排；几档就分几列，轨道等宽、起止对齐。
 export function LimitMeters({ items, href, agentLabel }: { items: LimitTableItem[]; href: string | null; agentLabel: string }) {
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}>
