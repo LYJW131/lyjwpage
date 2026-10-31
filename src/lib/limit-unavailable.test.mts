@@ -53,9 +53,9 @@ const sessionCap = (row: ReturnType<typeof claude>) => {
   return item?.kind === "limit" ? item.cap : null;
 };
 
-test("5 小时条按套餐折算：Ultra 一个窗口约占周 2/7，Pro 与 Max 约 1/7", () => {
-  assert.equal(Math.round(share(sessionCap(claude("Ultra", 84)), 11, 0) * 100), 33);
-  assert.equal(share(sessionCap(claude("Max", 84)), 11, 0), 0);
+test("5 小时条按套餐折算：Max 20x 一个窗口约占周 2/7，Pro 与 Max 5x 约 1/7", () => {
+  assert.equal(Math.round(share(sessionCap(claude("Max 20x", 84)), 11, 0) * 100), 33);
+  assert.equal(share(sessionCap(claude("Max 5x", 84)), 11, 0), 0);
   assert.equal(Math.round(share(sessionCap(claude("Pro", 95)), 0, 0) * 100), 65);
 });
 
@@ -102,9 +102,9 @@ test("周条：最后一个窗口哪怕不满 5 小时也算能用满", () => {
 });
 
 test("周条：当前 5 小时已过期按从现在起的满窗口算", () => {
-  const row = claudeAt("Ultra", 90, 1, 70, 10 * HOUR / 1000);
+  const row = claudeAt("Max 20x", 90, 1, 70, 10 * HOUR / 1000);
   assert.equal(weeklyShare(row, 2_000), 0);
-  const tight = claudeAt("Ultra", 90, 1, 70, 4 * HOUR / 1000);
+  const tight = claudeAt("Max 20x", 90, 1, 70, 4 * HOUR / 1000);
   assert.equal(Math.round(weeklyShare(tight, 2_000) * 1000), Math.round((30 - 200 / 7) * 10));
 });
 

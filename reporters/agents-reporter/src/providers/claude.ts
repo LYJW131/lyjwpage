@@ -56,12 +56,9 @@ export function formatClaudePlanLabel(
     claudePlanKindFromText(subscriptionType, { includeUltra: true }) ||
     claudePlanKindFromText(rateLimitTier);
   if (!kind) return subscriptionType;
-  // rate_limit_tier 沿用套餐改名前的倍数写法：max_5x 是 Max，max_20x 是 Ultra。
   if (kind === "max") {
-    if (claudeNormalizedWords(rateLimitTier).includes("ultra")) return "Ultra";
     const multiplier = claudeMaxUsageMultiplier(rateLimitTier);
-    if (multiplier === "20x") return "Ultra";
-    return !multiplier || multiplier === "5x" ? "Max" : `Max ${multiplier}`;
+    return multiplier ? `Max ${multiplier}` : "Max";
   }
   const labels: Record<string, string> = {
     pro: "Pro",
