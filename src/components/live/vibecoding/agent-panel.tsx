@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
 import { LimitTable } from "@/components/live/vibecoding/limit-table";
-import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
+import { LIMITS_SILENT, featuredLimitRows, featuredSlotCount } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
 import { SourceIssue } from "@/components/live/vibecoding/total-usage";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
@@ -138,6 +138,7 @@ export function AgentPanel({
           <LimitTable
             tall
             className="flex-1 content-between"
+            emptySlots={featuredSlotCount(row.id) - limitRows.length}
             items={limitRows.map((item) =>
               item.kind === "limit"
                 ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
