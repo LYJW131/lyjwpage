@@ -104,7 +104,7 @@ function LimitReadout({ limit, cap, title, href, label }: { limit: VibeCodingLim
         <UnavailableZone share={unavailable} />
         {pace != null && pace < 1 - unavailable && <PaceMarker pace={pace} overPace={overPace} />}
       </Track>
-      <div className="truncate text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground">
         {reset ? (
           <>
             Resets <ResetText reset={reset} />
@@ -128,7 +128,7 @@ export function LimitMeters({ items, href, agentLabel }: { items: LimitTableItem
             <div className="label-mono truncate text-muted-foreground">{item.title}</div>
             <div className={cn(READING, "text-muted-foreground")}>—</div>
             <Track href={href} label={`${agentLabel} usage, ${item.title}`} />
-            <div className="truncate text-xs text-muted-foreground">Unavailable</div>
+            <div className="text-xs text-muted-foreground">Unavailable</div>
           </div>
         ),
       )}
