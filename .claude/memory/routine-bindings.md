@@ -13,7 +13,7 @@ On 2026-10-28 06:33 SGT lyjw said the git signing key in the old routine threads
 | 04:00 每日代码审查 | trig_01Y63zeevgM9WrbfPiiMJjME | <internal id> | claude/project-thread-ad7fko |
 | 04:53 提炼 skill | trig_018sXEhV49fp6Dx7pGmZv7tj | <internal id> | claude/project-thread-7qd9r1 |
 | 08:41 Anthropic 动态 | trig_01Gcggmwjp47CkUAjJ1ZxvrV | <internal id> | claude/project-thread-rv1hl8 |
-| 10:56 晨报 | trig_01ST7To5uAf2VeYQxbPUdEif | <internal id> | claude/project-thread-ekg06b |
+| 08:56 晨报 | trig_01ST7To5uAf2VeYQxbPUdEif | <internal id> | claude/project-thread-ekg06b |
 | 01/07/13/19:53 collector 盯防 | trig_016btcofbs6YSrdCEkAEevoV | <internal id> | claude/project-thread-f4fz9c |
 
 Thread titles are「<任务> · 定时任务」. Prompt texts (with the new branch names) are in /mnt/project-files/routine-prompts/.

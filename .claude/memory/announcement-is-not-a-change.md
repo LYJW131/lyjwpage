@@ -3,7 +3,6 @@ name: announcement-is-not-a-change
 description: When lyjw forwards a vendor announcement (plan rename, limit change), only report the impact; change code only after the data the site reads actually changes
 metadata:
   type: feedback
-  modified: 2026-10-31T01:24:25.387Z
 ---
 
 2026-10-31 SGT: lyjw mentioned that Claude renamed its Max plans (Max 5x → Max, Max 20x → Ultra, 5-hour limit removed for verified Ultra). A thread shipped a hand-written label mapping (#785) at once. lyjw had it reverted (#786):「我只是提醒你一下有改名这个事 没让你直接」「别手动映射啊 它出什么就是什么」「他只是宣布了 没有生效这么快 你看我现在 5 小时限制都还在」.
