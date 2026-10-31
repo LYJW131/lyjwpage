@@ -113,12 +113,12 @@ export type WeeklyCap =
   | { weekly: VibeCodingLimit; sharePercent: number; note: string }
   | { session: VibeCodingLimit; sharePercent: number; note: string };
 
-// 条拉满对应周限额的百分比。Fable 是 50%；5 小时窗口按 lyjw 的经验值：Pro 与 Max 5x 一周约 7 个窗口，Max 20x 的 5 小时是 20 倍、周限额只有 10 倍，所以翻倍。没见过的套餐不画。
+// 条拉满对应周限额的百分比。Fable 是 50%；5 小时窗口按 lyjw 的经验值：Pro 与 Max 一周约 7 个窗口，Ultra 的 5 小时是 Pro 的 20 倍、周限额只有 10 倍，所以翻倍。没见过的套餐不画。
 const FABLE_WEEKLY_SHARE_PERCENT = 50;
 const SESSION_WEEKLY_SHARE_PERCENT: Readonly<Record<string, number>> = {
   "Pro": 100 / 7,
-  "Max 5x": 100 / 7,
-  "Max 20x": 200 / 7,
+  "Max": 100 / 7,
+  "Ultra": 200 / 7,
 };
 const SESSION_WINDOW_MS = 5 * 3_600_000;
 
