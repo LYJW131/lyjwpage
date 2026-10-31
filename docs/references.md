@@ -21,6 +21,10 @@
   - 是什么：Claude Code 团队的分层评审、评审收敛规则和人留在哪些环节。
   - 取了什么：「When we change direction」一节，即方向分歧早在讨论里提、做完的 PR 关掉不算损失；评审收敛规则里的三轮后重看方法、按缺陷类别一次修完、不重复已发的发现；「Reading the evidence」里说不出检查漏了什么就别批准；短 REVIEW.md 的写法（什么算出错、不报什么、要行号证据、总结先写条数）。
   - 状态：部分采用。方向落在 [HUMAN.md](../HUMAN.md)「3. 什么 Claude 自己定，什么来问你」的「探索与换方向」，要点存于项目记忆 [explore-directions](../.claude/memory/explore-directions.md)；收敛与证据落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 「3. PR 合并门槛」与「主线程收到报告后」、HUMAN.md「5. PR 与合并」；评审指引在根 [REVIEW.md](../REVIEW.md)，由根 `AGENTS.md`「Code Review Rules」一行 `@REVIEW.md` 引入。高风险路径另等人审没有采用（lyjw 选维持现状）。
+- **[How I Built the Most AI-Pilled Company in the World](https://x.com/jsnnsa/status/2115623382721126826)**（jacob，Spawn）
+  - 是什么：十人公司用常驻 agent 舰队开发的经验：不走 PR、主干先进后修、闭环可观测，以及把创始人两年的决定提炼成「品味裁判」，答过的问题直接判并注明出处，没先例的才等人。
+  - 取了什么：只取品味裁判，做成提示词：线程发决策卡前先查项目记忆、不采纳清单和 `HUMAN.md` 的先例，有就按先例定并给出处。不另做裁判 agent；不走 PR 与先进后修不采用：个人站点没有多 agent 协调成本，分支保护与判定员是 lyjw 选的防线。
+  - 状态：部分采用。落在根 [AGENTS.md](../AGENTS.md)「工作方式」与 [HUMAN.md](../HUMAN.md)「用决策卡问」。
 - **[Creating in-house source control](https://www.anthropic.com/engineering/redesigning-source-control)**（Anthropic Engineering）
   - 是什么：Anthropic 自研版本控制 Scion 的设计与迁移，附带 agent 规模下的工程体会。
   - 取了什么：「superfan」，即一个 Claude 专盯一个组件的遥测和日志，抓传统告警漏掉的细微异常；评审区分只改注释和改逻辑、别为假想风险过度设计，本项目已有同类规则。

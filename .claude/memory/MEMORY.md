@@ -39,13 +39,14 @@
 - **Claude Actions stay on the subscription setup token;** no Max-plan API credit, no entrypoint stripping, no static API keys: [[claude-actions-billing-wif]].
 - **Throwaway test PRs get the `do-not-merge` label** (scripts read the label, never the title); gates block them.
 - **Chat testing never asks lyjw to send homepage chats;** use direct API calls, Turnstile test key, or ChatLog via Cloudflare MCP (workers/ai/README.md).
-- **Decision cards:** coordinator re-posts open cards in project chat and relays lyjw's choice.
+- **Decision cards:** coordinator re-posts open cards in project chat and relays lyjw's choice. **Check precedent first** (lyjw 2026-11-01 00:05 SGT「这里可以加」, from jsnnsa's taste-judge article): if memory/not-adopting/HUMAN.md already answers the same kind of question, decide by it and cite the source instead of posting a card; irreversible steps and UI OKs still wait. Rule in AGENTS.md 工作方式.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints:** [[handoff-carry-user-constraints]].
 - **Process steps go in the brief:** bug threads get 「改代码前先造一条会报红的复现」, threads that change code get 「开 PR 前的验证派 Haiku 子代理」; written only in skills/AGENTS.md, Opus skipped both, in the task text it did both 3/3 (eval 2026-10-26): [[agent-knowledge-eval-plan]].
 - **Secrets** piped on the Mac with `rotate-secret`, never pasted: [[credentials-pipe-only]]. Secret checks that flag memory get fixed, not the memory: [[repo-memory-mirror]].
 - **Commit identity:** as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
 - **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. When the MCP misses or truncates info (or the connector is missing), call api.x.com via proxy (app-only, public only) yourself and keep going, no asking (lyjw 2026-10-29): [[x-api-via-proxy]].
+- **Upstream data shown as-is, no hand mapping; change only when the real data changes** (lyjw 2026-10-31「别手动映射啊 它出什么就是什么」「等变了再改」): Claude plan rename (Max 5x→Max, Max 20x→Ultra) — #785 hand-mapped Ultra and is being reverted; when the reporter's raw value actually changes (read it on the Mac via SSH, never infer), update the label and remove the 5h bar/dead zone, checking layout.
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
@@ -67,7 +68,7 @@
 - 04:53 skill-mining + drift review: [[skill-mining-routine]].
 - 08:41 Anthropic updates digest: [[anthropic-updates-routine]].
 - 4x daily collector superfan: [[collector-superfan-routine]].
-- 10:56 morning report in「晨报 · 定时任务」: [[morning-report-routine]].
+- 08:56 morning report in「晨报 · 定时任务」: [[morning-report-routine]].
 - Routine prompts change only from the routine's own session (text in /mnt/project-files/routine-prompts/, update_trigger + read back).
 - [[agent-automation-practices]], [[token-efficiency-review]].
 
