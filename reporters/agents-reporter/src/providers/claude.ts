@@ -146,16 +146,6 @@ function coalesceClaudeWindow(
   return fromLimits || legacy || null;
 }
 
-function ensureClaudeFiveHourWindow(window: unknown, body: Record<string, unknown>): unknown {
-  if (claudeWindowUtilization(window) !== null) return window;
-  const fromLimits = extractClaudeLimitsWindow(body, ["session", "five_hour"]);
-  if (fromLimits) return fromLimits;
-  if (body.seven_day || coalesceClaudeWindow(body.seven_day, body, ["weekly_all", "seven_day"])) {
-    return { utilization: 0, resets_at: null };
-  }
-  return window || null;
-}
-
 function extractClaudeScopedWeekly(body: Record<string, unknown>): unknown {
   if (!Array.isArray(body.limits)) return null;
   const out: Array<Record<string, unknown>> = [];
@@ -182,10 +172,7 @@ export function normalizeClaudeUsage(body: unknown): Record<string, unknown> {
   const rec = asRecord(body);
   if (!rec) throw new Error("Claude usage 响应不是对象");
   return {
-    five_hour: ensureClaudeFiveHourWindow(
-      coalesceClaudeWindow(rec.five_hour, rec, ["session", "five_hour"]),
-      rec,
-    ),
+    five_hour: coalesceClaudeWindow(rec.five_hour, rec, ["session", "five_hour"]),
     seven_day: coalesceClaudeWindow(rec.seven_day, rec, ["weekly_all", "seven_day"]),
     seven_day_opus: rec.seven_day_opus ?? null,
     weekly_scoped: extractClaudeScopedWeekly(rec) ?? rec.weekly_scoped ?? null,

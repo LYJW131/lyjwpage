@@ -54,6 +54,14 @@ test("normalizeClaudeUsage 沿用 five_hour / seven_day 并补上 scoped 周窗�
   assert.equal(windows[2]?.resetsAt, windows[1]?.resetsAt);
 });
 
+test("five_hour 为 null 时不补 5 小时窗口", () => {
+  const node = normalizeClaudeUsage({
+    five_hour: null,
+    seven_day: { utilization: 53, resets_at: "2026-11-02T03:00:00.474408+00:00" },
+  });
+  assert.deepEqual(claudeWindows(node).map((w) => w.key), ["weekly_all"]);
+});
+
 test("rowFromClaudeUsage 把套餐交给 agentPlanLabel", () => {
   const row = rowFromClaudeUsage(
     {

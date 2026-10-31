@@ -115,3 +115,11 @@ test("周条：时间充足、周限额已过期、没有重置时间或没见�
   assert.equal(weeklyCapOf(claudeAt("Team", 0, 5 * HOUR / 1000, 30, 6 * HOUR / 1000)), null);
   assert.equal(weeklyCapOf({ ...claudeAt("Pro", 0, null, 30, null), id: "codex" }), null);
 });
+
+test("接口不给 5 小时窗口时不画这条，周条也不按 5 小时画死区；整行取不到才占位", () => {
+  const row = { id: "claude", plan: { tier: "Max 20x", label: "Max 20x" }, limits: [weekly(84)], limitsError: null };
+  assert.deepEqual(featuredLimitRows(row).map((r) => r.key), ["weekly"]);
+  assert.equal(weeklyCapOf(row), null);
+  assert.deepEqual(featuredLimitRows({ ...row, limits: [] }).map((r) => r.kind), ["unavailable", "unavailable", "unavailable"]);
+  assert.deepEqual(featuredLimitRows({ ...row, limitsError: "down" }).map((r) => r.kind), ["unavailable", "limit", "unavailable"]);
+});
