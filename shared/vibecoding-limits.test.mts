@@ -18,7 +18,7 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
     {
       collectedAt: "2026-09-05T12:00:00.000Z",
       agents: [
-        { id: "claude", plan: { tier: "max", label: "Max 5x" }, limits: [window], limitsError: null },
+        { id: "claude", plan: { tier: "max", label: "Max" }, limits: [window], limitsError: null },
         { id: "codex", plan: null, limits: [], limitsError: "过期" },
       ],
     },
@@ -48,11 +48,11 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
 test("按 id 取限额：取到的带上收到时刻，没上报过或这份还没到按「没配」", () => {
   const stored = {
     agents: {
-      claude: { plan: { tier: "max", label: "Max 5x" }, limits: [window], limitsError: null, updatedAt: 4_000 },
+      claude: { plan: { tier: "max", label: "Max" }, limits: [window], limitsError: null, updatedAt: 4_000 },
     },
   };
   assert.deepEqual(agentLimitsOf(stored, "claude"), {
-    plan: { tier: "max", label: "Max 5x" },
+    plan: { tier: "max", label: "Max" },
     limits: [window],
     limitsError: null,
     limitsAt: 4_000,

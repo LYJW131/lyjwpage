@@ -2330,8 +2330,8 @@
         "agents": {
           "claude": {
             "plan": {
-              "tier": "Max 20x",
-              "label": "Max 20x"
+              "tier": "Ultra",
+              "label": "Ultra"
             },
             "limits": [
               {

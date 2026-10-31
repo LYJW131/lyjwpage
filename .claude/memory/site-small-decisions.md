@@ -14,7 +14,7 @@ Settled by lyjw; don't revert or re-propose:
 - Old hashed static assets live in R2 prefix `site-assets-legacy/` (#354); missing Vercel-era chunks get a reload stub.
 - Digest card: Chinese tagline pool (lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261). Jev for digest dropped.
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
-- Claude limit card: the 5-hour bar has a dead zone like Fable's (lyjw mapping: Pro/Max 5x 5h ≈ 1/7 week, Max 20x ≈ 2/7; unknown plans not drawn), #594.
+- Claude limit card: the 5-hour bar has a dead zone like Fable's (lyjw mapping: Pro/Max (was Max 5x) 5h ≈ 1/7 week, Ultra (was Max 20x) ≈ 2/7; unknown plans not drawn), #594.
 - HealthKit returns null (not 0) for days with no samples; the site shows 0 when steps exist (#589).
 - Workers Issues email alerts: scanner-probe issues ignored, threshold unchanged.
 - README has no overview screenshot; every card is a live `/cards/*.svg`.
