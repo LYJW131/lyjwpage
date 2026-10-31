@@ -16,9 +16,20 @@ export const PRIVATE_HISTORY_TABLES = {
   coding_active_days: { time: "date", unit: "day", about: "Seconds each agent/model was running per day" },
   limit_snapshots: { time: "date", unit: "day", about: "Daily last reading of every coding plan limit, with plan" },
   limit_hours: { time: "hour_at", unit: "ms", about: "Hourly last reading of every coding plan limit" },
-  server_hours: { time: "hour_at", unit: "ms", about: "Server hourly summary: CPU, load, memory, peak network rates, traffic, uptime" },
+  server_hours: { time: "hour_at", unit: "ms", about: "Server hourly summary: CPU, load, memory, disk, peak network rates, NIC counters, traffic, uptime" },
   trophies: { time: "earned_at", unit: "ms", about: "Every earned PlayStation trophy with rarity" },
   site_deploys: { time: "created_at", unit: "ms", about: "Every site build seen: state, duration, commit" },
+  watching_events: { time: "observed_at", unit: "ms", about: "Every Emby report that carries playing state: item, paused, position, client, device, play method, media spec (JSON); item_id NULL means stopped" },
+  game_play_snapshots: { time: "observed_at", unit: "ms", about: "PlayStation cumulative play time and count per title, one row each time they change" },
+  trophy_profile_days: { time: "date", unit: "day", about: "PlayStation trophy level, points and earned counts per day" },
+  quest_activities: { time: "first_seen_at", unit: "ms", about: "Quest rich presence per game session: details and state text, first and last seen" },
+  homepod_events: { time: "observed_at", unit: "ms", about: "Every HomePod report that names its Home Assistant entity (which HomePod): state, track, position" },
+  powerbank_minutes: { time: "minute_at", unit: "ms", about: "Power bank per minute: battery, health, charging, input and output watts, temperature" },
+  charging_port_minutes: { time: "minute_at", unit: "ms", about: "Charger active ports per minute: watts, volts, amps, protocol, cable, device" },
+  desktop_changes: { time: "t", unit: "ms", about: "Mac foreground app changes: name, bundle id, published window title" },
+  timezone_changes: { time: "t", unit: "ms", about: "Mac time zone changes" },
+  focus_changes: { time: "t", unit: "ms", about: "iPhone Focus mode changes; mode NULL means Focus off" },
+  server_identity: { time: "first_seen_at", unit: "ms", about: "Server public IP, location, OS and kernel, one row per combination with first and last seen" },
 } as const satisfies Record<string, { time: string; unit: "ms" | "day"; about: string }>;
 
 export type PrivateHistoryTable = keyof typeof PRIVATE_HISTORY_TABLES;
