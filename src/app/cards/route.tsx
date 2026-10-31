@@ -69,7 +69,7 @@ const QUEST_HEIGHT = 98;
 // Vibe Coding 卡底部每个 compact 代理占一行，行数跟着上报的代理变；按 FULL_WIDTH 在浏览器里量得。
 // 须与 src/components/live/vibecoding/compact-agents.tsx 的行高同步。
 const COMPACT_AGENT_ROW_PX = 57;
-const VIBE_CODING_BASE_HEIGHT = 697;
+const VIBE_CODING_BASE_HEIGHT = 724;
 
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
 // still：内容不随时间变（聊天卡），不标抓取时间。
