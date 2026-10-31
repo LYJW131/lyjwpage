@@ -47,8 +47,8 @@ function useLimitReading(limit: VibeCodingLimit, cap: WeeklyCap | null) {
   };
 }
 
-function Track({ href, label, tall, children }: { href: string | null; label: string; tall?: boolean; children?: ReactNode }) {
-  const bar = <span className={cn("relative block w-full overflow-hidden bg-muted", tall ? "h-3" : "h-1.5")}>{children}</span>;
+function Track({ href, label, children }: { href: string | null; label: string; children?: ReactNode }) {
+  const bar = <span className="relative block h-3 w-full overflow-hidden bg-muted">{children}</span>;
   if (!href) return <span className="flex h-6 min-w-0 items-center">{bar}</span>;
   return (
     <a
@@ -88,72 +88,48 @@ function ResetText({ reset }: { reset: ReturnType<typeof formatReset> }) {
   );
 }
 
-const ITEM = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:contents";
-const NAME = "col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 sm:col-auto sm:row-auto";
-const TRACK = "col-span-2 row-start-2 sm:col-auto sm:row-auto";
-const PERCENT = "col-start-2 row-start-1 text-right font-mono text-xs tabular-nums sm:col-auto sm:row-auto";
+const METER = "grid min-w-0 gap-2";
+const READING = "text-3xl leading-none font-medium tracking-tight tabular-nums md:text-4xl";
 
-function LimitCells({ limit, cap, title, href, label, tall }: { limit: VibeCodingLimit; cap: WeeklyCap | null; title: string; href: string | null; label: string; tall?: boolean }) {
+function LimitReadout({ limit, cap, title, href, label }: { limit: VibeCodingLimit; cap: WeeklyCap | null; title: string; href: string | null; label: string }) {
   const { usedPercent, unavailable, color, pace, overPace, reset } = useLimitReading(limit, cap);
   return (
-    <div className={ITEM}>
-      <span className={NAME} title={unavailable > 0 ? cap?.note : title}>
-        <span className="truncate text-xs">{title}</span>
-        <span className="text-2xs whitespace-nowrap text-muted-foreground sm:hidden">
-          <ResetText reset={reset} />
-        </span>
-      </span>
-      <span className={cn("grid min-w-0 sm:contents", TRACK)}>
-        <Track href={href} label={unavailable > 0 ? `${label}. ${cap?.note}` : label} tall={tall}>
-          <span className="block h-full transition-[width] duration-700" style={{ width: `${usedPercent}%`, backgroundColor: color }} />
-          <UnavailableZone share={unavailable} />
-          {pace != null && pace < 1 - unavailable && <PaceMarker pace={pace} overPace={overPace} />}
-        </Track>
-      </span>
-      <span className={PERCENT} style={{ color }}>
+    <div className={METER} title={unavailable > 0 ? cap?.note : undefined}>
+      <div className="label-mono truncate text-muted-foreground">{title}</div>
+      <div className={READING} style={{ color }}>
         <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
-      </span>
-      <span className="hidden text-right text-xs whitespace-nowrap text-muted-foreground sm:block">
-        <ResetText reset={reset} />
-      </span>
+      </div>
+      <Track href={href} label={unavailable > 0 ? `${label}. ${cap?.note}` : label}>
+        <span className="block h-full transition-[width] duration-700" style={{ width: `${usedPercent}%`, backgroundColor: color }} />
+        <UnavailableZone share={unavailable} />
+        {pace != null && pace < 1 - unavailable && <PaceMarker pace={pace} overPace={overPace} />}
+      </Track>
+      <div className="truncate text-xs text-muted-foreground">
+        {reset ? (
+          <>
+            Resets <ResetText reset={reset} />
+          </>
+        ) : (
+          "\u00a0"
+        )}
+      </div>
     </div>
   );
 }
 
-// 宽屏每条限额的四格直接挂在同一个 grid 上，名称、轨道、读数、重置时间各自成列，轨道起止对齐；手机拆成两行：名称与读数，轨道独占一行。
-export function LimitTable({
-  items,
-  href,
-  agentLabel,
-  tall,
-  className,
-  emptySlots = 0,
-}: {
-  items: LimitTableItem[];
-  href: string | null;
-  agentLabel: string;
-  tall?: boolean;
-  className?: string;
-  emptySlots?: number;
-}) {
+// 每档限额一列：标签、大号读数、轨道、重置时间上下排；几档就分几列，轨道等宽、起止对齐。
+export function LimitMeters({ items, href, agentLabel }: { items: LimitTableItem[]; href: string | null; agentLabel: string }) {
   return (
-    <div className={cn("grid grid-cols-1 gap-y-3 sm:grid-cols-[auto_minmax(3rem,1fr)_auto_auto] sm:items-center sm:gap-x-3 sm:gap-y-0", className)}>
-      {/* 少了一档（如 Claude Ultra 没有 5 小时）时在前面垫一个零高的格子：content-between 下剩下的几条与上方标题等距分布，不被拉到上下两端。 */}
-      {emptySlots > 0 && <div aria-hidden className="hidden sm:col-span-full sm:block" />}
+    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}>
       {items.map((item) =>
         item.limit ? (
-          <LimitCells key={item.key} limit={item.limit} cap={item.cap ?? null} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
+          <LimitReadout key={item.key} limit={item.limit} cap={item.cap ?? null} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} />
         ) : (
-          <div key={item.key} className={ITEM}>
-            <span className={NAME} title={item.reason}>
-              <span className="truncate text-xs">{item.title}</span>
-              <span className="text-2xs whitespace-nowrap text-muted-foreground sm:hidden">Unavailable</span>
-            </span>
-            <span className={cn("grid min-w-0 sm:contents", TRACK)}>
-              <Track href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
-            </span>
-            <span className={cn(PERCENT, "text-muted-foreground")}>—</span>
-            <span className="hidden text-right text-xs text-muted-foreground sm:block">Unavailable</span>
+          <div key={item.key} className={METER} title={item.reason}>
+            <div className="label-mono truncate text-muted-foreground">{item.title}</div>
+            <div className={cn(READING, "text-muted-foreground")}>—</div>
+            <Track href={href} label={`${agentLabel} usage, ${item.title}`} />
+            <div className="truncate text-xs text-muted-foreground">Unavailable</div>
           </div>
         ),
       )}

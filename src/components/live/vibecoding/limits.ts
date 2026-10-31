@@ -175,10 +175,6 @@ function weeklyUnreachableShare(session: VibeCodingLimit, sharePercent: number, 
   return Math.min(1, Math.max(0, (100 - weeklyUsedPercent - reachable) / 100));
 }
 
-export function featuredSlotCount(id: string) {
-  return Object.hasOwn(FEATURED_LIMITS, id) ? FEATURED_LIMITS[id]!.length : 0;
-}
-
 export function hasFeaturedLimits(id: string) {
   return Object.hasOwn(FEATURED_LIMITS, id);
 }
