@@ -1,0 +1,13 @@
+---
+name: announcement-is-not-a-change
+description: When lyjw forwards a vendor announcement (plan rename, limit change), only report the impact; change code only after the data the site reads actually changes
+metadata:
+  type: feedback
+  modified: 2026-10-31T01:24:25.387Z
+---
+
+2026-10-31 SGT: lyjw mentioned that Claude renamed its Max plans (Max 5x → Max, Max 20x → Ultra, 5-hour limit removed for verified Ultra). A thread shipped a hand-written label mapping (#785) at once. lyjw had it reverted (#786):「我只是提醒你一下有改名这个事 没让你直接」「别手动映射啊 它出什么就是什么」「他只是宣布了 没有生效这么快 你看我现在 5 小时限制都还在」.
+
+**Why:** announcements roll out slowly. The API still returned `default_claude_max_20x` and a 5-hour window. Mapping ahead of the data is a copy-only change that can go wrong, and lyjw wants the site to show what the source sends.
+
+**How to apply:** for a vendor announcement, list the affected places and what would change, then stop. Act only when the reporter's raw data changes (new `rate_limit_tier`, `five_hour` gone). At that point, remove the 5-hour bar for Claude and check the card layout (lyjw's ask). Don't add new hand-written plan-name mappings. If you need the raw API value, read it on misaka-jp through the Mac session instead of inferring it. See [[site-small-decisions]].
