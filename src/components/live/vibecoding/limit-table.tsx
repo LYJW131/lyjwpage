@@ -88,7 +88,7 @@ function ResetText({ reset }: { reset: ReturnType<typeof formatReset> }) {
   );
 }
 
-const METER = "grid min-w-0 gap-2";
+const METER = "grid min-w-0 content-start gap-2";
 const READING = "text-3xl leading-none font-medium tracking-tight tabular-nums md:text-4xl";
 
 function LimitReadout({ limit, cap, title, href, label }: { limit: VibeCodingLimit; cap: WeeklyCap | null; title: string; href: string | null; label: string }) {
