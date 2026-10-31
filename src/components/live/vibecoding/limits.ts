@@ -92,15 +92,12 @@ type FeaturedLimitRow =
 
 export function featuredLimitRows(row: Pick<CodingAgentRow, "id" | "plan" | "limits" | "limitsError">): FeaturedLimitRow[] {
   const slots = Object.hasOwn(FEATURED_LIMITS, row.id) ? FEATURED_LIMITS[row.id]! : [];
-  return slots.map(({ slot, title }) => {
+  return slots.flatMap(({ slot, title }): FeaturedLimitRow[] => {
     const limit = pickSlotLimit(row.limits, slot);
-    if (limit) {
-      return { kind: "limit" as const, key: slot, title, limit, cap: weeklyCap(row, slot) };
-    }
-    return {
-      kind: "unavailable" as const, key: slot, title,
-      reason: row.limitsError ?? "No limit reported for this window",
-    };
+    if (limit) return [{ kind: "limit", key: slot, title, limit, cap: weeklyCap(row, slot) }];
+    // 别的窗口都在、唯独缺这个，就是套餐没有这档限额（如 Claude Ultra 没有 5 小时），不画；整行取不到才占位说原因。
+    if (!row.limitsError && row.limits.length > 0) return [];
+    return [{ kind: "unavailable", key: slot, title, reason: row.limitsError ?? "No limit reported for this window" }];
   });
 }
 
@@ -176,6 +173,10 @@ function weeklyUnreachableShare(session: VibeCodingLimit, sharePercent: number, 
   const laterWindows = nextWindowAt < weeklyResetMs ? Math.ceil((weeklyResetMs - nextWindowAt) / windowMs) : 0;
   const reachable = ((sessionLeft + laterWindows * 100) * sharePercent) / 100;
   return Math.min(1, Math.max(0, (100 - weeklyUsedPercent - reachable) / 100));
+}
+
+export function featuredSlotCount(id: string) {
+  return Object.hasOwn(FEATURED_LIMITS, id) ? FEATURED_LIMITS[id]!.length : 0;
 }
 
 export function hasFeaturedLimits(id: string) {
