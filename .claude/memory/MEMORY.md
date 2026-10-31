@@ -14,7 +14,7 @@
 - **Latest stack, no legacy compat** (2026-10-15); exception: iOS reporter endpoints keep working.
 - **Exploring directions is allowed;** raise doubts early, closing a PR is not sunk cost: [[explore-directions]].
 - **Don't over-engineer** (「你过度设计了 提示词改一下就行了」): smallest change that works; small code additions aren't a cost. Asked why something was blocked/red and the cause is the guard or a non-blocking check → explain, let lyjw pick looser or stricter, don't tighten (「太过度防御了」): [[no-edge-case-hardening]].
-- **A vendor announcement is not a change** (「他只是宣布了 没有生效这么快」, 2026-10-31): report the impact, change code only when the reporter's raw data changes; no hand-written plan-name mappings: [[announcement-is-not-a-change]].
+- **A vendor announcement is not a change** (「他只是宣布了 没有生效这么快」, 2026-10-31): report the impact, change code only when the reporter's raw data changes: [[announcement-is-not-a-change]].
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Do it yourself if a tool can** (MCP/API/CLI/RC); ask lyjw only for hands or decisions (2026-10-22).
@@ -25,7 +25,7 @@
 - **Merge autonomy:** small changes and asked-for work merge at once; big direction needs lyjw's go; cloud can't push main, so PR then merge. CI waits by tier: [[merge-ci-wait-tiers]].
 - **Merge method:** <3 commits squash, ≥3 merge commit; enforced. Messages via `pnpm merge-message`: [[merge-commit-format]].
 - **Project threads skip repo hooks and nested rules; skills load** via Setup script symlinks. Follow AGENTS.md guard rules by hand: [[thread-sessions-skip-repo-hooks]].
-- **UI/UX changes need lyjw's OK after screenshots** (desktop + mobile, decision card once preview is up; exempt: clear bug fixes, and small changes lyjw named that only alter existing behavior with no new UI — merge after verification, keep Before | After table): [[design-md-ui-approval]], [[ui-before-after-reference-lines]], [[ink-tokens-keep-chroma]].
+- **UI/UX changes need lyjw's OK after screenshots** (desktop + mobile, decision card once preview is up; exempt: clear bug fixes, and small changes lyjw named that only alter existing behavior with no new UI — merge after verification, keep Before | After table): [[design-md-ui-approval]], [[ui-before-after-reference-lines]], [[ink-tokens-keep-chroma]]. Removing an element means re-laying out, never leaving an empty slot (lyjw 2026-11-01「空一行在这里很恶心」, #788).
 - **UI PRs open with an unfolded Before | After table in the PR description** (t3code/Theo style, #765, 2026-10-29): the coding thread (not the verifier) shoots main/lyjw.me vs branch, pushes to `verify-shots/threads/<branch>/`, raw URLs; desktop + 375 rows, optional `(unchanged)` row. Only for UI/UX PRs. Put this in UI briefs.
 - **Screenshots/fixtures internally consistent** (「太假了」): one scene via `pnpm dev:scene <name>`; README cards are live `/cards/*.svg`; pain points /mnt/project-files/fixtures/痛点.md.
 - **Bot review only for real logic changes;** read every Devin/Codex/Claude review; fix only real bugs, reply「边缘情况，不改」to edge cases; one review-fix push, then merge (lyjw 2026-10-28); Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]].
@@ -46,7 +46,7 @@
 - **Secrets** piped on the Mac with `rotate-secret`, never pasted: [[credentials-pipe-only]]. Secret checks that flag memory get fixed, not the memory: [[repo-memory-mirror]].
 - **Commit identity:** as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
 - **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. When the MCP misses or truncates info (or the connector is missing), call api.x.com via proxy (app-only, public only) yourself and keep going, no asking (lyjw 2026-10-29): [[x-api-via-proxy]].
-- **Upstream data shown as-is, no hand mapping; change only when the real data changes** (lyjw 2026-10-31「别手动映射啊 它出什么就是什么」「等变了再改」): Claude plan rename (Max 5x→Max, Max 20x→Ultra) — #785 hand-mapped Ultra and is being reverted; when the reporter's raw value actually changes (read it on the Mac via SSH, never infer), update the label and remove the 5h bar/dead zone, checking layout.
+- **Claude plan rename** (Max 5x→Max, Max 20x→Ultra): 5h limit gone in real reporter data; #788 (2026-11-01 00:52 SGT) dropped the 5h bar. lyjw 2026-11-01 01:04 SGT then asked to show the NEW plan names via mapping (「套餐名按新版显示吧 映射」), overriding the earlier no-mapping stance for this case; follow-up in thread 跟进 Claude 套餐改名的影响, which is also fixing the empty-slot layout.
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
@@ -68,7 +68,7 @@
 - 04:53 skill-mining + drift review: [[skill-mining-routine]].
 - 08:41 Anthropic updates digest: [[anthropic-updates-routine]].
 - 4x daily collector superfan: [[collector-superfan-routine]].
-- 08:56 morning report in「晨报 · 定时任务」: [[morning-report-routine]].
+- 09:00 morning report in「晨报 · 定时任务」(moved from 08:56, lyjw 2026-10-31): [[morning-report-routine]].
 - Routine prompts change only from the routine's own session (text in /mnt/project-files/routine-prompts/, update_trigger + read back).
 - [[agent-automation-practices]], [[token-efficiency-review]].
 
