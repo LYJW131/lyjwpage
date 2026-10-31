@@ -69,9 +69,9 @@ export function agentPlanLabel(agent: string, tier: string): string {
       if (tier.startsWith("Claude ")) return tier.slice("Claude ".length);
       switch (tier) {
         case "default_claude_max_5x":
-          return "Max 5x";
+          return "Max";
         case "default_claude_max_20x":
-          return "Max 20x";
+          return "Ultra";
         case "default_claude_pro":
           return "Pro";
         case "claude_max":
