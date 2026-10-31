@@ -1,13 +1,13 @@
 {
-  "description": "Claude Max 20x，接口不再给 5 小时窗口（five_hour 为 null），周限额 53%、Fable 3%：卡片只剩 Weekly 与 Fable 两条",
+  "description": "Claude Ultra，接口不再给 5 小时窗口（five_hour 为 null），周限额 53%、Fable 3%：卡片只剩 Weekly 与 Fable 两条",
   "extends": "readme-base",
   "views": {
     "/api/status/limits": {
       "from": "limits-steady.json",
       "set": {
         "data.agents.claude.plan": {
-          "tier": "Max 20x",
-          "label": "Max 20x"
+          "tier": "Ultra",
+          "label": "Ultra"
         },
         "data.agents.claude.limits": [
           {

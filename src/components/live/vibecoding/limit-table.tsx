@@ -138,10 +138,8 @@ export function LimitTable({
 }) {
   return (
     <div className={cn("grid grid-cols-1 gap-y-3 sm:grid-cols-[auto_minmax(3rem,1fr)_auto_auto] sm:items-center sm:gap-x-3 sm:gap-y-0", className)}>
-      {/* 套餐没有的那档（如 Claude Ultra 的 5 小时）留空位在前，content-between 下其余几条仍在原来的高度，不被拉开。 */}
-      {Array.from({ length: Math.max(0, emptySlots) }, (_, i) => (
-        <div key={`empty-${i}`} aria-hidden className="hidden h-6 sm:col-span-full sm:block" />
-      ))}
+      {/* 少了一档（如 Claude Ultra 没有 5 小时）时在前面垫一个零高的格子：content-between 下剩下的几条与上方标题等距分布，不被拉到上下两端。 */}
+      {emptySlots > 0 && <div aria-hidden className="hidden sm:col-span-full sm:block" />}
       {items.map((item) =>
         item.limit ? (
           <LimitCells key={item.key} limit={item.limit} cap={item.cap ?? null} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
