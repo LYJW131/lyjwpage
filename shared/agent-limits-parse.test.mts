@@ -9,7 +9,7 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
     agents: [
       {
         id: "claude",
-        plan: { tier: "max", label: "Max" },
+        plan: { tier: "max", label: "Max 5x" },
         limits: [
           { key: "claude.primary", usedPercent: 137, windowMinutes: 300, resetsAt: 1_800_000_000 },
           { key: "", usedPercent: 10 },
@@ -24,7 +24,7 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
   assert.ok(parsed);
   assert.equal(parsed.collectedAt, "2026-09-05T12:00:00.000Z");
   assert.deepEqual(parsed.agents.map((row) => row.id), ["claude", "codex", "grok"]);
-  assert.deepEqual(parsed.agents[0]?.plan, { tier: "max", label: "Max" });
+  assert.deepEqual(parsed.agents[0]?.plan, { tier: "max", label: "Max 5x" });
   assert.deepEqual(parsed.agents[0]?.limits, [
     {
       key: "claude.primary",

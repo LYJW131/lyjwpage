@@ -9,10 +9,9 @@ import {
 } from "../../dist/providers/claude.js";
 import { claudeWindows } from "../../dist/windows.js";
 
-test("formatClaudePlanLabel 把 rateLimitTier 收成现名 Max / Ultra", () => {
-  assert.equal(formatClaudePlanLabel("max", "default_claude_max_5x"), "Max");
-  assert.equal(formatClaudePlanLabel("max", "default_claude_max_20x"), "Ultra");
-  assert.equal(formatClaudePlanLabel("max", "default_claude_ultra"), "Ultra");
+test("formatClaudePlanLabel 把 rateLimitTier 收成 Max 5x / Max 20x", () => {
+  assert.equal(formatClaudePlanLabel("max", "default_claude_max_5x"), "Max 5x");
+  assert.equal(formatClaudePlanLabel("max", "default_claude_max_20x"), "Max 20x");
   assert.equal(formatClaudePlanLabel("pro", null), "Pro");
   assert.equal(formatClaudePlanLabel("team", "default_claude_max_5x"), "Team");
 });
@@ -63,7 +62,7 @@ test("rowFromClaudeUsage 把套餐交给 agentPlanLabel", () => {
     },
     { subscriptionType: "max", rateLimitTier: "default_claude_max_5x" },
   );
-  assert.deepEqual(row.plan, { tier: "Max", label: "Max" });
+  assert.deepEqual(row.plan, { tier: "Max 5x", label: "Max 5x" });
   assert.equal(row.limitsError, null);
   assert.equal(row.limits.length, 2);
 });

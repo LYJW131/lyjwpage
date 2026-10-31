@@ -4,7 +4,7 @@
   "data": {
     "agents": {
       "claude": {
-        "plan": { "tier": "max", "label": "Max" },
+        "plan": { "tier": "max", "label": "Max 5x" },
         "limits": [
           { "key": "claude.primary", "label": null, "group": "session", "windowMinutes": 300, "usedPercent": 37, "resetsAt": null },
           { "key": "weekly_all", "label": null, "group": "weekly", "windowMinutes": 10080, "usedPercent": 22, "resetsAt": null }

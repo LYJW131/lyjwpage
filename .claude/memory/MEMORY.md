@@ -14,6 +14,7 @@
 - **Latest stack, no legacy compat** (2026-10-15); exception: iOS reporter endpoints keep working.
 - **Exploring directions is allowed;** raise doubts early, closing a PR is not sunk cost: [[explore-directions]].
 - **Don't over-engineer** (「你过度设计了 提示词改一下就行了」): smallest change that works; small code additions aren't a cost. Asked why something was blocked/red and the cause is the guard or a non-blocking check → explain, let lyjw pick looser or stricter, don't tighten (「太过度防御了」): [[no-edge-case-hardening]].
+- **A vendor announcement is not a change** (「他只是宣布了 没有生效这么快」, 2026-10-31): report the impact, change code only when the reporter's raw data changes; no hand-written plan-name mappings: [[announcement-is-not-a-change]].
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Do it yourself if a tool can** (MCP/API/CLI/RC); ask lyjw only for hands or decisions (2026-10-22).

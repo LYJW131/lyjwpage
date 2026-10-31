@@ -140,7 +140,7 @@ test("套餐以 profile 为准，凭据里登录时的旧档只在 profile 取�
     assert.equal(url, usageUrl);
     return Response.json({ five_hour: { utilization: 1 }, seven_day: { utilization: 2 } });
   });
-  assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Ultra", label: "Ultra" });
+  assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Max 20x", label: "Max 20x" });
   profileStatus = 403;
-  assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Max", label: "Max" });
+  assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Max 5x", label: "Max 5x" });
 });
