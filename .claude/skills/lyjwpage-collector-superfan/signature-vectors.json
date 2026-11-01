@@ -134,10 +134,17 @@
     "hash": "458ccba71e0c"
   },
   {
-    "name": "browser error signed by its Workers Issues message",
+    "name": "browser error signed by its Workers Issues message, file name without the dash",
     "service": "site",
     "message": "[browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page<hash>.js",
-    "signature": "site: [browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page<hash>.js",
-    "hash": "04762b4aace3"
+    "signature": "site: [browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page-<hash>.js",
+    "hash": "3f8aea39b71c"
+  },
+  {
+    "name": "browser error signed by its Workers Issues message, file name kept as is",
+    "service": "site",
+    "message": "[browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page-Dj0HCj_m.js",
+    "signature": "site: [browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page-<hash>.js",
+    "hash": "3f8aea39b71c"
   }
 ]

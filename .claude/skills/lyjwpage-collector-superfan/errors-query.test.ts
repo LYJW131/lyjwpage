@@ -88,9 +88,9 @@ test("浏览器报错按同一请求的 Issues 消息归签名，跨发布不变
   assert.deepEqual(datasets, [["cloudflare-workers", "real-time-issues"]]);
   assert.equal(result.events, 4);
   const byText = new Map(result.signatures.map((s) => [s.text, s]));
-  const signed = byText.get(`site: [browser-error] ${hasOwn}`);
+  const signed = byText.get("site: [browser-error] TypeError · Object.hasOwn is not a function · at https://lyjw.me/assets/page-<hash>.js");
   assert.equal(signed?.count, 2);
-  assert.equal(signed?.signature, vectors.find((v) => v.name === "browser error signed by its Workers Issues message")?.hash);
+  assert.equal(signed?.signature, vectors.find((v) => v.name === "browser error signed by its Workers Issues message, file name without the dash")?.hash);
   assert.equal(signed?.sample.message, `[browser-error] ${hasOwn}`);
   assert.match(signed?.sample.log ?? "", /at Pb .*"card":"Activity"/);
   assert.ok([...byText.keys()].some((text) => text.startsWith("site: [browser-error] at t (https://lyjw.me/assets/chat-archive-<hash>.js:<n>:<n>)")));
