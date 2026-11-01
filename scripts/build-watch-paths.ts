@@ -37,8 +37,6 @@ export const BUILD_WATCH_PATHS: Record<Worker, WatchPaths> = {
       "shared/github-chart-compact.ts",
       "shared/heatmap-window.ts",
       "shared/http-origins.ts",
-      "shared/mcp-auth.ts",
-      "shared/private-history.ts",
       "shared/public-status.ts",
       "shared/status-views.ts",
       "shared/site.ts",

@@ -1,4 +1,4 @@
-// 只读、不公开的长期历史：core 的 PrivateHistory 入口读 D1 lyjwpage-history，只绑给 ai，站点网关不转发。
+// 只读、不公开的长期历史：core 的 PrivateHistory 入口读 D1 lyjwpage-history，不经站点网关，调用方见 workers/core/README.md「AI 路由与公开状态 RPC」。
 // time 是按时间筛选与排序的列：ms 为 epoch 毫秒，day 为站点日（Asia/Shanghai）的 YYYY-MM-DD。
 export const PRIVATE_HISTORY_TABLES = {
   listening_plays: { time: "started_at", unit: "ms", about: "Every music play: Mac/HomePod measured spans (certain=1) and Apple Music recently-played windows (certain=0); title, artist, album" },

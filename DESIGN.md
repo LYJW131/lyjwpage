@@ -181,4 +181,4 @@
 - UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `.claude/skills/lyjwpage-verify/SKILL.md`「2. UI 浏览器端到端」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
 - CI 跑 `pnpm design:scale`（`scripts/design-scale-check.ts`）：按类名数 `src/` 里阶梯外的间距、任意值字号与位移、任意值圆角、元素间 `mt` / `mb` / `my` / `m` 外边距、未走 token 的裸 hex / oklch / rgb 色值，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、图表 / SVG / 品牌色、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明；基线比 main 多出的条目会被 `pnpm baselines:check` 拦下，要 lyjw 给 PR 打 `baseline-exception` 标签才放行。
 - 自查用 `.claude/skills/lyjwpage-ui-design/SKILL.md`：它有对照本文件的检查清单和一个量间距、字号、点击区的浏览器脚本。
-- 有 UI / UX 变化的改动进 main 前，先给 lyjw 看效果、等 lyjw 点头再合；lyjw 明确要求的小改动除外。问点头用决策卡（`request_decision`，选项如「OK，合并」/「先不合」，推荐 OK），不让 lyjw 打字回同意；要改哪里 lyjw 再打字说。
+- 有 UI / UX 变化的改动进 main 前，先给 lyjw 看效果、等 lyjw 点头再合；lyjw 明确要求的小改动除外：lyjw 点名要改的既有行为或样式，照要求改、没有新增界面，验证过了就合，PR 描述照放前后对比表。问点头用决策卡（`request_decision`，选项如「OK，合并」/「先不合」，推荐 OK），不让 lyjw 打字回同意；要改哪里 lyjw 再打字说。

@@ -5,7 +5,7 @@ import NumberFlow from "@/components/ui/number-flow";
 import type { ReactNode } from "react";
 
 import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
-import { LimitTable } from "@/components/live/vibecoding/limit-table";
+import { LimitMeters } from "@/components/live/vibecoding/limit-table";
 import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
 import { SourceIssue } from "@/components/live/vibecoding/total-usage";
@@ -78,6 +78,11 @@ export function AgentPanel({
   const { active, sources, model } = useAgentActive(row, macDeclaredOffline, clocks);
   const displayModel = model ? displayModelName(model) : "No model";
   const limitRows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
+  const limitItems = limitRows.map((item) =>
+    item.kind === "limit"
+      ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
+      : { key: item.key, title: item.title, limit: null, reason: item.reason },
+  );
   return (
     <div className="grid min-w-0 gap-5 p-4 lg:p-5">
       <div className="flex items-center justify-between gap-3">
@@ -133,19 +138,9 @@ export function AgentPanel({
       </div>
 
       <div className="grid gap-6 border-t border-line pt-4 md:grid-cols-2 md:gap-8 lg:pt-5">
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-col justify-between gap-5">
           <ForecastSummary forecast={forecast} newWeek={newWeek} timeZone={timeZone} />
-          <LimitTable
-            tall
-            className="flex-1 content-between"
-            items={limitRows.map((item) =>
-              item.kind === "limit"
-                ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
-                : { key: item.key, title: item.title, limit: null, reason: item.reason },
-            )}
-            href={agentUsageUrl(row.id)}
-            agentLabel={row.label}
-          />
+          <LimitMeters items={limitItems} href={agentUsageUrl(row.id)} agentLabel={row.label} />
         </div>
         <ForecastBlock forecast={forecast} newWeek={newWeek} timeZone={timeZone} />
       </div>

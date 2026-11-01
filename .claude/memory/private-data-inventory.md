@@ -1,6 +1,6 @@
 ---
 name: private-data-inventory
-description: What the site stores but does not publish (D1 forever, DO stripped fields, chat/visitor logs) and the GitHub-login MCP plan on the shared /mcp endpoint (2026-10-29)
+description: What the site stores but does not publish (D1 forever, DO stripped fields, chat/visitor logs) and who may read it: only lyjwhub's lyjwpage plugin via Service Binding (2026-10-30; /mcp OAuth removed)
 metadata:
   type: project
 ---
@@ -11,8 +11,13 @@ Audit 2026-10-29 07:00 SGT (thread「盘点站点存了但没公开的数据」)
 - Chat transcripts 30 days (ChatLog), IP quota 60 s, build runs keep GitHub login/id 30 days.
 - Public more than expected: `watching/now` Emby client/device/media; `trophies?titleids=` incl. hidden trophy details; R2 `/img/<hash>` never deleted. lyjw has not decided whether to tighten.
 
-MCP login (lyjw chose ONE shared `/mcp`, 2026-10-29: 「公用现有端点吧」, matches Claude connector "Sign in when needed" + CIMD):
-- Core `PrivateHistory` entrypoint merged (#750, 43af16d9): reads only tables in `shared/private-history.ts#PRIVATE_HISTORY_TABLES`, bound only to ai.
-- ai side merged #751 (2794e1b, live 2026-10-29 08:09 SGT): ai is AS + resource via `@cloudflare/workers-oauth-provider` 1.2.4, scope `history:read`, GitHub App login, only GitHub id 153256373; tool `read_private_history` always listed, anonymous call → 401 challenge. Chat transcripts excluded. Details: `workers/ai/README.md`「MCP 登录」.
-- Done 2026-10-29: KV `lyjwpage-oauth` (id c17f49a72cff4523ac5e0f38e68f6111) created and bound to ai; GitHub App Redirect URI `https://lyjw.me/oauth/github/callback` added via Mac RC after lyjw's sudo passkey, read back. Prod smoke 2026-10-29: PRM/AS metadata, anon 401 challenge, DCR, consent page, 302 to GitHub all OK; the GitHub sign-in itself needs lyjw's browser.
-- #755 (0df5f3b, 2026-10-29 08:26 SGT): fixed every signed-in call throwing `RPC receiver does not implement the method "bind"` (never `.bind` a Service Binding method; tests now use an RPC-like Proxy stub) and restyled the consent page to site tokens (test compares with theme.css; font falls back to system mono). E2E passed 08:29 SGT on lyjw's Mac via RC + loopback-redirect script; Mac auto mode refuses to click Allow on lyjw's behalf, so lyjw clicks once.
+Private-history reader (lyjw 2026-10-30 changed plan, relayed from the lyjwhub Mac session:「撤掉前段时间加上的可选的带鉴权的mcp 包括后续code mode」「直接把能调隐私数据的那些能力做成插件 直接走cf内部服务调用」):
+- `/mcp` is public, no auth, only public read tools again (PR #778): /mcp OAuth (#751 #755), `read_private_history`, ai's `PRIVATE_HISTORY` binding, Code Mode (#766 #767) and ai's `global_fetch_strictly_public` all removed. Don't re-add sign-in to the site `/mcp`.
+- Core `PrivateHistory` entrypoint and `shared/private-history.ts` stay (contract add-only); it is bound to no lyjwpage Worker. Its caller is the lyjwhub repo's lyjwpage plugin Worker `lyjwhub-lyjwpage` via Service Binding, tools `lyjwpage_read_private_history`, `lyjwpage_status` (lyjwhub PR #6). Until that deploys, nothing reads private history.
+- External leftovers for lyjw to delete by hand (agents don't): KV `lyjwpage-oauth` (id c17f49a72cff4523ac5e0f38e68f6111); GitHub App Redirect URI `https://lyjw.me/oauth/github/callback`. (ai main-trigger include paths for those two files were removed 2026-10-30 via Cloudflare MCP, #780.)
+- History: the OAuth design (ai as AS+resource via workers-oauth-provider, only GitHub id 153256373) lived 2026-10-29 08:09 SGT until #778; see git history and docs/references.md (marked 不再使用).
+
+Reporters send more private data (thread「让上报组件多传私有数据」, plan <private claude.ai link>, 2026-10-31 01:50 SGT, awaiting lyjw's 5 decisions):
+- lyjwhub `plugins/lyjwpage/src/history.ts#HISTORY_TABLES` and `src/tools.ts#DOMAINS` hand-copy `shared/private-history.ts`: every new D1 table/column needs a lyjwhub PR too, or the plugin can't read it.
+- Default design, built in draft PR #783 (Tier 0, Worker only): ingress runs `privateStatements` as a second D1 batch (`workers/ingress/src/private-archive.ts`); facts missing from the command (HomePod entityId) come from the raw body via `shared/ingest/private.ts#preparePrivateFacts`, so CoreCommand/KV are unchanged. Migration 0011 must hit prod D1 before merge (server_hours upsert uses new columns). PS trophy entries with several titleIds are skipped (their duration is a sum).
+- Bug found: Mac Hub encodes `trackID`, ingest reads `trackId` → all Mac `listening_plays.track_id` null (507/507).

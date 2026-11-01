@@ -16,7 +16,7 @@
         "name": "me.lyjw/site",
         "version": "1.0.0",
         "title": "LYJW's Homepage",
-        "description": "Read-only live status from LYJW's homepage; public tools need no auth, LYJW signs in with OAuth for the private history.",
+        "description": "Read-only live status from LYJW's homepage; public, no auth.",
         "websiteUrl": "https://lyjw.me",
         "repository": { "url": "https://github.com/LYJW131/lyjwpage", "source": "github", "subfolder": "workers/ai" },
         "remotes": [{ "type": "streamable-http", "url": "https://lyjw.me/mcp" }]

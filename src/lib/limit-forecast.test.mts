@@ -56,6 +56,22 @@ test("light use ends the window below the limit", () => {
   assert.ok(forecast.percentAtReset! > 30 && forecast.percentAtReset! < 40);
 });
 
+test("lines that would sit on the even pace are not drawn, and a run-out is always drawn", () => {
+  const even = (days: number) => (100 * days) / 7;
+  const onPace = forecastLimit(weekly(even(3)), readings([even(1), even(2)]), start + 3 * DAY)!;
+  assert.equal(onPace.drawProjection, false);
+  assert.equal(onPace.drawTarget, false);
+  assert.equal(sampleForecast(onPace, start + 5 * DAY).percent, null);
+  assert.equal(sampleForecast(onPace, start + 5 * DAY).target, null);
+
+  const light = forecastLimit(weekly(10), readings([5]), start + 2 * DAY)!;
+  assert.equal(light.drawProjection, true);
+  assert.equal(light.drawTarget, true);
+
+  const fast = forecastLimit(weekly(4 * 100 / 7), readings([200 / 7]), start + 2 * DAY)!;
+  assert.equal(fast.drawProjection, true);
+});
+
 test("an archived reading newer than the live one is ignored, not read as a reset", () => {
   const readAt = start + 2 * DAY;
   const history: LimitHistoryPoint[] = [...readings([20]), [readAt + 5 * 60_000, 48, reset]];
@@ -95,4 +111,17 @@ test("sampling the chart reads actual use before now, the projection after, and 
   assert.equal(locked.phase, "locked");
   assert.equal(locked.percent, null);
   assert.ok(locked.target! > 0 && locked.target! < 100);
+});
+
+test("a reset card mid-window restarts the pace, the even line and the run-out check from the card", () => {
+  const cardAt = start + 3 * DAY + 23 * HOUR;
+  const now = cardAt + 12 * HOUR;
+  const forecast = forecastLimit(weekly(12), [...readings([25, 50, 75, 100])], now)!;
+  assert.equal(forecast.cardAt, cardAt);
+  assert.equal(forecast.ranOut, false);
+  assert.ok(Math.abs(forecast.rate! * DAY - 24) < 2);
+  assert.ok(Math.abs(forecast.elapsedFraction - 12 * HOUR / (forecast.resetAt - cardAt)) < 1e-9);
+  assert.deepEqual(forecast.window.slice(-3), [[cardAt, 100], [cardAt, 0], [now, 12]]);
+  assert.equal(sampleForecast(forecast, cardAt - HOUR).even, null);
+  assert.equal(sampleForecast(forecast, forecast.resetAt).even, 100);
 });

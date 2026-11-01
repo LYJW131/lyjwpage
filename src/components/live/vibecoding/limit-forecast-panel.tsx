@@ -43,7 +43,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
   const y = (percent: number) => 100 - Math.min(100, Math.max(0, percent));
   const used = forecast.window.map(([at, percent]) => `${x(at)},${y(percent)}`).join(" ");
   const nowX = x(forecast.now);
-  const projectionEnd = forecast.ranOut
+  const projectionEnd = !forecast.drawProjection
     ? null
     : forecast.runOutAt != null
       ? { at: forecast.runOutAt, percent: 100 }
@@ -103,11 +103,11 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
         )}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-hidden>
           <line
-            x1="0" y1="100" x2="100" y2="0"
+            x1={x(forecast.cardAt ?? forecast.startAt)} y1="100" x2="100" y2="0"
             className="text-muted-foreground" stroke="currentColor" strokeWidth="1" strokeDasharray="1 3"
             vectorEffect="non-scaling-stroke"
           />
-          {forecast.usedPercent < 100 && (
+          {forecast.drawTarget && (
             <line
               x1={nowX} y1={y(forecast.usedPercent)} x2="100" y2="0"
               className="text-signal-green" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3"
@@ -134,7 +134,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
           className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground"
           style={{ left: `${nowX}%`, top: `${y(forecast.usedPercent)}%` }}
         />
-        {forecast.usedPercent < 100 && (
+        {forecast.drawTarget && (
           <span aria-hidden className="absolute top-0 right-0 size-2 translate-x-1/2 -translate-y-1/2 rounded-full bg-signal-green" />
         )}
         {lockedFrom != null && (
@@ -201,7 +201,9 @@ function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZ
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
   if (!forecast && newWeek) return { headline: "New week", detail: "Waiting for the first reading" };
   if (!forecast) return { headline: "No forecast yet", detail: "Waiting for a weekly reading" };
-  const window = `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
+  const window = forecast.cardAt != null
+    ? `Used ${Math.round(forecast.usedPercent)}% since the reset card ${clock.format(forecast.cardAt)}`
+    : `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
   if (forecast.ranOut && forecast.runOutAt != null) {
     return { headline: `Ran out ${clock.format(forecast.runOutAt)}`, detail: `Locked until ${clock.format(forecast.resetAt)}` };
   }

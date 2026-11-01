@@ -9,9 +9,10 @@ import {
 } from "../../dist/providers/claude.js";
 import { claudeWindows } from "../../dist/windows.js";
 
-test("formatClaudePlanLabel 把 rateLimitTier 收成 Max 5x / Max 20x", () => {
-  assert.equal(formatClaudePlanLabel("max", "default_claude_max_5x"), "Max 5x");
-  assert.equal(formatClaudePlanLabel("max", "default_claude_max_20x"), "Max 20x");
+test("formatClaudePlanLabel 把 rateLimitTier 收成现名 Max / Ultra", () => {
+  assert.equal(formatClaudePlanLabel("max", "default_claude_max_5x"), "Max");
+  assert.equal(formatClaudePlanLabel("max", "default_claude_max_20x"), "Ultra");
+  assert.equal(formatClaudePlanLabel("max", "default_claude_ultra"), "Ultra");
   assert.equal(formatClaudePlanLabel("pro", null), "Pro");
   assert.equal(formatClaudePlanLabel("team", "default_claude_max_5x"), "Team");
 });
@@ -54,6 +55,14 @@ test("normalizeClaudeUsage 沿用 five_hour / seven_day 并补上 scoped 周窗�
   assert.equal(windows[2]?.resetsAt, windows[1]?.resetsAt);
 });
 
+test("five_hour 为 null 时不补 5 小时窗口", () => {
+  const node = normalizeClaudeUsage({
+    five_hour: null,
+    seven_day: { utilization: 53, resets_at: "2026-11-02T03:00:00.474408+00:00" },
+  });
+  assert.deepEqual(claudeWindows(node).map((w) => w.key), ["weekly_all"]);
+});
+
 test("rowFromClaudeUsage 把套餐交给 agentPlanLabel", () => {
   const row = rowFromClaudeUsage(
     {
@@ -62,7 +71,7 @@ test("rowFromClaudeUsage 把套餐交给 agentPlanLabel", () => {
     },
     { subscriptionType: "max", rateLimitTier: "default_claude_max_5x" },
   );
-  assert.deepEqual(row.plan, { tier: "Max 5x", label: "Max 5x" });
+  assert.deepEqual(row.plan, { tier: "Max", label: "Max" });
   assert.equal(row.limitsError, null);
   assert.equal(row.limits.length, 2);
 });

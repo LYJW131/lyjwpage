@@ -15,7 +15,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 - 首屏标签只在布局变化时失效（判据在 `shared/home-layout.ts`）；读数、标题、进度、纯心跳都不触发，交给首屏快照的定时重建。
 - 新增公开状态视图只在 `shared/status-views.ts` 加一行、在 `shared/status-payloads.ts` 写载荷类型、在 `src/status-loaders.ts` 登记 loader（可滞后层的 loader 写进 `shared/lag-views.ts#LAG_VIEW_LOADERS`，这里引用它），几张表由 `satisfies` 对齐；可滞后层视图不许带推送事件（模块加载时断言）。
 - `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 中的精确路径，契约为 `shared/public-status.ts`；不开放参数查询、凭据、写入或通用存储接口。AI 只能经这个入口读公开状态。
-- `PrivateHistory` 只读 `shared/private-history.ts#PRIVATE_HISTORY_TABLES` 登记的 D1 表，表名与列名只从登记表拼，值全部绑定；只绑给 ai，站点网关不转发，不加写入或任意 SQL。
+- `PrivateHistory` 只读 `shared/private-history.ts#PRIVATE_HISTORY_TABLES` 登记的 D1 表，表名与列名只从登记表拼，值全部绑定；不经站点网关、不绑给 ai，调用方见 `README.md`「AI 路由与公开状态 RPC」；不加写入或任意 SQL。
 - `shared/ai-paths.ts#AI_HTTP_PATHS` 中的 HTTP 请求经 `AI_SERVICE` 原样转发给 AI Worker；不要在 core 重建聊天、配额或 MCP 逻辑。
 
 ## 迁移与部署

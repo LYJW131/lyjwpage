@@ -16,5 +16,6 @@ lyjw (2026-10-13 13:13): "有ui/ux变化的改动进main,只要不是明确要�
 Asking and exceptions:
 - Cloud review asks wait until the branch preview (`<branch>.preview.lyjw.dev`) has deployed, then ping lyjw with the link (2026-10-21).
 - Ask for the UI OK with a decision card that has an "OK / 合并" option, not by asking lyjw to type 同意 (lyjw 2026-10-23 17:34 SGT: usually it is OK; lyjw types only when something needs changing).
+- **Small changes lyjw explicitly asked for skip the OK** (lyjw 2026-10-30 11:39 SGT on #774 default dark mode:「是我明确要求的小改动而已 ui的话 也没有新增 只是我明确要求的改变行为而已」): lyjw named the change, it alters existing behavior/style and adds no new UI → merge once verification passes; still put the Before | After table in the PR. No decision card.
 - Clear bug fixes and small changes merge without asking, UI included (2026-10-20). "Clear fix" = behavior broken; a display inconsistency is not one: check `git log -S` for an intentional choice first (HUMAN.md #495).
 - Contrast fixes change oklch lightness only: [[ink-tokens-keep-chroma]]. Subtle tweaks get before/after overlays: [[ui-before-after-reference-lines]].

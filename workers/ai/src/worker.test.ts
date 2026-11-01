@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
-import { AI_HTTP_PATHS, OAUTH_HTTP_PATHS } from "@shared/ai-paths";
+import { AI_HTTP_PATHS } from "@shared/ai-paths";
 
 import type { Env } from "./runtime.ts";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
-    return { url: "data:text/javascript,export class DurableObject{};export class RpcTarget{};export class WorkerEntrypoint{}", shortCircuit: true };
+    return { url: "data:text/javascript,export class DurableObject{}", shortCircuit: true };
   },
 });
 const { default: worker } = await import("./worker.ts");
@@ -33,8 +33,7 @@ test("AI Worker 不公开状态、存储、推送和未知路由，包括预检�
 });
 
 test("登记的 AI 路由保留 CORS 预检，MCP 保留协议请求头", async () => {
-  // OAuth 端点的预检由 workers-oauth-provider 自己回，见 mcp-oauth.test.ts。
-  for (const path of [...AI_HTTP_PATHS].filter((candidate) => !OAUTH_HTTP_PATHS.has(candidate))) {
+  for (const path of AI_HTTP_PATHS) {
     const response = await worker.fetch(request(path, "OPTIONS", "https://lyjw.me"), env());
     assert.equal(response.status, 204);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://lyjw.me");
@@ -65,26 +64,6 @@ test("无 Origin 的 MCP 客户端通过只读 Service Binding 查询公开状�
   assert.deepEqual(paths, ["/api/status/timezone"]);
   const body = await response.json() as { result: { content: { text: string }[] } };
   assert.match(body.result.content[0].text, /Asia\/Singapore/);
-});
-
-test("Code Mode 按连接地址的 codemode 参数列出 run_site_code，没登录调用回 401 登录挑战、不加载沙箱", async () => {
-  const loader = { load: () => ({ getEntrypoint: () => ({ run: async () => { throw new Error("Unexpected sandbox run"); } }) }) } as unknown as WorkerLoader;
-  const call = (query: string, body: object) => worker.fetch(new Request(`https://ai.test/mcp${query}`, {
-    method: "POST",
-    headers: { "MCP-Protocol-Version": "2025-06-18" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, ...body }),
-  }), env({ LOADER: loader }));
-  const names = async (query: string) => {
-    const body = await (await call(query, { method: "tools/list" })).json() as { result: { tools: { name: string }[] } };
-    return body.result.tools.map((tool) => tool.name).includes("run_site_code");
-  };
-  assert.equal(await names(""), false);
-  assert.equal(await names("?codemode=off"), false);
-  assert.equal(await names("?codemode=on"), true);
-  assert.equal(await names("?codemode"), true);
-  const run = await call("?codemode=on", { method: "tools/call", params: { name: "run_site_code", arguments: { code: "return 42;" } } });
-  assert.equal(run.status, 401);
-  assert.match(run.headers.get("WWW-Authenticate") ?? "", /resource_metadata=/);
 });
 
 test("MCP 按来访 IP 限流，拒绝的请求不进入状态读取", async () => {

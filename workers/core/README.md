@@ -356,7 +356,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 
 AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。`src/public-status.ts#readPublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 中的精确路径，复用 `executePublicRequest` 返回浏览器使用的公开模型；查询参数、任意 URL、凭据和写入不在这个接口中。不能为工具方便而把 `StateCore` 或通用存储接口交给 AI Worker。
 
-不公开的长期历史走另一个具名入口 `PrivateHistory`，契约是 `shared/private-history.ts#PrivateHistoryRpc` 的 `readHistory(query)`：`query` 只能点名 `PRIVATE_HISTORY_TABLES` 里登记的一张 D1 表，加一段时间范围和不超过 `PRIVATE_HISTORY_MAX_ROWS` 的条数，按登记的时间列从新到旧返回整行（`src/history-read.ts#readPrivateHistory`）。它读 `HISTORY` 绑定本身，不经 `historyArchive` 的本地与预览停用；没有绑定时回 `ok: false`。这个入口不出现在站点网关，也不进首页对话的工具。
+不公开的长期历史走另一个具名入口 `PrivateHistory`，契约是 `shared/private-history.ts#PrivateHistoryRpc` 的 `readHistory(query)`：`query` 只能点名 `PRIVATE_HISTORY_TABLES` 里登记的一张 D1 表，加一段时间范围和不超过 `PRIVATE_HISTORY_MAX_ROWS` 的条数，按登记的时间列从新到旧返回整行（`src/history-read.ts#readPrivateHistory`）。它读 `HISTORY` 绑定本身，不经 `historyArchive` 的本地与预览停用；没有绑定时回 `ok: false`。这个入口不出现在站点网关，也不绑给 AI Worker（首页对话与 `/mcp` 都读不到），供 lyjw 的 MCP 中枢 lyjwhub 里的 lyjwpage 插件 Worker 经 Service Binding 调用。
 
 ## 断流告警
 

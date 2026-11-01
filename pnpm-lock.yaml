@@ -228,9 +228,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 1.1.0
         version: 1.1.0(zod@4.4.3)
-      '@cloudflare/workers-oauth-provider':
-        specifier: 1.2.4
-        version: 1.2.4
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250214.0
@@ -511,9 +508,6 @@ packages:
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
-
-  '@cloudflare/workers-oauth-provider@1.2.4':
-    resolution: {integrity: sha512-ayo6Z8DBHdAxwDpplFU8BrEoxoSn6wNo+E7ypTENRHUOc8R89A8/+nZ+a8pMZjjXzF0JXfpYXhw/7qqG+DC18Q==}
 
   '@cloudflare/workers-types@4.20260702.1':
     resolution: {integrity: sha512-mOhf5TUEB1m2vPrxtqoIGfz0fUC9xyxRDx5gWHy5s+OCo6dcV+g7wI1R7gYCMFohhqF/2y2xeKVwMwCJjfn/WA==}
@@ -5325,8 +5319,6 @@ snapshots:
 
   '@cloudflare/workerd-windows-64@1.20261006.1':
     optional: true
-
-  '@cloudflare/workers-oauth-provider@1.2.4': {}
 
   '@cloudflare/workers-types@4.20260702.1': {}
 
