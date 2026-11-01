@@ -67,6 +67,8 @@ SIGNATURE_RULES = [
     (re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?"), "<time>"),
     (re.compile(r"(\.[cm]?js):[0-9]+:[0-9]+"), r"\1:<n>:<n>"),
     (re.compile(r"-[A-Za-z0-9_-]{8}\.js"), "-<hash>.js"),
+    # Workers Issues 给首帧文件名去哈希时有的连短横一起去掉（page<hash>.js），补回短横，和上一条的结果一致。
+    (re.compile(r"([A-Za-z0-9_])<hash>\.js"), r"\1-<hash>.js"),
     (re.compile(r"[0-9A-Za-z]{16,}"), lambda m: "<id>" if len(re.findall(r"[0-9]", m.group())) >= 4 else m.group()),
     (re.compile(r"[0-9]{10,}"), "<n>"),
 ]

@@ -54,7 +54,7 @@ test("the relay logs a valid report as an Error with the browser stack and rejec
   assert.equal(logged.length, 1);
 });
 
-test("network and ResizeObserver noise from browsers is logged as a warning, not an error", async () => {
+test("network, lazy-load and ResizeObserver noise from browsers is logged as a warning, not an error", async () => {
   const levels: string[] = [];
   const log = { error: () => { levels.push("error"); }, warn: () => { levels.push("warn"); } };
   for (const message of [
@@ -63,12 +63,17 @@ test("network and ResizeObserver noise from browsers is logged as a warning, not
     "NetworkError when attempting to fetch resource.",
     "ResizeObserver loop limit exceeded",
     "ResizeObserver loop completed with undelivered notifications.",
+    "Importing a module script failed.",
+    "Failed to fetch dynamically imported module: https://lyjw.me/assets/page-Dj0HCj_m.js",
+    "error loading dynamically imported module: https://lyjw.me/assets/page-Dj0HCj_m.js",
+    "Unable to preload CSS for https://lyjw.me/assets/chat-markdown-DEcVZfaU.css",
     "Load failed: chunk",
+    "Unable to preload CSS",
   ]) {
     assert.equal(await relayClientError(post(JSON.stringify({ ...report, source: "rejection", stack: null, message })), log), 204);
   }
   assert.equal(await relayClientError(post(JSON.stringify({ ...report, message: "Failed to fetch", stack: "TypeError: Failed to fetch\n    at load (https://lyjw.me/assets/a.js:1:2)" })), log), 204);
-  assert.deepEqual(levels, ["warn", "warn", "warn", "warn", "warn", "error", "warn"]);
+  assert.deepEqual(levels, ["warn", "warn", "warn", "warn", "warn", "warn", "warn", "warn", "warn", "error", "error", "warn"]);
 });
 
 test("the relay only accepts reports from the site's own origins", () => {
