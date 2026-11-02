@@ -15,6 +15,7 @@
   状态核心只 `import type` 这里的命令类型；PlayStation 上报器通过 `/api/ingest/playstation` 交入原始信封，由本入口 prepare。
 - `src/lag-ingest.ts`：可滞后层那一半（KV `LAG`，格式见 `shared/lag.ts`），布局变了才请状态核心失效首屏。
 - `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总（限额快照由状态核心从 StateHub 归档）。
+  `src/private-archive.ts` 另成一批写只供 `PrivateHistory` 读的私有事实表（表见 [长期归档](../../docs/state-storage.md#长期归档d1)）。
 - `src/env.ts`：绑定与变量。
 
 ## 端点
