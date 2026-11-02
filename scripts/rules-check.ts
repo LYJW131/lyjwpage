@@ -24,6 +24,9 @@
 //                  typeof 与 Array.isArray 检查的单参数函数要改成调它（失败时抛错或回默认值包在外面）
 //   inline-script-json
 //                  内联脚本里的 JSON 只经 src/lib/inline-script.ts#scriptJson 转义小于号，不再各写一份 replace(/</g, …)
+//   html-strip-once
+//                  剥 HTML 注释或标签（正则以 <!-- 或 <[^ 开头、换成空串）要删到不再缩短：scripts/ 用 strip-html.ts，
+//                  src/ 用 src/lib/strip-scripts.ts#stripUntilStable，别处至少套在循环里
 //   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
 //                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增（scripts/baseline-growth-check.ts）
 //
@@ -33,11 +36,11 @@ import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { checkFetchHost, checkJsdoc, checkJsonObjectGuard, checkJsonResponseLiteral, checkManualSleep, checkScrollbarPair } from "./rules-check/ast-rules.ts";
+import { checkFetchHost, checkHtmlStripOnce, checkJsdoc, checkJsonObjectGuard, checkJsonResponseLiteral, checkManualSleep, checkScrollbarPair } from "./rules-check/ast-rules.ts";
 import { extOf, type Issue } from "./rules-check/source.ts";
 import { checkBakedImgUrl, checkInlineScriptJson, checkSha256Hex, checkTodo } from "./rules-check/text-rules.ts";
 
-export { ALLOWED_FETCH_HOSTS, checkFetchHost, checkJsdoc, checkJsonObjectGuard, checkJsonResponseLiteral, checkManualSleep, checkScrollbarPair } from "./rules-check/ast-rules.ts";
+export { ALLOWED_FETCH_HOSTS, checkFetchHost, checkHtmlStripOnce, checkJsdoc, checkJsonObjectGuard, checkJsonResponseLiteral, checkManualSleep, checkScrollbarPair } from "./rules-check/ast-rules.ts";
 export { commentTexts, maskComments, type Issue } from "./rules-check/source.ts";
 export { checkBakedImgUrl, checkInlineScriptJson, checkSha256Hex, checkTodo } from "./rules-check/text-rules.ts";
 
@@ -53,7 +56,7 @@ const JSON_RESPONSE_IMPL = new Set(["shared/http-origins.ts"]);
 
 export function checkFile(file: string, text: string): Issue[] {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
-  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text), ...checkInlineScriptJson(file, text)];
+  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text), ...checkInlineScriptJson(file, text), ...checkHtmlStripOnce(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
   if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;

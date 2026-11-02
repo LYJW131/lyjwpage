@@ -244,6 +244,14 @@ test("内联脚本 JSON 的小于号转义在 src/lib/inline-script.ts 以外手
   assert.equal(rules("src/lib/html-preview.ts", 'const e = (v: string) => v.replace(/</g, "&lt;");').length, 0);
 });
 
+test("剥 HTML 注释或标签只删一遍被拦，循环里删到不再缩短、换成空格与非剥标签的替换放行", () => {
+  assert.deepEqual(rules("agents/pr-review/evals/judge.ts", 'const t = comment\n  .replace(/<[^>]+>/g, "")\n  .trim();'), ["html-strip-once@1"]);
+  assert.deepEqual(rules("src/lib/x.ts", 'const a = body?.replace(/<!--[\\s\\S]*?-->/g, "");\nconst b = s.replaceAll(/<[^<>]+>/g, ``);'), ["html-strip-once@1", "html-strip-once@2"]);
+  assert.equal(rules("agents/pr-review/evals/clean.ts", 'let previous;\ndo {\n  previous = text;\n  text = text.replace(/<[^<>]+>/g, "");\n} while (text !== previous);').length, 0);
+  assert.equal(rules("workers/collector/src/x.ts", 'const t = html.replace(/<[^>]+>/g, " ");\nconst u = s.replace(/<details>[\\s\\S]*?<\\/details>/g, "");').length, 0);
+  assert.deepEqual(rules("src/lib/x.ts", 'while (go) {\n  const f = () => s.replace(/<[^>]+>/g, "");\n}'), ["html-strip-once@2"]);
+});
+
 test("只收普通文件：字符设备（Action 里被换掉的 .mcp.json）、目录与不存在的路径都跳过", () => {
   assert.equal(isRegularFile("package.json"), true);
   assert.equal(isRegularFile("/dev/null"), false);
