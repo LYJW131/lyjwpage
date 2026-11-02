@@ -2,9 +2,9 @@
 
 import { useEffect } from "react";
 
+import { OFFSCREEN_REVEALED_CLASS } from "@/lib/offscreen-boot";
 import { markRestReady } from "@/lib/rest-ready";
 
-export const OFFSCREEN_REVEALED_CLASS = "offscreen-revealed";
 const OFFSCREEN_REVEALED_ATTR = "data-offscreen-revealed";
 const DEFERRED_SELECTOR = ".defer-offscreen, .defer-offscreen-always";
 

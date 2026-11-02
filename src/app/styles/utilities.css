@@ -58,6 +58,7 @@
   content-visibility: auto;
 }
 
+/* 类名须与 src/lib/offscreen-boot.ts#OFFSCREEN_REVEALED_CLASS 同步。 */
 html.offscreen-revealed .defer-offscreen,
 html.offscreen-revealed .defer-offscreen-always,
 .defer-offscreen[data-offscreen-revealed],
