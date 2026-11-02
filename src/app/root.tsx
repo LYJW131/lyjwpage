@@ -35,6 +35,7 @@ import { reportError } from "@/lib/error-report";
 import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
+import { offscreenRestoreScript, SCROLL_POSITIONS_KEY } from "@/lib/offscreen-boot";
 import { ogImage, site } from "@shared/site";
 import { readSystemDark, readThemeChoice, syncThemeToDocument, THEME_COLOR, themeBootScript } from "@/lib/theme";
 
@@ -45,7 +46,8 @@ import "./site.css";
 function bootScript(): string {
   return (
     themeBootScript() +
-    `try{var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`
+    `try{var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}` +
+    offscreenRestoreScript()
   );
 }
 
@@ -133,7 +135,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <RestReady />
         <SiteAnalytics />
         <SiteWebMcp />
-        <ScrollRestoration />
+        <ScrollRestoration storageKey={SCROLL_POSITIONS_KEY} />
         <Scripts />
       </body>
     </html>
