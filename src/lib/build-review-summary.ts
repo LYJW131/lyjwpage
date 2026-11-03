@@ -1,7 +1,8 @@
+import { stripUntilStable } from "@/lib/strip-scripts";
+
 export function buildReviewSummary(body: string | undefined): string {
-  const conclusion = body
-    ?.replace(/<!--[\s\S]*?(?:-->|$)/g, "")
-    .replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "")
+  const conclusion = (body && stripUntilStable(body, /<!--[\s\S]*?(?:-->|$)/g))
+    ?.replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "")
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/^#{1,6}\s+/, "").replace(/[*_`]/g, "").trim())
     .find((line) => line && !/^code review$/i.test(line));

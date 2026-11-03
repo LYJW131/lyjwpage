@@ -14,6 +14,10 @@ test("formatted conclusions and issue counts produce compact labels", () => {
   assert.equal(buildReviewSummary("### Issues found\n\nSee inline comments."), "Issues found");
 });
 
+test("a comment opener rebuilt from the cut is stripped too", () => {
+  assert.equal(buildReviewSummary("<!<!---->-- review -->\n## Code review\n\nFound 1 bug: missing check."), "Issues found");
+});
+
 test("missing, failed, and unfamiliar reviews never imply a clean review", () => {
   for (const body of [undefined, "", "unknown", "## Code review", "Review failed: timed out.", "Review suggests improvements.", "Found 0 issues so far; review incomplete.", "No issues found in the UI, but the server has a bug."]) {
     assert.equal(buildReviewSummary(body), "Unknown", body);

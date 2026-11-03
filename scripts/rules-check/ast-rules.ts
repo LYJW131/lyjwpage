@@ -242,3 +242,32 @@ export function checkJsonObjectGuard(file: string, text: string) {
   visit(sf);
   return issues;
 }
+
+// 正则以 <!-- 或 <[^ 开头、换成空串的 replace 是剥 HTML 注释或标签；同一函数里套在循环中的算已删到不再缩短。
+const HTML_STRIP_RE = /^\/(?:<!--|<\[\^)/;
+
+export function checkHtmlStripOnce(file: string, text: string) {
+  const ext = extOf(file);
+  if (!TS_PARSE_EXTS.has(ext)) return [];
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const inLoop = (node: TS.Node) => {
+    for (let parent = node.parent; parent && !ts.isFunctionLike(parent); parent = parent.parent) {
+      if (ts.isIterationStatement(parent, false)) return true;
+    }
+    return false;
+  };
+  const issues: Issue[] = [];
+  const visit = (node: TS.Node) => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ["replace", "replaceAll"].includes(node.expression.name.text)) {
+      const [pattern, replacement] = node.arguments;
+      if (pattern && ts.isRegularExpressionLiteral(pattern) && HTML_STRIP_RE.test(pattern.text) && replacement && ts.isStringLiteralLike(replacement) && replacement.text === "" && !inLoop(node)) {
+        const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+        issues.push({ file, line: line + 1, rule: "html-strip-once", message: "剥 HTML 注释或标签只删一遍，切口两侧会重新拼出 <!-- 或 <script（如 <scrip<script>t>）：scripts/ 用 strip-html.ts 的 stripHtmlComments / stripHtmlTags，src/ 用 @/lib/strip-scripts#stripUntilStable，别处在循环里删到不再缩短。" });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return issues;
+}
