@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { featuredLimitRows, unavailableShare } from "@/components/live/vibecoding/limits.ts";
+import { featuredLimitRows, loginExpiryNote, unavailableShare } from "@/components/live/vibecoding/limits.ts";
 import type { VibeCodingLimit } from "@shared/types";
 
 const weekly = (usedPercent: number, resetsAt: number | null = null): VibeCodingLimit => ({
@@ -122,4 +122,17 @@ test("接口不给 5 小时窗口时不画这条，周条也不按 5 小时画�
   assert.equal(weeklyCapOf(row), null);
   assert.deepEqual(featuredLimitRows({ ...row, limits: [] }).map((r) => r.kind), ["unavailable", "unavailable", "unavailable"]);
   assert.deepEqual(featuredLimitRows({ ...row, limitsError: "down" }).map((r) => r.kind), ["unavailable", "limit", "unavailable"]);
+});
+
+test("登录到期提示只在剩 3 天内、未过期且有时钟时出现，天数与小时向下取整", () => {
+  const day = 86_400_000;
+  const now = 1_800_000_000_000;
+  assert.equal(loginExpiryNote(null, now), null);
+  assert.equal(loginExpiryNote(now + day, 0), null);
+  assert.equal(loginExpiryNote(now + 3 * day + 1, now), null);
+  assert.equal(loginExpiryNote(now + 3 * day, now), "3d");
+  assert.equal(loginExpiryNote(now + 2.9 * day, now), "2d");
+  assert.equal(loginExpiryNote(now + 5.5 * 3_600_000, now), "5h");
+  assert.equal(loginExpiryNote(now + 60_000, now), "1h");
+  assert.equal(loginExpiryNote(now, now), null);
 });

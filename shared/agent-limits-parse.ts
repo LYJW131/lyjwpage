@@ -7,6 +7,8 @@ export type ParsedAgentLimitsRow = {
   plan: VibeCodingPlan | null;
   limits: VibeCodingLimit[];
   limitsError: string | null;
+  // epoch 毫秒：过了这一刻这家的登录续期失效，要重新登录。只有带登录期限的来源报（目前是 Claude）。
+  authRefreshExpiresAt: number | null;
 };
 
 export type ParsedAgentLimits = {
@@ -61,6 +63,7 @@ export function normalizeAgentLimits(input: unknown): ParsedAgentLimits | null {
       plan: normalizePlan(row.plan),
       limits: normalizeLimits(row.limits),
       limitsError: text(row.limitsError),
+      authRefreshExpiresAt: positiveOrNull(row.authRefreshExpiresAt),
     });
   }
   if (agents.length === 0) return null;

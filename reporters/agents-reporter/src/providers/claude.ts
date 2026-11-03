@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { readClaudeOauth } from "../claude-oauth.js";
+import { claudeRefreshExpiresAt, readClaudeOauth } from "../claude-oauth.js";
 import type { AgentRow } from "../site.js";
 import { agentPlanLabel, claudeWindows, object, rowFromWindows, text } from "../windows.js";
 
@@ -276,12 +276,14 @@ export async function fetchClaude(): Promise<AgentRow | null> {
     rateLimitTier: text(oauth.rateLimitTier),
   };
 
+  const refreshExpiresAt = claudeRefreshExpiresAt(oauth);
+  const auth = refreshExpiresAt == null ? {} : { authRefreshExpiresAt: refreshExpiresAt };
   try {
     const body = await fetchClaudeUsageBody(accessToken);
-    return rowFromClaudeUsage(body, hints);
+    return { ...rowFromClaudeUsage(body, hints), ...auth };
   } catch (error) {
     if (isClaudeAuthExpired(error)) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    return { id: "claude", plan: null, limits: [], limitsError: message };
+    return { id: "claude", plan: null, limits: [], limitsError: message, ...auth };
   }
 }

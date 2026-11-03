@@ -1,0 +1,34 @@
+{
+  "description": "Claude Ultra，订阅登录的 refresh token 两天后到期：Plan 旁提示 Login 2d，悬停给到期时刻",
+  "extends": "session-gone",
+  "views": {
+    "/api/status/limits": {
+      "from": "limits-steady.json",
+      "set": {
+        "data.agents.claude.plan": {
+          "tier": "Ultra",
+          "label": "Ultra"
+        },
+        "data.agents.claude.authRefreshExpiresAt": "$now+180000000",
+        "data.agents.claude.limits": [
+          {
+            "key": "weekly_all",
+            "label": null,
+            "group": null,
+            "windowMinutes": 10080,
+            "usedPercent": 21,
+            "resetsAt": 4102444800
+          },
+          {
+            "key": "claude-weekly-scoped-fable",
+            "label": "Fable only",
+            "group": null,
+            "windowMinutes": 10080,
+            "usedPercent": 0,
+            "resetsAt": 4102444800
+          }
+        ]
+      }
+    }
+  }
+}

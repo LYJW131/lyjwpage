@@ -16,6 +16,7 @@ type OauthBlob = {
   subscriptionType?: unknown;
   rateLimitTier?: unknown;
   scopes?: unknown;
+  refreshTokenExpiresAt?: unknown;
   [key: string]: unknown;
 };
 
@@ -52,6 +53,12 @@ export async function readClaudeOauth(home = config.home): Promise<OauthBlob | n
   } catch {
     return null;
   }
+}
+
+// 订阅登录的 refresh token 有硬期限（约 30 天），轮换不延长；过了它续期回 400，只能重新登录。
+export function claudeRefreshExpiresAt(oauth: OauthBlob): number | null {
+  const value = oauth.refreshTokenExpiresAt;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function claudeAccessExpired(oauth: OauthBlob, now = Date.now()): boolean {

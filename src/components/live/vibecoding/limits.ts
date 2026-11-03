@@ -101,6 +101,16 @@ export function featuredLimitRows(row: Pick<CodingAgentRow, "id" | "plan" | "lim
   });
 }
 
+// 登录离硬期限不到这么久才在 Plan 旁提示重登；更早挂着只是噪音。
+const LOGIN_EXPIRY_NOTICE_MS = 3 * 86_400_000;
+
+export function loginExpiryNote(expiresAt: number | null, now: number): string | null {
+  if (expiresAt == null || !now) return null;
+  const left = expiresAt - now;
+  if (left <= 0 || left > LOGIN_EXPIRY_NOTICE_MS) return null;
+  return left >= 86_400_000 ? `${Math.floor(left / 86_400_000)}d` : `${Math.max(1, Math.floor(left / 3_600_000))}h`;
+}
+
 export function isFableLimit(limit: VibeCodingLimit) {
   return isNamedLimit(limit, "fable");
 }
