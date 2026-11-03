@@ -4,6 +4,7 @@ import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useContext, useEffect, useState, type ReactNode } from "react";
 
 import { PaceMarker, UnavailableZone } from "@/components/live/vibecoding/limit-meter";
+import { FlowDash } from "@/components/ui/flow-dash";
 import { formatReset, limitColor, limitPace, nextTickDelay, paceTickInterval, unavailableShare, type WeeklyCap } from "@/components/live/vibecoding/limits";
 import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { site } from "@shared/site";
@@ -126,7 +127,7 @@ export function LimitMeters({ items, href, agentLabel }: { items: LimitTableItem
         ) : (
           <div key={item.key} className={METER} title={item.reason}>
             <div className="label-mono truncate text-muted-foreground">{item.title}</div>
-            <div className={cn(READING, "text-muted-foreground")}>—</div>
+            <div className={cn(READING, "text-muted-foreground")}><FlowDash /></div>
             <Track href={href} label={`${agentLabel} usage, ${item.title}`} />
             <div className="text-xs text-muted-foreground">Unavailable</div>
           </div>
