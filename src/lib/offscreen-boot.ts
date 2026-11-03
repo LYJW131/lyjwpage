@@ -18,8 +18,9 @@ export function offscreenRestoreScript(): string {
 
 type BootGlobals = Pick<typeof globalThis, "history" | "sessionStorage" | "document">;
 
-export function syncOffscreenToDocument({ history, sessionStorage, document }: BootGlobals = globalThis): void {
+export function syncOffscreenToDocument(globals: BootGlobals = globalThis): void {
   try {
+    const { history, sessionStorage, document } = globals;
     const key: unknown = history.state?.key;
     const y: unknown = typeof key === "string" ? JSON.parse(sessionStorage.getItem(SCROLL_POSITIONS_KEY) || "{}")[key] : null;
     if (typeof y === "number" && y > 0) document.documentElement.classList.add(OFFSCREEN_REVEALED_CLASS);

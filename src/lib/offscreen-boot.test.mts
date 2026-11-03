@@ -45,3 +45,16 @@ test("存储读不了或内容坏了不抛错", () => {
     false,
   );
 });
+
+test("会话存储整个读不到时不抛错", () => {
+  const classes = new Set<string>();
+  const globals = {
+    history: { state: { key: "abc" } },
+    get sessionStorage(): never {
+      throw new Error("SecurityError");
+    },
+    document: { documentElement: { classList: { add: (name: string) => classes.add(name) } } },
+  };
+  assert.doesNotThrow(() => syncOffscreenToDocument(globals as unknown as Parameters<typeof syncOffscreenToDocument>[0]));
+  assert.equal(classes.has(OFFSCREEN_REVEALED_CLASS), false);
+});
