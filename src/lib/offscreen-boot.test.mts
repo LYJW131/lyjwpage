@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { OFFSCREEN_REVEALED_CLASS, offscreenRestoreScript, SCROLL_POSITIONS_KEY } from "./offscreen-boot.ts";
+import { OFFSCREEN_REVEALED_CLASS, offscreenRestoreScript, SCROLL_POSITIONS_KEY, syncOffscreenToDocument } from "./offscreen-boot.ts";
 
 function run(state: unknown, stored: string | null | (() => never)) {
+  const viaScript = runOnce(state, stored, (globals) =>
+    new Function("history", "sessionStorage", "document", offscreenRestoreScript())(globals.history, globals.sessionStorage, globals.document),
+  );
+  const viaSync = runOnce(state, stored, (globals) => syncOffscreenToDocument(globals as unknown as Parameters<typeof syncOffscreenToDocument>[0]));
+  assert.equal(viaSync, viaScript);
+  return viaScript;
+}
+
+function runOnce(state: unknown, stored: string | null | (() => never), exec: (globals: { history: unknown; sessionStorage: unknown; document: unknown }) => void) {
   const classes = new Set<string>();
   const sessionStorage = {
     getItem(key: string) {
@@ -12,7 +21,7 @@ function run(state: unknown, stored: string | null | (() => never)) {
     },
   };
   const document = { documentElement: { classList: { add: (name: string) => classes.add(name) } } };
-  new Function("history", "sessionStorage", "document", offscreenRestoreScript())({ state }, sessionStorage, document);
+  exec({ history: { state }, sessionStorage, document });
   return classes.has(OFFSCREEN_REVEALED_CLASS);
 }
 
@@ -35,4 +44,17 @@ test("存储读不了或内容坏了不抛错", () => {
     }),
     false,
   );
+});
+
+test("会话存储整个读不到时不抛错", () => {
+  const classes = new Set<string>();
+  const globals = {
+    history: { state: { key: "abc" } },
+    get sessionStorage(): never {
+      throw new Error("SecurityError");
+    },
+    document: { documentElement: { classList: { add: (name: string) => classes.add(name) } } },
+  };
+  assert.doesNotThrow(() => syncOffscreenToDocument(globals as unknown as Parameters<typeof syncOffscreenToDocument>[0]));
+  assert.equal(classes.has(OFFSCREEN_REVEALED_CLASS), false);
 });
