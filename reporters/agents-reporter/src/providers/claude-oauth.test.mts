@@ -144,3 +144,37 @@ test("套餐以 profile 为准，凭据里登录时的旧档只在 profile 取�
   profileStatus = 403;
   assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Max", label: "Max" });
 });
+
+test("Claude 行带上 refresh token 的硬期限，429 时也带", async (t) => {
+  const { file, original } = await fixture(t);
+  const refreshTokenExpiresAt = Date.now() + 2 * 86_400_000;
+  await writeFile(file, JSON.stringify({
+    ...original,
+    claudeAiOauth: { ...original.claudeAiOauth, expiresAt: Date.now() + 3_600_000, refreshTokenExpiresAt },
+  }));
+  let usageStatus = 200;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url === profileUrl) return new Response(null, { status: 401 });
+    assert.equal(url, usageUrl);
+    if (usageStatus !== 200) return new Response(null, { status: usageStatus, headers: { "retry-after": "60" } });
+    return Response.json({ five_hour: { utilization: 1 }, seven_day: { utilization: 2 } });
+  });
+  assert.equal((await collectAgents())[0]?.authRefreshExpiresAt, refreshTokenExpiresAt);
+  usageStatus = 429;
+  const [row] = await collectAgents();
+  assert.match(row?.limitsError ?? "", /429/);
+  assert.equal(row?.authRefreshExpiresAt, refreshTokenExpiresAt);
+});
+
+test("凭据没有 refresh token 期限时 Claude 行不带这个字段", async (t) => {
+  const { file, original } = await fixture(t);
+  await writeFile(file, JSON.stringify({
+    ...original,
+    claudeAiOauth: { ...original.claudeAiOauth, expiresAt: Date.now() + 3_600_000 },
+  }));
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url === profileUrl) return new Response(null, { status: 401 });
+    return Response.json({ five_hour: { utilization: 1 }, seven_day: { utilization: 2 } });
+  });
+  assert.equal(Object.hasOwn((await collectAgents())[0] ?? {}, "authRefreshExpiresAt"), false);
+});

@@ -103,6 +103,8 @@ Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录�
 
 CLI 升级改变配置结构时，可更新扫描规则，或成对填写 `CLAUDE_OAUTH_TOKEN_URL` / `CLAUDE_OAUTH_CLIENT_ID` 暂时覆盖。日志不会输出令牌；撤销登录或 refresh token 本身失效仍需重新登录。
 
+订阅登录的 refresh token 有硬期限，凭据里的 `refreshTokenExpiresAt` 记着它，轮换不会延长；过了这一刻续期回 400，当前 access token 到期后 usage 接口先回 401、之后回 429，只能重新登录。Claude 行把这个时刻原样带成 `authRefreshExpiresAt`（epoch 毫秒），站点在剩 3 天内时在 Plan 旁提示（`src/components/live/vibecoding/limits.ts#loginExpiryNote`）。`claude setup-token` 的长期 token 只有 `user:inference`，读不了 `/api/oauth/usage`，不能拿来替代登录。
+
 Codex 的 token 由上报器自己刷新，写回 `/data/.codex/auth.json`。
 
 ## cursor / devin / antigravity

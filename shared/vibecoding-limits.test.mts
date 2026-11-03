@@ -18,19 +18,21 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
     {
       collectedAt: "2026-09-05T12:00:00.000Z",
       agents: [
-        { id: "claude", plan: { tier: "max", label: "Max" }, limits: [window], limitsError: null },
-        { id: "codex", plan: null, limits: [], limitsError: "过期" },
+        { id: "claude", plan: { tier: "max", label: "Max" }, limits: [window], limitsError: null, authRefreshExpiresAt: 9_000 },
+        { id: "codex", plan: null, limits: [], limitsError: "过期", authRefreshExpiresAt: null },
       ],
     },
     1_000,
   );
   assert.equal(first.agents.claude?.updatedAt, 1_000);
+  assert.equal(first.agents.claude?.authRefreshExpiresAt, 9_000);
+  assert.equal(Object.hasOwn(first.agents.codex ?? {}, "authRefreshExpiresAt"), false);
 
   const second = mergeAgentLimits(
     first,
     {
       collectedAt: "2026-09-05T12:10:00.000Z",
-      agents: [{ id: "claude", plan: null, limits: [], limitsError: "token expired" }],
+      agents: [{ id: "claude", plan: null, limits: [], limitsError: "token expired", authRefreshExpiresAt: null }],
     },
     2_000,
   );
@@ -48,16 +50,17 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
 test("按 id 取限额：取到的带上收到时刻，没上报过或这份还没到按「没配」", () => {
   const stored = {
     agents: {
-      claude: { plan: { tier: "max", label: "Max" }, limits: [window], limitsError: null, updatedAt: 4_000 },
+      claude: { plan: { tier: "max", label: "Max" }, limits: [window], limitsError: null, authRefreshExpiresAt: 9_000, updatedAt: 4_000 },
     },
   };
   assert.deepEqual(agentLimitsOf(stored, "claude"), {
     plan: { tier: "max", label: "Max" },
     limits: [window],
     limitsError: null,
+    authRefreshExpiresAt: 9_000,
     limitsAt: 4_000,
   });
-  const none = { plan: null, limits: [], limitsError: null, limitsAt: null };
+  const none = { plan: null, limits: [], limitsError: null, authRefreshExpiresAt: null, limitsAt: null };
   assert.deepEqual(agentLimitsOf(stored, "cursor"), none);
   assert.deepEqual(agentLimitsOf(null, "claude"), none);
   assert.deepEqual(agentLimitsOf(stored, "constructor"), none);

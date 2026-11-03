@@ -16,8 +16,9 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
           { key: "weekly_all", usedPercent: "12" },
         ],
         limitsError: null,
+        authRefreshExpiresAt: 1_800_000_000_000,
       },
-      { id: "codex", limits: [], limitsError: "Codex：token expired" },
+      { id: "codex", limits: [], limitsError: "Codex：token expired", authRefreshExpiresAt: "soon" },
       { id: "grok", plan: { tier: "" } },
     ],
   });
@@ -35,6 +36,8 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
       resetsAt: 1_800_000_000,
     },
   ]);
+  assert.equal(parsed.agents[0]?.authRefreshExpiresAt, 1_800_000_000_000);
+  assert.equal(parsed.agents[1]?.authRefreshExpiresAt, null);
   assert.equal(parsed.agents[1]?.limitsError, "Codex：token expired");
   assert.deepEqual(parsed.agents[1]?.limits, []);
   assert.equal(parsed.agents[2]?.plan, null);

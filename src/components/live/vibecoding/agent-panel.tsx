@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
 import { LimitMeters } from "@/components/live/vibecoding/limit-table";
-import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
+import { LIMITS_SILENT, featuredLimitRows, loginExpiryNote } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
 import { SourceIssue } from "@/components/live/vibecoding/total-usage";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
@@ -78,6 +78,7 @@ export function AgentPanel({
   const { active, sources, model } = useAgentActive(row, macDeclaredOffline, clocks);
   const displayModel = model ? displayModelName(model) : "No model";
   const limitRows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
+  const loginNote = loginExpiryNote(row.authRefreshExpiresAt, now);
   const limitItems = limitRows.map((item) =>
     item.kind === "limit"
       ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
@@ -128,7 +129,28 @@ export function AgentPanel({
             : "—"}
         </Stat>
         <Stat label="Cache hit">{lastDay ? `${cacheHitRate.toFixed(1)}%` : "—"}</Stat>
-        <Stat label="Plan" title={row.plan ? `Plan ${row.plan.tier}` : undefined}>{row.plan?.label ?? "—"}</Stat>
+        <Stat
+          label={
+            <>
+              Plan
+              {loginNote && (
+                <span className="text-live-idle-ink">
+                  <span aria-hidden className="mx-1.5">
+                    ·
+                  </span>
+                  Login {loginNote}
+                </span>
+              )}
+            </>
+          }
+          title={
+            loginNote && row.authRefreshExpiresAt != null
+              ? `Login expires ${new Date(row.authRefreshExpiresAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone })}`
+              : row.plan ? `Plan ${row.plan.tier}` : undefined
+          }
+        >
+          {row.plan?.label ?? "—"}
+        </Stat>
         {forecastStats(forecast).map((stat) => (
           <Stat key={stat.label} label={stat.label} title={stat.title}>{stat.value}</Stat>
         ))}

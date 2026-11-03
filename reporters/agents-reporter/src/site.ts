@@ -20,6 +20,8 @@ export type AgentRow = {
   plan: { tier: string; label: string } | null;
   limits: AgentLimit[];
   limitsError: string | null;
+  // epoch 毫秒：过了这一刻登录续期失效，当前 access token 到期后这一行就取不到了。只有 Claude 带。
+  authRefreshExpiresAt?: number;
 };
 
 export type PushPayload = {

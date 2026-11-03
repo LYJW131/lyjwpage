@@ -6,6 +6,8 @@ export type AgentLimitsRow = {
   plan: VibeCodingPlan | null;
   limits: VibeCodingLimit[];
   limitsError: string | null;
+  // 源：shared/agent-limits-parse.ts#ParsedAgentLimitsRow
+  authRefreshExpiresAt?: number;
   updatedAt: number;
 };
 
@@ -25,6 +27,7 @@ export function mergeAgentLimits(
       plan: row.plan,
       limits: row.limits,
       limitsError: row.limitsError,
+      ...(row.authRefreshExpiresAt != null && { authRefreshExpiresAt: row.authRefreshExpiresAt }),
       updatedAt: receivedAt,
     };
   }
@@ -39,6 +42,7 @@ export type AgentLimitFields = {
   plan: VibeCodingPlan | null;
   limits: VibeCodingLimit[];
   limitsError: string | null;
+  authRefreshExpiresAt: number | null;
   limitsAt: number | null;
 };
 
@@ -46,6 +50,7 @@ const NO_LIMITS: AgentLimitFields = {
   plan: null,
   limits: [],
   limitsError: null,
+  authRefreshExpiresAt: null,
   limitsAt: null,
 };
 
@@ -56,6 +61,7 @@ export function agentLimitsOf(stored: AgentLimitsPayload | null, id: string): Ag
     plan: row.plan,
     limits: row.limits,
     limitsError: row.limitsError,
+    authRefreshExpiresAt: row.authRefreshExpiresAt ?? null,
     limitsAt: row.updatedAt,
   };
 }
