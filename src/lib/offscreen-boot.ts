@@ -15,3 +15,13 @@ export function offscreenRestoreScript(): string {
     `if(y>0)document.documentElement.classList.add(${scriptJson(OFFSCREEN_REVEALED_CLASS)})}catch(e){}`
   );
 }
+
+type BootGlobals = Pick<typeof globalThis, "history" | "sessionStorage" | "document">;
+
+export function syncOffscreenToDocument({ history, sessionStorage, document }: BootGlobals = globalThis): void {
+  try {
+    const key: unknown = history.state?.key;
+    const y: unknown = typeof key === "string" ? JSON.parse(sessionStorage.getItem(SCROLL_POSITIONS_KEY) || "{}")[key] : null;
+    if (typeof y === "number" && y > 0) document.documentElement.classList.add(OFFSCREEN_REVEALED_CLASS);
+  } catch {}
+}

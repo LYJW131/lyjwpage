@@ -35,7 +35,7 @@ import { reportError } from "@/lib/error-report";
 import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
-import { offscreenRestoreScript } from "@/lib/offscreen-boot";
+import { offscreenRestoreScript, syncOffscreenToDocument } from "@/lib/offscreen-boot";
 import { ogImage, site } from "@shared/site";
 import { readSystemDark, readThemeChoice, syncThemeToDocument, THEME_COLOR, themeBootScript } from "@/lib/theme";
 
@@ -96,11 +96,12 @@ export function links(): LinkDescriptor[] {
 }
 
 // 水合不一致时 React 退回整页客户端渲染，会清空 <html> 上全部属性（react-dom 的 commitHostSingletonAcquisition），
-// 启动脚本写的主题和热力图选择随之丢失；在同一次提交、绘制之前按存储补回。
+// 启动脚本写的主题、热力图选择和屏外占位的撤除随之丢失；在同一次提交、绘制之前按存储补回。
 function BootAttributes() {
   useLayoutEffect(() => {
     syncThemeToDocument(readThemeChoice(), readSystemDark());
     syncHeatmapToDocument();
+    syncOffscreenToDocument();
   }, []);
   return null;
 }
