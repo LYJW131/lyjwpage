@@ -47,6 +47,13 @@
   text-transform: uppercase;
 }
 
+/* NumberFlow 的占位：上下内距照 number-flow 的 :host 算（遮罩高半值取整到像素再乘 2），盒高才和有读数时一致。 */
+@utility flow-dash {
+  display: inline-block;
+  padding-block: calc(round(nearest, calc(var(--number-flow-mask-height, 0.25em) / 2), 1px) * 2);
+  line-height: 1;
+}
+
 /* 双列网格项退出尺寸计算会改变整行高度，因此只在单列启用。 */
 @utility defer-offscreen {
   @media (width < 48rem) {
