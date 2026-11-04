@@ -78,6 +78,9 @@ test("同一曲目这次没查到时沿用已存补全，换了曲目不沿用",
   assert.deepEqual(keepEnrichment(music("Song"), failed, good, true), good);
   assert.equal(keepEnrichment(music("Song"), null, good, true), good);
   assert.equal(keepEnrichment(music("Other"), null, good, true), null);
+  const uploaded = { ...failed, artwork: "https://x.blobstore.apple.com/image" };
+  assert.equal(keepEnrichment(music("Song"), null, uploaded, true), uploaded);
+  assert.deepEqual(keepEnrichment(music("Song"), failed, uploaded, true), uploaded);
   const fresh = { ...good, songId: "9" };
   assert.equal(keepEnrichment(music("Song"), fresh, good, true), fresh);
 });
@@ -118,4 +121,11 @@ test("补写按块合并：只在多出目录、动态封面或队列歌曲时�
   const stale = { ...withMotion, upcomingSongIds: ["old"] };
   assert.deepEqual(mergeEnrichment({ ...found, upcomingSongIds: ["new"] }, stale, false), { ...withMotion, upcomingSongIds: ["new"] });
   assert.deepEqual(mergeEnrichment(null, stale, false), { ...stale, upcomingSongIds: [] });
+
+  const uploaded = { ...missing, link: "https://music.apple.com/search?term=Song", artwork: "https://x.blobstore.apple.com/image" };
+  assert.deepEqual(mergeEnrichment(missing, uploaded, true), uploaded);
+  assert.deepEqual(mergeEnrichment(null, uploaded, true), uploaded);
+  assert.equal(mergeEnrichment(uploaded, missing, true), null);
+  assert.deepEqual(mergeEnrichment(uploaded, found, true), found);
+  assert.equal(mergeEnrichment(found, uploaded, true), null);
 });
