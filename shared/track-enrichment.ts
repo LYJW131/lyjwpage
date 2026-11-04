@@ -19,7 +19,7 @@ export type TrackEnrichment = {
   motion: TrackMotion | null;
 };
 
-// 写入路径每段各自限时，上报器在等回执。目录查询最多串行 4 次 Apple 请求（3 个搜索词 + 1 次单曲详情）；
+// 写入路径每段各自限时，上报器在等回执。目录查询最多串行 6 次 Apple 请求（3 个搜索词 + 资料库搜索 + 资料库对回目录 + 1 次单曲详情），超出写入预算的落到回执后的重试；
 // 必需的目录查询与队列后两首并行，动态封面排在目录之后，最坏耗时是目录加动态封面两段之和。
 export const CATALOG_TIMEOUT_MS = 2_000;
 export const UPCOMING_TIMEOUT_MS = 2_000;
