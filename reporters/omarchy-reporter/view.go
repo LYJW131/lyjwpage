@@ -313,6 +313,9 @@ func (h *hub) titles(c *ui.Context) {
 			ui.Text(c, "还没有判断过的标题。").TextColor(t.TextMuted)
 			return
 		}
+		if ui.Button(c.Key("clear"), "清除判断记录").Clicked() {
+			go h.confirmClearTitles(len(entries))
+		}
 		for i, e := range entries {
 			if i >= 200 {
 				ui.Text(c, "只列最近的 200 条。").FontSize(12).TextColor(t.TextMuted)
@@ -324,6 +327,18 @@ func (h *hub) titles(c *ui.Context) {
 			h.titleEntryRow(c.Key(e.key()), e)
 		}
 	})
+}
+
+func (h *hub) confirmClearTitles(n int) {
+	res, err := mygo.Dialog.Message(mygo.MessageOptions{
+		Parent: h.win, Type: mygo.MessageWarning,
+		Message: fmt.Sprintf("清除全部 %d 条判断记录？", n),
+		Detail:  "手动公开、锁定的结论也一起清掉。之后见到的标题重新问 Jev。",
+		Buttons: []string{"取消", "清除"}, CancelButton: 0, DestructiveButtons: []int{1},
+	})
+	if err == nil && res.Button == 1 {
+		h.judge.clear()
+	}
 }
 
 func (h *hub) titleEntryRow(c *ui.Context, e titleEntry) {

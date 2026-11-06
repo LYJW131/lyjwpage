@@ -385,6 +385,17 @@ func (j *titleJudge) forget(key string) {
 	j.notify()
 }
 
+// clear drops every verdict, the owner's included; titles are asked again as they come up.
+func (j *titleJudge) clear() {
+	j.mu.Lock()
+	j.entries = nil
+	j.persistLocked()
+	j.failures = map[string]int{}
+	j.lastKey = ""
+	j.mu.Unlock()
+	j.notify()
+}
+
 func (j *titleJudge) entry(appID, title string) (titleEntry, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

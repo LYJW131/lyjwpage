@@ -181,6 +181,11 @@ func TestTitleJudgeFlow(t *testing.T) {
 	if j2.resolve("Docs", "browser", "Swift docs") != titleDisabled {
 		t.Fatal("switch off")
 	}
+	// Clearing drops the owner's calls too, and stays cleared after a restart.
+	j2.clear()
+	if len(j2.review()) != 0 || len(newTitleJudge(path).review()) != 0 {
+		t.Fatal("clear should empty the cache on disk")
+	}
 }
 
 func TestTitleJudgeFailures(t *testing.T) {
