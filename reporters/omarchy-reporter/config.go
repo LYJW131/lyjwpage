@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,4 +71,19 @@ func parseEnv(s *bufio.Scanner) map[string]string {
 		values[strings.TrimSpace(key)] = strings.Trim(strings.TrimSpace(value), `"'`)
 	}
 	return values
+}
+
+// saveConfig writes the settings the window edits; the file holds the
+// Access secret, so only the user may read it.
+func saveConfig(c config) error {
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
+		return err
+	}
+	body := fmt.Sprintf("SITE_INGEST_URL=%s\nACCESS_CLIENT_ID=%s\nACCESS_CLIENT_SECRET=%s\nDRY_RUN=%t\n",
+		c.ingestURL, c.clientID, c.clientSecret, c.dryRun)
+	tmp := c.path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, c.path)
 }

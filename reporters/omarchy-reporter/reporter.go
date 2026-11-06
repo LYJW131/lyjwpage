@@ -21,6 +21,7 @@ const (
 
 type status struct {
 	paused   bool
+	pushes   int
 	desktop  *Desktop
 	pushedAt time.Time
 	err      error
@@ -111,8 +112,9 @@ func (r *reporter) run(ctx context.Context) {
 		last.err = err
 		if err == nil {
 			last.pushedAt = time.Now()
+			last.pushes++
 			sent = d
-		} else {
+		} else if err != errNotConfigured {
 			r.logf("push: %v", err)
 		}
 		r.onState(last)

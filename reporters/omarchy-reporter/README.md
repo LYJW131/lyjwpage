@@ -1,6 +1,6 @@
 # omarchy-reporter
 
-把这台 Omarchy（Hyprland）机器的前台应用推给 lyjwpage 的托盘小程序。Go 写，界面用 [MyGo](https://github.com/egoist/mygo) 的托盘：没有窗口，菜单里看最近一次上报、暂停上报、开关登录自启。站点目前只收不展示。
+把这台 Omarchy（Hyprland）机器的前台应用推给 lyjwpage 的桌面应用，对应 Mac 上的 Mac Telemetry Hub。Go 写，界面用 [MyGo](https://github.com/egoist/mygo) 的原生 UI：主窗口「概览」看当前前台应用和上报情况、暂停上报、开关登录自启，「设置」填上报地址与 Access 凭据；关窗口留在托盘，托盘菜单能重新打开、暂停、退出。站点目前只收不展示。
 
 ## 它做什么
 
@@ -16,7 +16,7 @@
 
 ## 配置
 
-`~/.config/lyjwpage/omarchy-reporter.env`（环境变量同名覆盖）：
+在主窗口「设置」里填，保存后上报按新设置重启。设置存在 `~/.config/lyjwpage/omarchy-reporter.env`（权限 0600，环境变量同名覆盖）：
 
 ```sh
 ACCESS_CLIENT_ID=xxxx.access
@@ -25,7 +25,7 @@ ACCESS_CLIENT_SECRET=xxxx
 # DRY_RUN=true   # 只把信封打到 stderr，不推
 ```
 
-凭据是 Access service token `lyjwpage-omarchy`，只授予 `ingest:omarchy`。没配凭据时托盘菜单显示缺凭据，不推送。
+凭据是 Access service token `lyjwpage-omarchy`，只授予 `ingest:omarchy`。没配凭据时照常采集、在窗口里显示，只是不推送。
 
 ## 构建与运行
 
@@ -36,6 +36,7 @@ cd reporters/omarchy-reporter
 go test ./...
 go build -ldflags '-s -w' -o build/omarchy-reporter .
 DRY_RUN=true ./build/omarchy-reporter   # 试跑
+./install.sh   # 装到 ~/.local/bin，并写启动器条目 omarchy-reporter.desktop
 ```
 
-装好后把二进制放到固定位置（如 `~/.local/bin/omarchy-reporter`）再从那里启动，托盘菜单勾「Open at login」写 XDG 自启项；自启项记的是启动时的路径。
+从启动器打开装好的那份，再在窗口里打开「登录时启动」：XDG 自启项记的是启动时的路径，自启时只进托盘。
