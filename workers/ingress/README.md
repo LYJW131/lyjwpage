@@ -245,3 +245,7 @@ node scripts/verify-core-worker.mjs
 ## Quest 实时游戏状态
 
 Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/ingest/quest`，权限 `ingest:quest`。信封为 `{ version: 1, presence: { observedAt, discordStatus, playing } }`，收敛与字段约束见 `shared/ingest/quest.ts#prepareQuestReport`。没有游戏用 `playing: null`，未知 Gateway 状态不上报；Discord 资料、关联账号不采集。实时命令交 StateCore，查询与推送见 [core Worker](../core/README.md)。
+
+## Omarchy 前台应用
+
+[Omarchy 上报器](../../reporters/omarchy-reporter/README.md)交 Hyprland 的前台窗口，入口 `/api/ingest/omarchy`，权限 `ingest:omarchy`。信封为 `{ version: 1, observedAt, modules: { desktop } }`，没有聚焦窗口时 `desktop: null`，字段约束见 `shared/ingest/omarchy.ts#prepareOmarchyReport`。StateCore 只存最新一份（`shared/omarchy.ts#omarchyMirror`），不推送、不失效缓存，站点暂不展示。

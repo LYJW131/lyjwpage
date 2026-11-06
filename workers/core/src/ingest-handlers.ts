@@ -7,6 +7,7 @@ import { commitPreparedPlaystationReport } from "./stores/playstation";
 import { commitPreparedTelemetryEnvelope } from "./stores/telemetry";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import { commitPreparedQuestReport } from "./stores/quest";
+import { commitPreparedOmarchyReport } from "./stores/omarchy";
 
 export async function commitPreparedIngest(command: CoreCommand): Promise<unknown> {
   switch (command.source) {
@@ -16,6 +17,7 @@ export async function commitPreparedIngest(command: CoreCommand): Promise<unknow
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
     case "quest": return commitPreparedQuestReport(command);
+    case "omarchy": return commitPreparedOmarchyReport(command);
     case "agents": return commitPreparedAgentsReport(command);
     case "agents-otlp":
     case "mac-otlp": return recordPreparedAgentsOtlpUsage(command);

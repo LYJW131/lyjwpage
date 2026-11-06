@@ -228,6 +228,10 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 - **系统原生编码**：Mac 端使用 macOS 原生接口把前台应用图标缩成小图并计算 SHA-256，直传 R2。
 - **只收对象键**：上报信封仅包含 `<sha256>.png` 对象键，服务端杜绝接收 Base64 或图片二进制文件，避免增加 Worker 内存开销。
 
+### Omarchy 桌面
+- Linux 那台 Omarchy 机器由 [`reporters/omarchy-reporter`](../reporters/omarchy-reporter/README.md) 上报前台窗口，是独立来源 `omarchy`，不并进 Mac 的 `desktop`。
+- 状态核心只存最新一份，不推送、不失效缓存，站点暂不展示。
+
 ---
 
 ## 10. HomePod mini 播放实况 — Home Assistant
