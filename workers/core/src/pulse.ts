@@ -298,6 +298,7 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     .get(codingBucketsKey("agents"))
     .get(codingBucketsKey("agents-otlp"))
     .get(codingBucketsKey("mac-otlp"))
+    .get(codingBucketsKey("omarchy-otlp"))
     .execute();
   const text = (index: number) => (typeof rows[index] === "string" ? rows[index] as string : null);
   const lane = <L extends StateLane>(name: L, index: number): StateLaneInput<L> => ({
@@ -309,6 +310,7 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     agents: parseStoredCodingBuckets(rows[13]),
     "agents-otlp": parseStoredCodingBuckets(rows[14]),
     "mac-otlp": parseStoredCodingBuckets(rows[15]),
+    "omarchy-otlp": parseStoredCodingBuckets(rows[16]),
   };
   return {
     generatedAt: now,

@@ -39,6 +39,7 @@ const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {
   agents: "Account",
   "agents-otlp": "Cloud",
   "mac-otlp": "Mac",
+  "omarchy-otlp": "Omarchy",
 };
 
 const ON_MAC: ReadonlySet<CodingUsageSource> = new Set(["mac", "mac-otlp"]);

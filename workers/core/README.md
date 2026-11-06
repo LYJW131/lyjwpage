@@ -61,6 +61,7 @@
 | `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史 | `cursor` 的日行账本、最近事件、5 分钟桶 |
 | `agents-otlp`（OTLP 遥测） | 环境：云端环境里的 Claude Code 与 Devin CLI | 状态核心按指标名分到 `claude` / `devin`，整理成同形的三种事实 |
 | `mac-otlp`（同一个 OTLP 入口） | 设备：Mac 上的 Devin CLI | 同上；上报入口按凭据持有的权限分来源，见 [ingress README](../ingress/README.md#otlp按凭据分来源) |
+| `omarchy-otlp`（同一个 OTLP 入口） | 设备：Omarchy 上的 Claude Code | 同上 |
 
 同一 agent 有账号级来源时只算它，别的来源的同 agent 行标 `superseded`、不相加（Mac 就算又报 `cursor` 也不会双算）；
 否则全部相加（claude 的本机与云端，假设彼此不重叠：云端遥测变量只配在云端）。
@@ -126,7 +127,7 @@ Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上
 （起点每个窗口都在走），`coding:otlp` 的 `windows` 记每条序列已经计到的时刻：窗口起点早于它的是重发，整点跳过；
 晚到的旧窗口也一起跳过（少算，不多算）。Devin 不发费用指标，有 token 的日子 `costComplete` 为假。会话数按 agent 分开记
 （`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 看 `agents-otlp` 里所有 agent 的桶（Mac 上的 Devin 进 `mac-otlp`，不在这里）。
-`mac-otlp` 走同一套做法，计数器另存在 `coding:otlp:mac-otlp`（`shared/coding-store.ts#codingOtlpKey`），两边的会话数、窗口互不相干。
+`mac-otlp`、`omarchy-otlp` 走同一套做法，计数器各存在 `coding:otlp:<来源>`（`shared/coding-store.ts#codingOtlpKey`），各来源的会话数、窗口互不相干。
 
 Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有
 `devin` 时，把 `agents` 里那本 `devin` 账本的日子整份接过来，在同一个事务里从 `agents` 删掉它（账号级来源会压住

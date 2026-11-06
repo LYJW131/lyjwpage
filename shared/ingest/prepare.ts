@@ -53,7 +53,8 @@ export async function prepareIngest(
     case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents-otlp":
-    case "mac-otlp": return prepareAgentsOtlpUsage(raw, receivedAt, source);
+    case "mac-otlp":
+    case "omarchy-otlp": return prepareAgentsOtlpUsage(raw, receivedAt, source);
     default: throw new Error("Unknown ingest source");
   }
 }

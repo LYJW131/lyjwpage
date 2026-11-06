@@ -173,6 +173,7 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 | `agents` | `/api/ingest/agents` 顶层同名三键 | 账号侧的完整历史（Cursor） |
 | `agents-otlp` | `/api/ingest/agents/otlp`（Claude Code 与 Devin CLI 内置遥测），云端环境的凭据 | 云端环境里 Claude Code 与 Devin CLI 的会话；状态核心把累计值做差、Devin 的 delta 窗口去重后整理成同形的三种事实 |
 | `mac-otlp` | 同一个入口，Mac 的凭据 | Mac 上 Devin CLI 的会话，做法同上；来源按验过的凭据定，不看 payload 自报的属性 |
+| `omarchy-otlp` | 同一个入口，Omarchy 的凭据 | Omarchy 上 Claude Code 的会话，做法同上 |
 
 三种事实：`(来源, agent, 站点日)` 的日行（token 分列、API 等值费用、当天按模型拆分）、`(来源, agent, 模型)` 的 5 分钟 token 桶、`(来源, agent)` 的最近一条用量事件。坏的 coding 模块只丢它自己，回执写 `rejected`（见 [上报入口](../workers/ingress/README.md)）。各来源的采集节奏见各自上报器的 README。
 

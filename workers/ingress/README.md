@@ -22,7 +22,7 @@
 | 方法 | 路径 | Access 权限 | 用途 |
 | --- | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
-| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` 或 `ingest:mac-otlp` | Claude Code 与 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip），按权限分来源 |
+| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp`、`ingest:mac-otlp` 或 `ingest:omarchy-otlp` | Claude Code 与 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip），按权限分来源 |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
@@ -127,7 +127,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 #### OTLP：按凭据分来源
 
 同一个入口收云端和 Mac 两边的遥测。验过 JWT 之后按这把凭据在 `[vars.ACCESS_CLIENTS]` 里持有的权限定来源：`ingest:agents-otlp`
-记进 `agents-otlp`（云端环境），`ingest:mac-otlp` 记进 `mac-otlp`（Mac），两个都有时取前者（`src/worker.ts#OTLP_SOURCES`）。
+记进 `agents-otlp`（云端环境），`ingest:mac-otlp` 记进 `mac-otlp`（Mac），`ingest:omarchy-otlp` 记进 `omarchy-otlp`（Omarchy），持有几个时按 `src/worker.ts#OTLP_SOURCES` 的顺序取第一个。
 payload 里的 `os.type`、`service.name` 和资源属性是客户端自报的，不用来分来源。
 
 #### Devin CLI（Mac）
@@ -151,6 +151,14 @@ Devin CLI 的用量以前由 agents-reporter 拉 tokens.ci 的公开主页，现
 `metrics_endpoint` 原样使用，不拼 `/v1/metrics`。`endpoint` 与 `logs_endpoint` 都不写：日志事件带提示词和回复原文，
 不配就不发。凭据用 Mac 那把 `lyjwpage-mac`（同一上报方共用一把，`[vars.ACCESS_CLIENTS]` 里它有
 `["ingest:mac", "ingest:mac-otlp"]`，用量记进 `mac-otlp`），值从 Hub 设置里的钥匙串取，配置文件权限保持 600。
+
+#### Claude Code（Omarchy）
+
+Omarchy 那台机器没有 ccusage，本机 Claude Code（CLI 与桌面 App 的 Code 标签）的用量走内置遥测，只配 Claude Code，不配别的 agent。
+`~/.claude/settings.json` 的 `env` 填上文云端那组变量，但去掉 `OTEL_EXPORTER_OTLP_HEADERS`；鉴权头交给 `otelHeadersHelper`，
+指向 `install.sh` 装好的 `~/.local/bin/omarchy-reporter-otel-headers`（源：`reporters/omarchy-reporter/claude-otel-headers.sh`），
+它从上报器的 `~/.config/lyjwpage/omarchy-reporter.env` 读 Access 凭据，密钥只存那一处。凭据是 `lyjwpage-omarchy`，
+`[vars.ACCESS_CLIENTS]` 里它有 `["ingest:omarchy", "ingest:omarchy-otlp"]`，用量记进 `omarchy-otlp`，站点标 Omarchy。
 
 #### Devin CLI（云端）
 

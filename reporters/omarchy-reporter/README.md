@@ -50,7 +50,7 @@ TITLE_BLACKLIST=org.telegram.desktop
 TITLE_TRUSTED=
 ```
 
-凭据是 Access service token `lyjwpage-omarchy`，只授予 `ingest:omarchy`。没配凭据时照常采集、在窗口里显示，只是不推送。
+凭据是 Access service token `lyjwpage-omarchy`，授予 `ingest:omarchy` 与 `ingest:omarchy-otlp`（后者给本机 Claude Code 的 token 用量，配置见 [ingress README](../../workers/ingress/README.md#claude-codeomarchy)）。没配凭据时照常采集、在窗口里显示，只是不推送。
 
 ## 构建与运行
 

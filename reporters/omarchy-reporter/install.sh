@@ -9,6 +9,7 @@ icons="$data/icons/hicolor/256x256/apps"
 mkdir -p "$(dirname "$bin")" "$apps" "$icons"
 go build -ldflags '-s -w' -o "$bin.new" .
 mv "$bin.new" "$bin"
+install -m 755 claude-otel-headers.sh "$(dirname "$bin")/omarchy-reporter-otel-headers"
 magick resources/icon.png -resize 256x256 "$icons/omarchy-reporter.png" 2>/dev/null || cp resources/icon.png "$icons/omarchy-reporter.png"
 gtk-update-icon-cache -q "$data/icons/hicolor" 2>/dev/null || true
 cat > "$apps/omarchy-reporter.desktop" <<DESKTOP

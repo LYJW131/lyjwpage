@@ -20,7 +20,8 @@ export async function commitPreparedIngest(command: CoreCommand): Promise<unknow
     case "omarchy": return commitPreparedOmarchyReport(command);
     case "agents": return commitPreparedAgentsReport(command);
     case "agents-otlp":
-    case "mac-otlp": return recordPreparedAgentsOtlpUsage(command);
+    case "mac-otlp":
+    case "omarchy-otlp": return recordPreparedAgentsOtlpUsage(command);
     default: throw new Error(`状态核心不收这个来源：${(command as { source?: unknown }).source}`);
   }
 }
