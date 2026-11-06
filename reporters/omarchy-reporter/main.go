@@ -4,18 +4,21 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	_ "embed"
 	"errors"
-	"image"
-	"image/color"
-	"image/png"
 	"log"
 	"net/http"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
+
+//go:embed resources/icon.png
+var appIcon []byte
+
+//go:embed resources/tray.png
+var trayPNG []byte
 
 var errNotConfigured = errors.New("missing Access credentials")
 
@@ -71,6 +74,7 @@ func (h *hub) ready() {
 		Hidden:  mygo.App.WasOpenedAtLogin(),
 		Content: ui.View(h.view),
 	})
+	h.win.SetIcon(appIcon)
 	h.win.OnClose(func(e *mygo.CloseEvent) {
 		if !h.quitting {
 			e.PreventDefault()
@@ -84,7 +88,7 @@ func (h *hub) ready() {
 		h.win.Invalidate()
 	}}
 	tray, err := mygo.NewTray(mygo.TrayOptions{
-		Icon:    trayIcon(color.RGBA{0x7a, 0xa2, 0xf7, 0xff}),
+		Icon:    trayPNG,
 		ToolTip: "Omarchy Reporter",
 		Menu: mygo.NewMenu([]*mygo.MenuItem{
 			h.statusItem,
@@ -168,21 +172,4 @@ func (h *hub) refreshTray() {
 	if h.tray != nil {
 		h.tray.SetToolTip("Omarchy Reporter — " + label)
 	}
-}
-
-// trayIcon draws a filled dot, 32×32 for high-density panels.
-func trayIcon(c color.Color) []byte {
-	const size = 32
-	img := image.NewNRGBA(image.Rect(0, 0, size, size))
-	for y := range size {
-		for x := range size {
-			dx, dy := float64(x)-15.5, float64(y)-15.5
-			if dx*dx+dy*dy <= 10*10 {
-				img.Set(x, y, c)
-			}
-		}
-	}
-	var buf bytes.Buffer
-	_ = png.Encode(&buf, img)
-	return buf.Bytes()
 }

@@ -36,7 +36,7 @@ cd reporters/omarchy-reporter
 go test ./...
 go build -ldflags '-s -w' -o build/omarchy-reporter .
 DRY_RUN=true ./build/omarchy-reporter   # 试跑
-./install.sh   # 装到 ~/.local/bin，并写启动器条目 omarchy-reporter.desktop
+./install.sh   # 装到 ~/.local/bin，写启动器条目 omarchy-reporter.desktop 与 hicolor 图标
 ```
 
 从启动器打开装好的那份，再在窗口里打开「登录时启动」：XDG 自启项记的是启动时的路径，自启时只进托盘。
