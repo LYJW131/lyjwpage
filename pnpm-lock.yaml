@@ -201,6 +201,8 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  reporters/omarchy-reporter: {}
+
   reporters/playstation-reporter:
     dependencies:
       psn-api:

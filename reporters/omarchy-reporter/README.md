@@ -54,6 +54,8 @@ TITLE_TRUSTED=
 
 ## 构建与运行
 
+CI 的工作区测试经这里的 `package.json` 跑 `go vet` 与 `go test`（`pnpm --filter @lyjwpage/omarchy-reporter test`），本地跑要装 Go。
+
 要 Go（版本见 `go.mod`）、`libayatana-appindicator` 和 `rsvg-convert`（Omarchy 都自带）。
 
 ```sh
