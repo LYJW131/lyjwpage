@@ -51,18 +51,27 @@ func TestFindAppName(t *testing.T) {
 		"chrome-app.hey.com__-Default": "HEY",
 		"unknown":                      "",
 	} {
-		if got := findAppName([]string{dir}, class); got != want {
+		if got := findAppEntry([]string{dir}, class).name; got != want {
 			t.Errorf("%q: got %q, want %q", class, got, want)
 		}
 	}
-	names := &appNames{cache: map[string]string{}, dirs: []string{dir}}
-	if got := names.lookup("unknown"); got != "unknown" {
+	names := &appNames{cache: map[string]appInfo{}, dirs: []string{dir}}
+	if got := names.lookup("unknown").name; got != "unknown" {
 		t.Errorf("fallback to class: got %q", got)
 	}
 }
 
 func TestEncodeReport(t *testing.T) {
-	d := desktopOf(&activeWindow{Class: "firefox", Title: "Docs"}, &appNames{cache: map[string]string{"firefox": "Firefox"}})
+	icon := &appIcon{hash: strings.Repeat("a", 64)}
+	names := &appNames{cache: map[string]appInfo{"firefox": {name: "Firefox", icon: icon}}}
+	d, _ := desktopOf(&activeWindow{Class: "firefox", Title: "Docs"}, names, func(*appIcon) bool { return false })
+	if deref(d.IconHash) != icon.hash || d.IconObjectKey != nil {
+		t.Fatalf("icon not uploaded yet: %+v", d)
+	}
+	d, _ = desktopOf(&activeWindow{Class: "firefox", Title: "Docs"}, names, func(*appIcon) bool { return true })
+	if deref(d.IconObjectKey) != icon.hash+".png" {
+		t.Fatalf("icon uploaded: %+v", d)
+	}
 	at := time.UnixMilli(1793933395000)
 	body, err := encodeReport(d, at)
 	if err != nil {

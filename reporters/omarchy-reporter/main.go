@@ -15,7 +15,7 @@ import (
 )
 
 //go:embed resources/icon.png
-var appIcon []byte
+var selfIconPNG []byte
 
 //go:embed resources/tray.png
 var trayPNG []byte
@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	h := &hub{dir: dir, names: newAppNames(), cfg: loadConfig()}
+	h := &hub{dir: dir, names: newAppNames(), cfg: loadConfig(), icons: map[string]ui.ImageSource{}}
 	h.form = h.cfg
 
 	mygo.App.WhenReady(h.ready)
@@ -53,6 +53,7 @@ type hub struct {
 	form  config // what the settings page edits
 	st    status
 	tab   int
+	icons map[string]ui.ImageSource
 
 	paused, openAtLogin, quitting bool
 	saveMsg                       string
@@ -74,7 +75,7 @@ func (h *hub) ready() {
 		Hidden:  mygo.App.WasOpenedAtLogin(),
 		Content: ui.View(h.view),
 	})
-	h.win.SetIcon(appIcon)
+	h.win.SetIcon(selfIconPNG)
 	h.win.OnClose(func(e *mygo.CloseEvent) {
 		if !h.quitting {
 			e.PreventDefault()
@@ -140,6 +141,10 @@ func (h *hub) start() {
 		names:  h.names,
 		logf:   log.Printf,
 		resume: make(chan struct{}, 1),
+		bucket: h.cfg.bucket(),
+	}
+	if h.cfg.dryRun {
+		r.bucket = nil
 	}
 	r.paused.Store(h.paused)
 	switch {

@@ -110,10 +110,16 @@ func (h *hub) overview(c *ui.Context) {
 			ui.Text(c, "没有聚焦的窗口").TextColor(t.TextMuted)
 			return
 		}
-		ui.Text(c, d.ApplicationName).FontSize(22).Bold()
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			if src := h.iconImage(h.st.icon); src != nil {
+				ui.Image(c, src).Size(48, 48)
+			}
+			ui.Text(c, d.ApplicationName).FontSize(22).Bold()
+		})
 		row(c, "窗口标题", orDash(d.WindowTitle))
 		row(c, "App ID", orDash(d.AppID))
 		row(c, "工作区", orDash(d.Workspace))
+		row(c, "图标", h.iconState(d))
 	})
 
 	card(c, "上报", func() {
@@ -170,6 +176,18 @@ func (h *hub) settings(c *ui.Context) {
 			}).Description("只把信封打到日志，不发给站点。")
 		})
 	})
+	card(c, "图标上传（R2）", func() {
+		ui.Form(c, func() {
+			ui.Field(c, "Endpoint", func() {
+				ui.TextInput(c, &h.form.r2Endpoint).Placeholder("https://<account>.r2.cloudflarestorage.com")
+			})
+			ui.Field(c, "Bucket", func() { ui.TextInput(c, &h.form.r2Bucket) })
+			ui.Field(c, "Access Key ID", func() { ui.TextInput(c, &h.form.r2AccessKeyID) })
+			ui.Field(c, "Secret", func() {
+				ui.TextInput(c, &h.form.r2SecretAccessKey).Password()
+			}).Description("只能写图片桶的密钥。四项都填了才上传图标，没填就只报图标哈希。")
+		})
+	})
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, h.saveMsg).Grow(1).FontSize(12).TextColor(t.TextMuted)
 		dirty := h.form != h.cfg
@@ -191,6 +209,10 @@ func (h *hub) save() {
 	}
 	next.clientID = strings.TrimSpace(next.clientID)
 	next.clientSecret = strings.TrimSpace(next.clientSecret)
+	next.r2Endpoint = strings.TrimSpace(next.r2Endpoint)
+	next.r2Bucket = strings.TrimSpace(next.r2Bucket)
+	next.r2AccessKeyID = strings.TrimSpace(next.r2AccessKeyID)
+	next.r2SecretAccessKey = strings.TrimSpace(next.r2SecretAccessKey)
 	if err := saveConfig(next); err != nil {
 		h.saveMsg = "保存失败：" + err.Error()
 		return
@@ -198,4 +220,33 @@ func (h *hub) save() {
 	h.cfg, h.form = next, next
 	h.saveMsg = "已保存，上报已按新设置重启"
 	h.start()
+}
+
+// iconImage decodes an app icon once; the view runs every frame.
+func (h *hub) iconImage(icon *appIcon) ui.ImageSource {
+	if icon == nil {
+		return nil
+	}
+	if src, ok := h.icons[icon.hash]; ok {
+		return src
+	}
+	src, err := ui.DecodeImage(icon.png)
+	if err != nil {
+		src = nil
+	}
+	h.icons[icon.hash] = src
+	return src
+}
+
+func (h *hub) iconState(d *Desktop) string {
+	switch {
+	case d.IconHash == nil:
+		return "没找到"
+	case d.IconObjectKey != nil:
+		return "已上传"
+	case h.cfg.dryRun || h.cfg.bucket() == nil:
+		return "未上传（没配 R2）"
+	default:
+		return "上传中"
+	}
 }

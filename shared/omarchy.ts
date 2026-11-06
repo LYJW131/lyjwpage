@@ -9,6 +9,9 @@ export type OmarchyDesktop = {
   appId: string | null;
   windowTitle: string | null;
   workspace: string | null;
+  // 同 Mac desktop 模块：iconHash 标识应用图标，iconObjectKey 是已在图片桶里的 `<sha256>.png`；有哈希没键表示还没传上去。
+  iconHash: string | null;
+  iconObjectKey: string | null;
 };
 
 export type OmarchyPresence = {

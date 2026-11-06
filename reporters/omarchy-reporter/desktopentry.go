@@ -2,22 +2,32 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 )
 
-// appNames maps a Wayland app_id (Hyprland class) to the Name of its desktop
-// entry, so the site gets "Ghostty" rather than "com.mitchellh.ghostty".
+// appInfo is what the desktop entry of a Wayland app_id (Hyprland class)
+// says: its Name, so the site gets "Ghostty" rather than
+// "com.mitchellh.ghostty", and its icon.
+type appInfo struct {
+	name string
+	icon *appIcon // nil when the entry names none or it cannot be drawn
+}
+
 type appNames struct {
-	mu    sync.Mutex
-	cache map[string]string
-	dirs  []string
+	mu     sync.Mutex
+	cache  map[string]appInfo
+	dirs   []string
+	roots  []string
+	themes []string
 }
 
 func newAppNames() *appNames {
-	return &appNames{cache: map[string]string{}, dirs: applicationDirs()}
+	roots := iconRoots()
+	return &appNames{cache: map[string]appInfo{}, dirs: applicationDirs(), roots: roots, themes: iconThemes(roots)}
 }
 
 func applicationDirs() []string {
@@ -39,27 +49,35 @@ func applicationDirs() []string {
 	return dirs
 }
 
-func (a *appNames) lookup(class string) string {
+func (a *appNames) lookup(class string) appInfo {
 	if class == "" {
-		return ""
+		return appInfo{}
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if name, ok := a.cache[class]; ok {
-		return name
+	if info, ok := a.cache[class]; ok {
+		return info
 	}
-	name := findAppName(a.dirs, class)
-	if name == "" {
-		name = class
+	entry := findAppEntry(a.dirs, class)
+	info := appInfo{name: entry.name}
+	if info.name == "" {
+		info.name = class
 	}
-	a.cache[class] = name
-	return name
+	iconName := entry.icon
+	if iconName == "" {
+		iconName = class
+	}
+	if path := findIconFile(iconName, a.roots, a.themes); path != "" {
+		info.icon, _ = renderIcon(context.Background(), path)
+	}
+	a.cache[class] = info
+	return info
 }
 
-// findAppName prefers a desktop entry whose StartupWMClass is the class,
+// findAppEntry prefers a desktop entry whose StartupWMClass is the class,
 // then one whose file name is the class (as Wayland apps name them).
-func findAppName(dirs []string, class string) string {
-	var byFile string
+func findAppEntry(dirs []string, class string) desktopEntry {
+	var byFile desktopEntry
 	for _, dir := range dirs {
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".desktop") {
@@ -72,11 +90,11 @@ func findAppName(dirs []string, class string) string {
 				return nil
 			}
 			if strings.EqualFold(entry.wmClass, class) && entry.name != "" {
-				byFile = entry.name
+				byFile = entry
 				return filepath.SkipAll
 			}
-			if fileMatch && byFile == "" {
-				byFile = entry.name
+			if fileMatch && byFile.name == "" {
+				byFile = entry
 			}
 			return nil
 		})
@@ -84,7 +102,7 @@ func findAppName(dirs []string, class string) string {
 	return byFile
 }
 
-type desktopEntry struct{ name, wmClass string }
+type desktopEntry struct{ name, wmClass, icon string }
 
 func readDesktopEntry(path string) (desktopEntry, error) {
 	f, err := os.Open(path)
@@ -114,6 +132,8 @@ func parseDesktopEntry(s *bufio.Scanner) desktopEntry {
 		switch strings.TrimSpace(key) {
 		case "Name":
 			e.name = strings.TrimSpace(value)
+		case "Icon":
+			e.icon = strings.TrimSpace(value)
 		case "StartupWMClass":
 			e.wmClass = strings.TrimSpace(value)
 		}

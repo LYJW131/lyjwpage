@@ -16,6 +16,8 @@ type config struct {
 	clientSecret string
 	dryRun       bool
 	path         string
+
+	r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey string
 }
 
 func (c config) canPush() bool { return c.dryRun || (c.clientID != "" && c.clientSecret != "") }
@@ -50,6 +52,11 @@ func loadConfig() config {
 		clientSecret: get("ACCESS_CLIENT_SECRET"),
 		dryRun:       get("DRY_RUN") == "true",
 		path:         path,
+
+		r2Endpoint:        get("R2_ENDPOINT"),
+		r2Bucket:          get("R2_BUCKET"),
+		r2AccessKeyID:     get("R2_ACCESS_KEY_ID"),
+		r2SecretAccessKey: get("R2_SECRET_ACCESS_KEY"),
 	}
 	if c.ingestURL == "" {
 		c.ingestURL = defaultIngestURL
@@ -79,8 +86,10 @@ func saveConfig(c config) error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
 		return err
 	}
-	body := fmt.Sprintf("SITE_INGEST_URL=%s\nACCESS_CLIENT_ID=%s\nACCESS_CLIENT_SECRET=%s\nDRY_RUN=%t\n",
-		c.ingestURL, c.clientID, c.clientSecret, c.dryRun)
+	body := fmt.Sprintf("SITE_INGEST_URL=%s\nACCESS_CLIENT_ID=%s\nACCESS_CLIENT_SECRET=%s\nDRY_RUN=%t\n"+
+		"R2_ENDPOINT=%s\nR2_BUCKET=%s\nR2_ACCESS_KEY_ID=%s\nR2_SECRET_ACCESS_KEY=%s\n",
+		c.ingestURL, c.clientID, c.clientSecret, c.dryRun,
+		c.r2Endpoint, c.r2Bucket, c.r2AccessKeyID, c.r2SecretAccessKey)
 	tmp := c.path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
 		return err

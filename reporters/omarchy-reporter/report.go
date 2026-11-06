@@ -17,6 +17,10 @@ type Desktop struct {
 	AppID           *string `json:"appId"`
 	WindowTitle     *string `json:"windowTitle"`
 	Workspace       *string `json:"workspace"`
+	// IconHash names the app's icon; IconObjectKey is set once its bytes
+	// are in the image bucket, as the Mac reporter's desktop module does.
+	IconHash      *string `json:"iconHash"`
+	IconObjectKey *string `json:"iconObjectKey"`
 }
 
 type envelope struct {
@@ -34,23 +38,33 @@ func optional(s string) *string {
 	return &s
 }
 
-func desktopOf(w *activeWindow, names *appNames) *Desktop {
+// desktopOf builds the sample of a window; uploaded reports whether an
+// icon's bytes are already in the bucket.
+func desktopOf(w *activeWindow, names *appNames, uploaded func(*appIcon) bool) (*Desktop, *appIcon) {
 	if w == nil {
-		return nil
+		return nil, nil
 	}
-	name := names.lookup(w.Class)
+	info := names.lookup(w.Class)
+	name := info.name
 	if name == "" {
 		name = w.Title
 	}
 	if name == "" {
-		return nil
+		return nil, nil
 	}
-	return &Desktop{
+	d := &Desktop{
 		ApplicationName: name,
 		AppID:           optional(w.Class),
 		WindowTitle:     optional(w.Title),
 		Workspace:       optional(w.Workspace.Name),
 	}
+	if info.icon != nil {
+		d.IconHash = optional(info.icon.hash)
+		if uploaded(info.icon) {
+			d.IconObjectKey = optional(info.icon.objectKey())
+		}
+	}
+	return d, info.icon
 }
 
 func encodeReport(d *Desktop, observedAt time.Time) ([]byte, error) {

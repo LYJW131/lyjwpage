@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -23,6 +24,7 @@ type status struct {
 	paused   bool
 	pushes   int
 	desktop  *Desktop
+	icon     *appIcon
 	pushedAt time.Time
 	err      error
 }
@@ -32,6 +34,7 @@ type reporter struct {
 	dir     string
 	names   *appNames
 	push    func(context.Context, []byte) error
+	bucket  *r2Bucket // nil: icons are not uploaded
 	onState func(status)
 	logf    func(string, ...any)
 
@@ -44,7 +47,8 @@ func sameApp(a, b *Desktop) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return a.ApplicationName == b.ApplicationName && deref(a.AppID) == deref(b.AppID) && deref(a.Workspace) == deref(b.Workspace)
+	return a.ApplicationName == b.ApplicationName && deref(a.AppID) == deref(b.AppID) &&
+		deref(a.Workspace) == deref(b.Workspace) && deref(a.IconObjectKey) == deref(b.IconObjectKey)
 }
 
 func sameDesktop(a, b *Desktop) bool {
@@ -77,6 +81,36 @@ func (r *reporter) run(ctx context.Context) {
 	titleTimer := time.NewTimer(0)
 	<-titleTimer.C
 
+	// Icons upload off the focus path; the sample that names one is pushed
+	// again with its object key once the upload lands.
+	var uploadedMu sync.Mutex
+	uploaded, pending := map[string]bool{}, map[string]bool{}
+	iconReady := make(chan struct{}, 1)
+	isUploaded := func(icon *appIcon) bool {
+		uploadedMu.Lock()
+		defer uploadedMu.Unlock()
+		if uploaded[icon.hash] || r.bucket == nil || pending[icon.hash] {
+			return uploaded[icon.hash]
+		}
+		pending[icon.hash] = true
+		go func() {
+			err := r.bucket.ensure(ctx, icon)
+			uploadedMu.Lock()
+			delete(pending, icon.hash)
+			uploaded[icon.hash] = err == nil
+			uploadedMu.Unlock()
+			if err != nil {
+				r.logf("icon upload: %v", err)
+				return
+			}
+			select {
+			case iconReady <- struct{}{}:
+			default:
+			}
+		}()
+		return false
+	}
+
 	var last status
 	var sent *Desktop
 	report := func(force bool) {
@@ -92,7 +126,8 @@ func (r *reporter) run(ctx context.Context) {
 			r.onState(last)
 			return
 		}
-		d := desktopOf(w, r.names)
+		d, icon := desktopOf(w, r.names, isUploaded)
+		last.icon = icon
 		if !force && last.err == nil && !last.pushedAt.IsZero() {
 			if sameDesktop(d, sent) {
 				return
@@ -127,6 +162,8 @@ func (r *reporter) run(ctx context.Context) {
 			return
 		case <-changed:
 			sleep(ctx, settleDelay)
+			report(false)
+		case <-iconReady:
 			report(false)
 		case <-titleTimer.C:
 			report(false)

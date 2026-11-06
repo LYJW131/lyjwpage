@@ -248,4 +248,4 @@ Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/i
 
 ## Omarchy 前台应用
 
-[Omarchy 上报器](../../reporters/omarchy-reporter/README.md)交 Hyprland 的前台窗口，入口 `/api/ingest/omarchy`，权限 `ingest:omarchy`。信封为 `{ version: 1, observedAt, modules: { desktop } }`，没有聚焦窗口时 `desktop: null`，字段约束见 `shared/ingest/omarchy.ts#prepareOmarchyReport`。StateCore 只存最新一份（`shared/omarchy.ts#omarchyMirror`），不推送、不失效缓存，站点暂不展示。
+[Omarchy 上报器](../../reporters/omarchy-reporter/README.md)交 Hyprland 的前台窗口，入口 `/api/ingest/omarchy`，权限 `ingest:omarchy`。信封为 `{ version: 1, observedAt, modules: { desktop } }`，没有聚焦窗口时 `desktop: null`，字段约束见 `shared/ingest/omarchy.ts#prepareOmarchyReport`。应用图标同 Mac：`iconHash` 加上报器直传 R2 的 `iconObjectKey`，入口 HEAD 查得到对象才收键。StateCore 只存最新一份（`shared/omarchy.ts#omarchyMirror`），不推送、不失效缓存，站点暂不展示。

@@ -49,7 +49,7 @@ export async function prepareIngest(
     case "emby": return prepareEmbyReport(raw, receivedAt, images);
     case "playstation": return preparePlaystationReport(raw, receivedAt);
     case "quest": return prepareQuestReport(raw, receivedAt);
-    case "omarchy": return prepareOmarchyReport(raw, receivedAt);
+    case "omarchy": return prepareOmarchyReport(raw, receivedAt, images);
     case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents-otlp":
