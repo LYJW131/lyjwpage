@@ -21,12 +21,16 @@ const (
 )
 
 type status struct {
-	paused   bool
-	pushes   int
-	desktop  *Desktop
-	icon     *appIcon
-	pushedAt time.Time
-	err      error
+	paused  bool
+	pushes  int
+	desktop *Desktop
+	icon    *appIcon
+	// title is the normalized title shown locally; titleStatus says whether
+	// it may be reported.
+	title       string
+	titleStatus titleStatus
+	pushedAt    time.Time
+	err         error
 }
 
 type reporter struct {
@@ -34,7 +38,9 @@ type reporter struct {
 	dir     string
 	names   *appNames
 	push    func(context.Context, []byte) error
-	bucket  *r2Bucket // nil: icons are not uploaded
+	bucket  *r2Bucket   // nil: icons are not uploaded
+	judge   *titleJudge // nil reports titles unjudged (tests only)
+	poke    chan struct{}
 	onState func(status)
 	logf    func(string, ...any)
 
@@ -127,19 +133,26 @@ func (r *reporter) run(ctx context.Context) {
 			return
 		}
 		d, icon := desktopOf(w, r.names, isUploaded)
-		last.icon = icon
+		last.icon, last.title, last.titleStatus = icon, "", titleNone
+		if d != nil && r.judge != nil {
+			last.title = normalizeTitle(w.Title, d.ApplicationName, w.Class)
+			last.titleStatus = r.judge.resolve(d.ApplicationName, w.Class, last.title)
+			d.WindowTitle = optional(r.judge.reportable(last.titleStatus, w.Class, last.title))
+		}
+		last.desktop = d
 		if !force && last.err == nil && !last.pushedAt.IsZero() {
 			if sameDesktop(d, sent) {
+				r.onState(last)
 				return
 			}
 			if sameApp(d, sent) {
 				if wait := titleInterval - time.Since(last.pushedAt); wait > 0 {
 					titleTimer.Reset(wait)
+					r.onState(last)
 					return
 				}
 			}
 		}
-		last.desktop = d
 		body, err := encodeReport(d, time.Now())
 		if err == nil {
 			err = r.push(ctx, body)
@@ -163,6 +176,8 @@ func (r *reporter) run(ctx context.Context) {
 		case <-changed:
 			sleep(ctx, settleDelay)
 			report(false)
+		case <-r.poke:
+			report(false)
 		case <-iconReady:
 			report(false)
 		case <-titleTimer.C:
@@ -172,5 +187,13 @@ func (r *reporter) run(ctx context.Context) {
 		case <-r.resume:
 			report(true)
 		}
+	}
+}
+
+// wake re-samples after a title verdict lands.
+func (r *reporter) wake() {
+	select {
+	case r.poke <- struct{}{}:
+	default:
 	}
 }

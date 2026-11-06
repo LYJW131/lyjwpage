@@ -9,6 +9,12 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+const (
+	tabOverview = iota
+	tabTitles
+	tabSettings
+)
+
 type tone int
 
 const (
@@ -50,12 +56,15 @@ func (h *hub) view(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Padding(20).Gap(16).Children(func() {
 		h.header(c)
-		ui.Tabs(c, &h.tab, "概览", "设置")
+		ui.Tabs(c, &h.tab, "概览", "窗口标题", "设置")
 		ui.Scroll(c).Grow(1).Children(func() {
 			ui.Column(c).Gap(16).Children(func() {
-				if h.tab == 0 {
+				switch h.tab {
+				case tabOverview:
 					h.overview(c)
-				} else {
+				case tabTitles:
+					h.titles(c)
+				default:
 					h.settings(c)
 				}
 			})
@@ -116,7 +125,8 @@ func (h *hub) overview(c *ui.Context) {
 			}
 			ui.Text(c, d.ApplicationName).FontSize(22).Bold()
 		})
-		row(c, "窗口标题", orDash(d.WindowTitle))
+		row(c, "窗口标题", orDash(optional(h.st.title)))
+		row(c, "标题判断", h.titleState(d))
 		row(c, "App ID", orDash(d.AppID))
 		row(c, "工作区", orDash(d.Workspace))
 		row(c, "图标", h.iconState(d))
@@ -188,6 +198,12 @@ func (h *hub) settings(c *ui.Context) {
 			}).Description("只能写图片桶的密钥。四项都填了才上传图标，没填就只报图标哈希。")
 		})
 	})
+	h.saveRow(c)
+	ui.Text(c, "配置文件："+h.cfg.path).FontSize(12).Wrap().TextColor(t.TextMuted).Selectable()
+}
+
+func (h *hub) saveRow(c *ui.Context) {
+	t := c.Theme()
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, h.saveMsg).Grow(1).FontSize(12).TextColor(t.TextMuted)
 		dirty := h.form != h.cfg
@@ -198,7 +214,6 @@ func (h *hub) settings(c *ui.Context) {
 			h.save()
 		}
 	})
-	ui.Text(c, "配置文件："+h.cfg.path).FontSize(12).Wrap().TextColor(t.TextMuted).Selectable()
 }
 
 func (h *hub) save() {
@@ -213,12 +228,16 @@ func (h *hub) save() {
 	next.r2Bucket = strings.TrimSpace(next.r2Bucket)
 	next.r2AccessKeyID = strings.TrimSpace(next.r2AccessKeyID)
 	next.r2SecretAccessKey = strings.TrimSpace(next.r2SecretAccessKey)
+	next.typesafeAPIKey = strings.TrimSpace(next.typesafeAPIKey)
+	next.titleBlacklist = strings.Join(splitList(next.titleBlacklist), ",")
+	next.titleTrusted = strings.Join(splitList(next.titleTrusted), ",")
 	if err := saveConfig(next); err != nil {
 		h.saveMsg = "保存失败：" + err.Error()
 		return
 	}
 	h.cfg, h.form = next, next
 	h.saveMsg = "已保存，上报已按新设置重启"
+	h.judge.configure(next.titleRules())
 	h.start()
 }
 
@@ -249,4 +268,94 @@ func (h *hub) iconState(d *Desktop) string {
 	default:
 		return "上传中"
 	}
+}
+
+func (h *hub) titleState(d *Desktop) string {
+	s := h.st.titleStatus
+	label := s.displayName()
+	if e, ok := h.judge.entry(deref(d.AppID), h.st.title); ok && e.reason() != "" {
+		label += " · " + e.reason()
+	}
+	if s == titleJudging && d.WindowTitle != nil {
+		label += "（先沿用上一条已公开的标题）"
+	}
+	if s == titleUnavailable && strings.TrimSpace(h.cfg.typesafeAPIKey) == "" {
+		label += "（没配 TypeSafe API Key）"
+	}
+	return label
+}
+
+func (h *hub) titles(c *ui.Context) {
+	t := c.Theme()
+	card(c, "规则", func() {
+		ui.Form(c, func() {
+			ui.Field(c, "上报窗口标题", func() {
+				ui.Switch(c, &h.form.titleEnabled)
+			}).Description("关掉就整条链不判、不报，判断记录留着。")
+			ui.Field(c, "TypeSafe API Key", func() {
+				ui.TextInput(c, &h.form.typesafeAPIKey).Password()
+			}).Description("Jev 判断用。没配时所有标题按锁定处理，不上报。")
+			ui.Field(c, "黑名单", func() {
+				ui.TextInput(c, &h.form.titleBlacklist).Placeholder("org.telegram.desktop, signal")
+			}).Description("App ID，逗号分隔。标题不判、不报。")
+			ui.Field(c, "免判名单", func() {
+				ui.TextInput(c, &h.form.titleTrusted).Placeholder("com.mitchellh.ghostty")
+			}).Description("App ID，逗号分隔。标题不问 Jev，直接上报。")
+		})
+	})
+	h.saveRow(c)
+	if err := h.judge.error(); err != "" {
+		ui.Text(c, err).Wrap().TextColor(t.Danger).Selectable()
+	}
+	entries := h.judge.review()
+	card(c, fmt.Sprintf("判断记录（%d）", len(entries)), func() {
+		if len(entries) == 0 {
+			ui.Text(c, "还没有判断过的标题。").TextColor(t.TextMuted)
+			return
+		}
+		for i, e := range entries {
+			if i >= 200 {
+				ui.Text(c, "只列最近的 200 条。").FontSize(12).TextColor(t.TextMuted)
+				break
+			}
+			if i > 0 {
+				ui.Divider(c)
+			}
+			h.titleEntryRow(c.Key(e.key()), e)
+		}
+	})
+}
+
+func (h *hub) titleEntryRow(c *ui.Context, e titleEntry) {
+	t := c.Theme()
+	color := map[verdict]ui.Color{verdictLocked: t.Danger, verdictNeedsConfirmation: t.Warning, verdictOmitted: t.TextMuted, verdictPublished: t.Success}[e.Verdict]
+	ui.Column(c).Gap(4).Children(func() {
+		ui.Text(c, e.Title).Wrap().Selectable()
+		meta := e.ApplicationName + " · " + e.Verdict.displayName()
+		if r := e.reason(); r != "" {
+			meta += " · " + r
+		}
+		if e.Source == "user" {
+			meta += " · 手动"
+		}
+		ui.Text(c, meta).FontSize(12).TextColor(color)
+		if len(e.Probabilities) > 0 {
+			var parts []string
+			for _, d := range dimensions {
+				parts = append(parts, d.displayName()+" "+formatProb(e.Probabilities[d]))
+			}
+			ui.Text(c, strings.Join(parts, "  ")).FontSize(11).Wrap().TextColor(t.TextMuted)
+		}
+		ui.Row(c).Gap(8).Children(func() {
+			if e.Verdict != verdictPublished && ui.Button(c.Key("publish"), "公开").Clicked() {
+				h.judge.decide(e.key(), verdictPublished)
+			}
+			if e.Verdict != verdictLocked && ui.Button(c.Key("lock"), "锁定").Clicked() {
+				h.judge.decide(e.key(), verdictLocked)
+			}
+			if ui.Button(c.Key("rejudge"), "重判").Clicked() {
+				h.judge.forget(e.key())
+			}
+		})
+	})
 }

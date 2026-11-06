@@ -18,6 +18,24 @@ type config struct {
 	path         string
 
 	r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey string
+
+	// Window titles: off means never judged or reported; the lists are
+	// comma-separated app IDs (Hyprland classes).
+	titleEnabled                 bool
+	typesafeAPIKey               string
+	titleBlacklist, titleTrusted string
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' || r == ' ' }) {
+		out = append(out, p)
+	}
+	return out
+}
+
+func (c config) titleRules() titleRules {
+	return titleRules{enabled: c.titleEnabled, apiKey: c.typesafeAPIKey, blacklist: splitList(c.titleBlacklist), trusted: splitList(c.titleTrusted)}
 }
 
 func (c config) canPush() bool { return c.dryRun || (c.clientID != "" && c.clientSecret != "") }
@@ -57,6 +75,11 @@ func loadConfig() config {
 		r2Bucket:          get("R2_BUCKET"),
 		r2AccessKeyID:     get("R2_ACCESS_KEY_ID"),
 		r2SecretAccessKey: get("R2_SECRET_ACCESS_KEY"),
+
+		titleEnabled:   get("TITLE_REPORTING") != "false",
+		typesafeAPIKey: get("TYPESAFE_API_KEY"),
+		titleBlacklist: get("TITLE_BLACKLIST"),
+		titleTrusted:   get("TITLE_TRUSTED"),
 	}
 	if c.ingestURL == "" {
 		c.ingestURL = defaultIngestURL
@@ -87,9 +110,11 @@ func saveConfig(c config) error {
 		return err
 	}
 	body := fmt.Sprintf("SITE_INGEST_URL=%s\nACCESS_CLIENT_ID=%s\nACCESS_CLIENT_SECRET=%s\nDRY_RUN=%t\n"+
-		"R2_ENDPOINT=%s\nR2_BUCKET=%s\nR2_ACCESS_KEY_ID=%s\nR2_SECRET_ACCESS_KEY=%s\n",
+		"R2_ENDPOINT=%s\nR2_BUCKET=%s\nR2_ACCESS_KEY_ID=%s\nR2_SECRET_ACCESS_KEY=%s\n"+
+		"TITLE_REPORTING=%t\nTYPESAFE_API_KEY=%s\nTITLE_BLACKLIST=%s\nTITLE_TRUSTED=%s\n",
 		c.ingestURL, c.clientID, c.clientSecret, c.dryRun,
-		c.r2Endpoint, c.r2Bucket, c.r2AccessKeyID, c.r2SecretAccessKey)
+		c.r2Endpoint, c.r2Bucket, c.r2AccessKeyID, c.r2SecretAccessKey,
+		c.titleEnabled, c.typesafeAPIKey, strings.Join(splitList(c.titleBlacklist), ","), strings.Join(splitList(c.titleTrusted), ","))
 	tmp := c.path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
 		return err

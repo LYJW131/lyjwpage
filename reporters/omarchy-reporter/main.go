@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -28,8 +29,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	h := &hub{dir: dir, names: newAppNames(), cfg: loadConfig(), icons: map[string]ui.ImageSource{}}
+	h := &hub{dir: dir, names: newAppNames(), cfg: loadConfig(), icons: map[string]ui.ImageSource{}, judge: newTitleJudge(titleCachePath())}
 	h.form = h.cfg
+	h.judge.configure(h.cfg.titleRules())
+	h.judge.onVerdict = func() {
+		if r := h.current.Load(); r != nil {
+			r.wake()
+		}
+		if h.win != nil {
+			h.win.Update(func() {})
+		}
+	}
+	h.judge.onConfirm = h.askForConfirmation
 
 	mygo.App.WhenReady(h.ready)
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { h.quitting = true })
@@ -64,6 +75,9 @@ type hub struct {
 	pauseItem  *mygo.MenuItem
 	r          *reporter
 	cancel     context.CancelFunc
+	judge      *titleJudge
+	// current is h.r for the judge's callbacks, which run off the main thread.
+	current atomic.Pointer[reporter]
 }
 
 func (h *hub) ready() {
@@ -126,6 +140,7 @@ func (h *hub) stop() {
 	if h.cancel != nil {
 		h.cancel()
 		h.cancel, h.r = nil, nil
+		h.current.Store(nil)
 	}
 }
 
@@ -141,7 +156,9 @@ func (h *hub) start() {
 		names:  h.names,
 		logf:   log.Printf,
 		resume: make(chan struct{}, 1),
+		poke:   make(chan struct{}, 1),
 		bucket: h.cfg.bucket(),
+		judge:  h.judge,
 	}
 	if h.cfg.dryRun {
 		r.bucket = nil
@@ -165,6 +182,7 @@ func (h *hub) start() {
 		})
 	}
 	h.r, h.cancel = r, cancel
+	h.current.Store(r)
 	go r.run(ctx)
 }
 
@@ -177,4 +195,26 @@ func (h *hub) refreshTray() {
 	if h.tray != nil {
 		h.tray.SetToolTip("Omarchy Reporter — " + label)
 	}
+}
+
+// askForConfirmation shows a desktop notification for a title waiting on
+// the owner; a click opens the review tab. The notification decides
+// nothing by itself: the entry stays in the list either way.
+func (h *hub) askForConfirmation(e titleEntry) {
+	mygo.RunOnMain(func() {
+		n := mygo.NewNotification(mygo.NotificationOptions{
+			ID:       "title-" + hashHex([]byte(e.key()))[:16],
+			Title:    e.ApplicationName + " 窗口标题公开确认",
+			Subtitle: e.reason(),
+			Body:     e.Title,
+		})
+		n.OnClick(func() {
+			h.tab = tabTitles
+			h.show()
+			h.win.Invalidate()
+		})
+		if err := n.Show(); err != nil {
+			log.Printf("notification: %v", err)
+		}
+	})
 }
