@@ -15,9 +15,9 @@ import { commitLagIngest } from "./lag-ingest";
 
 const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
-// 一个 OTLP 入口，按凭据持有的权限分来源：云端环境的 token 记 agents-otlp，Mac 的 token 记 mac-otlp。
+// 一个 OTLP 入口，按凭据持有的权限分来源：云端环境的 token 记 agents-otlp，Mac 的记 mac-otlp，Omarchy 的记 omarchy-otlp。
 // 不看 payload 里的 os.type 或资源属性，那是客户端自报的。
-const OTLP_SOURCES = ["agents-otlp", "mac-otlp"] as const satisfies readonly OtlpCodingSource[];
+const OTLP_SOURCES = ["agents-otlp", "mac-otlp", "omarchy-otlp"] as const satisfies readonly OtlpCodingSource[];
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
 const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);

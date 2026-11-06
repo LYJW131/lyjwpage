@@ -39,6 +39,7 @@ const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {
   agents: "Account",
   "agents-otlp": "Cloud",
   "mac-otlp": "Mac",
+  "omarchy-otlp": "Omarchy",
 };
 
 const ON_MAC: ReadonlySet<CodingUsageSource> = new Set(["mac", "mac-otlp"]);
@@ -83,12 +84,13 @@ export function codingAgentRows(
     }));
 }
 
-export type CodingActivitySlots = { mac: CodingActivityEntry | null; remote: CodingActivityEntry | null };
+export type CodingActivitySlots = { mac: CodingActivityEntry | null; omarchy: CodingActivityEntry | null; remote: CodingActivityEntry | null };
 
 export function codingActivitySlots(activity: readonly CodingActivityEntry[], macDeclaredOffline: boolean): CodingActivitySlots {
   return {
     mac: macDeclaredOffline ? null : (activity.find((entry) => codingSourceOnMac(entry.source)) ?? null),
-    remote: activity.find((entry) => !codingSourceOnMac(entry.source)) ?? null,
+    omarchy: activity.find((entry) => entry.source === "omarchy-otlp") ?? null,
+    remote: activity.find((entry) => !codingSourceOnMac(entry.source) && entry.source !== "omarchy-otlp") ?? null,
   };
 }
 

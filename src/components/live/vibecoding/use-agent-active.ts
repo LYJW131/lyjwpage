@@ -23,8 +23,9 @@ export function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean,
   const mountedAt = useMountedAt();
   const clockKnown = mountedAt > 0 || clocks.now != null;
   const mac = useSlotLive(slots.mac, clockKnown, clocks);
+  const omarchy = useSlotLive(slots.omarchy, clockKnown, clocks);
   const remote = useSlotLive(slots.remote, clockKnown, clocks);
-  const sources = [mac, remote].filter((entry) => entry != null);
+  const sources = [mac, omarchy, remote].filter((entry) => entry != null);
   const live = sources.reduce<CodingActivityEntry | null>(
     (newest, entry) => (newest == null || entry.lastActivityAt > newest.lastActivityAt ? entry : newest),
     null,

@@ -27,6 +27,12 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # 工作区测试会跑 omarchy-reporter 的 go vet / go test；版本跟 go.mod，模块与构建缓存按 go.sum 失效。
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: reporters/omarchy-reporter/go.mod
+          cache-dependency-path: reporters/omarchy-reporter/go.sum
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

@@ -219,4 +219,5 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 - [Worker 数据后端与首屏缓存](./docs/state-storage.md)：存储分层、公开数据边界与缓存失效
 - [lyjwpage iOS App](./apps/ios/README.md)：原生客户端与 iPhone 端上报器
 - [Discord Gateway 上报器](./reporters/discord-reporter/README.md)：Quest 游戏实时数据
+- [Omarchy 上报器](./reporters/omarchy-reporter/README.md)：Linux 桌面前台应用（站点暂不展示）
 - [文档索引](./docs/README.md)

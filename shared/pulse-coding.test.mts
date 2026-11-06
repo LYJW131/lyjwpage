@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC, cloudAgentActivity, codingBand } from "@shared/pulse-coding";
+import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC, CODING_AGENT_OMARCHY, cloudAgentActivity, codingBand } from "@shared/pulse-coding";
 import type { StoredCodingBuckets } from "@shared/coding-buckets";
 import type { CodingObservation } from "@shared/pulse-coding";
 const T = 1_800_000_000_000;
@@ -27,5 +27,7 @@ test("Claude Code cloud usage counts as agent work on the band while the Mac is 
   const together = codingBand([observation(T, false, true)], [], { from: T, to: T + 900_000 }, cloud);
   assert.deepEqual(together.map(({ value, agentSources }) => [value, agentSources]), [[2, CODING_AGENT_MAC | CODING_AGENT_CLOUD], [2, CODING_AGENT_CLOUD]],
     "same band value still splits where the running sources change");
+  assert.deepEqual(codingBand([], [], { from: T, to: T + 900_000 }, [], cloud), [{ from: T, to: T + 720_000, value: 2, agentSources: CODING_AGENT_OMARCHY }],
+    "Omarchy's token buckets count as an agent running on their own bit");
   assert.deepEqual(cloudAgentActivity({ ...store, windows: [{ from: T, agents: [row(0)] }] }), []);
 });

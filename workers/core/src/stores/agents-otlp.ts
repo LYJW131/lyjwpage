@@ -35,6 +35,8 @@ const MAX_SERIES = 5_000;
 const MOVES: Record<OtlpCodingSource, { from: CodingUsageSource; ids: readonly OtlpAgentId[]; always: boolean; carry: boolean }> = {
   "agents-otlp": { from: "agents", ids: ["devin"], always: true, carry: false },
   "mac-otlp": { from: "agents-otlp", ids: ["devin"], always: false, carry: true },
+  // omarchy-otlp 一开始就是新来源，没有要接的旧账本。
+  "omarchy-otlp": { from: "agents", ids: [], always: false, carry: false },
 };
 
 function newest<T>(entries: Array<[string, T]>, seenAt: (value: T) => number, cutoff: number, limit: number) {

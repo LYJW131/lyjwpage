@@ -8,6 +8,7 @@ import { preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone";
 import { preparePlaystationReport, type PreparedPlaystationReport } from "./playstation";
 import type { ImageBucket } from "./r2-assets";
 import { prepareServerReport, type PreparedServerReport } from "./server";
+import { prepareOmarchyReport, type PreparedOmarchyReport } from "./omarchy";
 import { prepareQuestReport, type PreparedQuestReport } from "./quest";
 import { prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./telemetry";
 
@@ -24,12 +25,13 @@ export type PreparedIngest = WithReporter<
   | PreparedAgentLimits
   | PreparedAgentsOtlpUsage
   | PreparedQuestReport
+  | PreparedOmarchyReport
 >;
 
 export type CoreCommand = Exclude<PreparedIngest, { source: "server" }>;
 
 export const INGEST_SOURCES = new Set([
-  "mac", "iphone", "homepod", "emby", "playstation", "server", "agents", "quest",
+  "mac", "iphone", "homepod", "emby", "playstation", "server", "agents", "quest", "omarchy",
 ]);
 
 const NO_IMAGES: ImageBucket = { head: async () => null };
@@ -47,10 +49,12 @@ export async function prepareIngest(
     case "emby": return prepareEmbyReport(raw, receivedAt, images);
     case "playstation": return preparePlaystationReport(raw, receivedAt);
     case "quest": return prepareQuestReport(raw, receivedAt);
+    case "omarchy": return prepareOmarchyReport(raw, receivedAt, images);
     case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents-otlp":
-    case "mac-otlp": return prepareAgentsOtlpUsage(raw, receivedAt, source);
+    case "mac-otlp":
+    case "omarchy-otlp": return prepareAgentsOtlpUsage(raw, receivedAt, source);
     default: throw new Error("Unknown ingest source");
   }
 }

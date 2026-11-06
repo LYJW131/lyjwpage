@@ -173,6 +173,7 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 | `agents` | `/api/ingest/agents` 顶层同名三键 | 账号侧的完整历史（Cursor） |
 | `agents-otlp` | `/api/ingest/agents/otlp`（Claude Code 与 Devin CLI 内置遥测），云端环境的凭据 | 云端环境里 Claude Code 与 Devin CLI 的会话；状态核心把累计值做差、Devin 的 delta 窗口去重后整理成同形的三种事实 |
 | `mac-otlp` | 同一个入口，Mac 的凭据 | Mac 上 Devin CLI 的会话，做法同上；来源按验过的凭据定，不看 payload 自报的属性 |
+| `omarchy-otlp` | 同一个入口，Omarchy 的凭据 | Omarchy 上 Claude Code 的会话，做法同上 |
 
 三种事实：`(来源, agent, 站点日)` 的日行（token 分列、API 等值费用、当天按模型拆分）、`(来源, agent, 模型)` 的 5 分钟 token 桶、`(来源, agent)` 的最近一条用量事件。坏的 coding 模块只丢它自己，回执写 `rejected`（见 [上报入口](../workers/ingress/README.md)）。各来源的采集节奏见各自上报器的 README。
 
@@ -187,7 +188,7 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 ### 卡片怎么判
 - 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
 - 「今天」：视图给的是各 agent 最近一个有行的站点日，浏览器按自己的站点日判是不是今天，不是今天就写明是哪一天。来源在当天有采集就有行（没用是一行 0），所以最近一天停在昨天表示今天还没报到。
-- 活动灯：任一来源的最近事件在 `shared/coding-usage-view.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废跑在 Mac 上的那些时刻：来源 `mac` 与 `mac-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）；账号与云端的灯不受 Mac 存活影响。
+- 活动灯：任一来源的最近事件在 `shared/coding-usage-view.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废跑在 Mac 上的那些时刻：来源 `mac` 与 `mac-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）；账号、云端与 Omarchy 的灯不受 Mac 存活影响。卡片上的来源标识：Mac 笔记本、Omarchy 台式机、其余云端（`src/components/live/vibecoding/marks.tsx#ActiveBadge`），三者各占一槽（`src/lib/coding-agents.ts#codingActivitySlots`）。
 - 来源状态：参与合计的来源这一轮采集失败（`error`）时，读数旁标 Partial（有读数）或 Unavailable（没有读数），悬停写出每个来源的状况（含被账号级来源覆盖的 `superseded`）；没有行的地方一律画「—」，不当成 0。
 - 限额另走可滞后层（见下一节），按 id 贴到同一行上。
 
@@ -227,6 +228,10 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 ### 前台应用图标直传 R2
 - **系统原生编码**：Mac 端使用 macOS 原生接口把前台应用图标缩成小图并计算 SHA-256，直传 R2。
 - **只收对象键**：上报信封仅包含 `<sha256>.png` 对象键，服务端杜绝接收 Base64 或图片二进制文件，避免增加 Worker 内存开销。
+
+### Omarchy 桌面
+- Linux 那台 Omarchy 机器由 [`reporters/omarchy-reporter`](../reporters/omarchy-reporter/README.md) 上报前台窗口，是独立来源 `omarchy`，不并进 Mac 的 `desktop`；应用图标同样由上报器直传 R2，信封只带对象键。
+- 状态核心只存最新一份，不推送、不失效缓存，站点暂不展示。
 
 ---
 

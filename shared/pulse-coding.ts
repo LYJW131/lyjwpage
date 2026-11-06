@@ -1,6 +1,6 @@
 import { object } from './json';
 
-export { CODING_OBSERVATION_HOLD_MS, cloudAgentActivity, CODING_AGENT_MAC, CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, codingBand } from './pulse-coding-features';
+export { CODING_OBSERVATION_HOLD_MS, cloudAgentActivity, CODING_AGENT_MAC, CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_OMARCHY, codingBand } from './pulse-coding-features';
 export type { CodingBandValue, CodingBandSegment } from './pulse-coding-features';
 
 export type CodingObservation = {

@@ -10,6 +10,8 @@ export const CODING_USAGE_SOURCES = {
   "agents-otlp": { scope: "environment", ingest: "/api/ingest/agents/otlp", otlp: true },
   // 同一个 OTLP 入口，由 ingress 按验过的 Access 凭据（lyjwpage-mac）分到这里：Mac 上 agent 自带遥测推来的用量。
   "mac-otlp": { scope: "device", ingest: "/api/ingest/agents/otlp", otlp: true },
+  // 同上，凭据是 lyjwpage-omarchy：Omarchy 那台机器上 Claude Code 的内置遥测。
+  "omarchy-otlp": { scope: "device", ingest: "/api/ingest/agents/otlp", otlp: true },
 } as const satisfies Record<CodingUsageSource, { scope: CodingUsageScope; ingest: string; otlp: boolean }>;
 
 export type OtlpCodingSource = { [K in CodingUsageSource]: (typeof CODING_USAGE_SOURCES)[K]["otlp"] extends true ? K : never }[CodingUsageSource];
