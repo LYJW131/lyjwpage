@@ -6,7 +6,7 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import DevinIcon from "@lobehub/icons/es/Devin/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
-import { Cloud } from "lucide-react";
+import { Cloud, Monitor } from "lucide-react";
 import type { ComponentType } from "react";
 import { MODEL_ICON_MAPPINGS, MODEL_ICONS_VERSION } from "virtual:model-icons";
 
@@ -28,6 +28,8 @@ export function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"
       {sources.map((source, index) =>
         codingSourceOnMac(source) ? (
           <MacBookProIcon key={source} className="size-3.5" aria-label={labels[index]} />
+        ) : source === "omarchy-otlp" ? (
+          <Monitor key={source} className="size-3.5" aria-label={labels[index]} />
         ) : (
           <Cloud key={source} className="size-3.5" aria-label={labels[index]} />
         ),

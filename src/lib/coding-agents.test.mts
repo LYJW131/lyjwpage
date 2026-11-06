@@ -75,9 +75,18 @@ test("活动灯：本机与远端各占一格、可同时亮；Mac 亲口离线�
   const both = codingActivitySlots(activity, false);
   assert.equal(both.mac?.source, "mac");
   assert.equal(both.remote?.source, "agents-otlp");
-  assert.deepEqual(codingActivitySlots(activity, true), { mac: null, remote: activity[0] });
-  assert.deepEqual(codingActivitySlots([activity[1]!], true), { mac: null, remote: null });
-  assert.deepEqual(codingActivitySlots([], false), { mac: null, remote: null });
+  assert.deepEqual(codingActivitySlots(activity, true), { mac: null, omarchy: null, remote: activity[0] });
+  assert.deepEqual(codingActivitySlots([activity[1]!], true), { mac: null, omarchy: null, remote: null });
+  assert.deepEqual(codingActivitySlots([], false), { mac: null, omarchy: null, remote: null });
+});
+
+test("Omarchy 有自己的槽：和云端同时在跑时两边都留下，Mac 离线也不作废", () => {
+  const activity = [
+    { source: "omarchy-otlp", lastActivityAt: 9_000, model: "claude-opus-5-5" },
+    { source: "agents-otlp", lastActivityAt: 8_000, model: "claude-opus-5-5" },
+  ] as const;
+  assert.deepEqual(codingActivitySlots([...activity], true), { mac: null, omarchy: activity[0], remote: activity[1] });
+  assert.equal(codingSourceLabel("omarchy-otlp"), "Omarchy");
 });
 
 test("OTLP 在哪按来源定：mac-otlp 是 Mac 上的 Devin CLI、随 Mac 离线作废，agents-otlp 是云端、照样亮", () => {
@@ -85,8 +94,8 @@ test("OTLP 在哪按来源定：mac-otlp 是 Mac 上的 Devin CLI、随 Mac 离�
     { source: "mac-otlp", lastActivityAt: 9_000, model: "swe-2-max" },
     { source: "agents-otlp", lastActivityAt: 8_000, model: "swe-2-max" },
   ];
-  assert.deepEqual(codingActivitySlots(devin, false), { mac: devin[0], remote: devin[1] });
-  assert.deepEqual(codingActivitySlots(devin, true), { mac: null, remote: devin[1] });
+  assert.deepEqual(codingActivitySlots(devin, false), { mac: devin[0], omarchy: null, remote: devin[1] });
+  assert.deepEqual(codingActivitySlots(devin, true), { mac: null, omarchy: null, remote: devin[1] });
   assert.equal(codingSourceLabel("mac-otlp"), "Mac");
   assert.equal(codingSourceLabel("agents-otlp"), "Cloud");
   assert.equal(codingSourceLabel("agents"), "Account");

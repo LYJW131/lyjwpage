@@ -1,9 +1,9 @@
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
-import { Cloud } from "lucide-react";
+import { Cloud, Monitor } from "lucide-react";
 
 import { BAND_TOP, IDLE_HEIGHT, LANE_HEIGHT, IdleLine, Rect, Tooltip, absolute, barPath, codingBars, percent, pulseDuration, runs, spans, type LaneItem, type LaneModel, type Range, type TraceStyle } from "@/components/live/pulse/lane-geometry";
 import { MacBookProIcon } from "@/components/ui/device-icons";
-import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
+import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC, CODING_AGENT_OMARCHY } from "@shared/pulse-coding";
 import { gamingSummaryDetail } from "@/lib/gaming-lane-detail";
 import { columnRows } from "@shared/pulse-columns";
 import { codingAgentSeconds, codingDriverSeconds } from "@shared/pulse-types";
@@ -17,6 +17,7 @@ const AGENT_SOURCES = [
   { bit: CODING_AGENT_MAC, label: "Mac", icon: <MacBookProIcon className="size-3.5" aria-hidden /> },
   { bit: CODING_AGENT_CLOUD, label: "Cloud", icon: <Cloud className="size-3.5" aria-hidden /> },
   { bit: CODING_AGENT_CURSOR, label: "Cursor", icon: <CursorIcon size={14} aria-hidden /> },
+  { bit: CODING_AGENT_OMARCHY, label: "Omarchy", icon: <Monitor className="size-3.5" aria-hidden /> },
 ] as const;
 
 function AgentSources({ mask }: { mask: number }) {

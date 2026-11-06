@@ -24,9 +24,10 @@ export type CodingBandValue = 0 | 1 | 2 | 3;
 export const CODING_AGENT_MAC = 1;
 export const CODING_AGENT_CLOUD = 2;
 export const CODING_AGENT_CURSOR = 4;
+export const CODING_AGENT_OMARCHY = 8;
 export type CodingBandSegment = { from: number; to: number; value: CodingBandValue; agentSources: number };
 
-export function codingBand(observations: CodingObservation[], cursor: CursorObservation[], window: Coverage, cloudActivity: Coverage[] = []): CodingBandSegment[] {
+export function codingBand(observations: CodingObservation[], cursor: CursorObservation[], window: Coverage, cloudActivity: Coverage[] = [], omarchyActivity: Coverage[] = []): CodingBandSegment[] {
   type Slice = Coverage & { human: boolean; agent: boolean };
   const mac: Slice[] = [];
   const sorted = [...observations].sort((a, b) => a.t - b.t);
@@ -39,13 +40,14 @@ export function codingBand(observations: CodingObservation[], cursor: CursorObse
   }
   const account = cursorWindowFeatures([...cursor].sort((a, b) => a.t - b.t), window);
   const cloud = clip(mergeCoverage(cloudActivity), window);
-  const edges = [...new Set([...mac, ...account.coverage, ...account.activeCoverage, ...cloud].flatMap((part) => [part.from, part.to]))].sort((a, b) => a - b);
+  const omarchy = clip(mergeCoverage(omarchyActivity), window);
+  const edges = [...new Set([...mac, ...account.coverage, ...account.activeCoverage, ...cloud, ...omarchy].flatMap((part) => [part.from, part.to]))].sort((a, b) => a - b);
   const at = <T extends Coverage>(list: T[], cursorIndex: { i: number }, from: number, to: number): T | null => {
     while (cursorIndex.i < list.length && list[cursorIndex.i].to <= from) cursorIndex.i++;
     const part = list[cursorIndex.i];
     return part && part.from <= from && part.to >= to ? part : null;
   };
-  const macAt = { i: 0 }, coveredAt = { i: 0 }, activeAt = { i: 0 }, cloudAt = { i: 0 };
+  const macAt = { i: 0 }, coveredAt = { i: 0 }, activeAt = { i: 0 }, cloudAt = { i: 0 }, omarchyAt = { i: 0 };
   const segments: CodingBandSegment[] = [];
   for (let i = 0; i + 1 < edges.length; i++) {
     const from = edges[i], to = edges[i + 1];
@@ -53,8 +55,9 @@ export function codingBand(observations: CodingObservation[], cursor: CursorObse
     const covered = at(account.coverage, coveredAt, from, to);
     const cursorActive = at(account.activeCoverage, activeAt, from, to);
     const cloudActive = at(cloud, cloudAt, from, to);
-    if (!slice && !covered && !cloudActive) continue;
-    const agents = (slice?.agent ? CODING_AGENT_MAC : 0) | (cloudActive ? CODING_AGENT_CLOUD : 0) | (cursorActive ? CODING_AGENT_CURSOR : 0);
+    const omarchyActive = at(omarchy, omarchyAt, from, to);
+    if (!slice && !covered && !cloudActive && !omarchyActive) continue;
+    const agents = (slice?.agent ? CODING_AGENT_MAC : 0) | (cloudActive ? CODING_AGENT_CLOUD : 0) | (cursorActive ? CODING_AGENT_CURSOR : 0) | (omarchyActive ? CODING_AGENT_OMARCHY : 0);
     const value = ((slice?.human ? 1 : 0) + (agents ? 2 : 0)) as CodingBandValue;
     const previous = segments.at(-1);
     if (previous && previous.to === from && previous.value === value && previous.agentSources === agents) previous.to = to;

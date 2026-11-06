@@ -126,7 +126,7 @@ Claude 的一律不收、记一行 `[otlp] delta temporality points skipped` 的
 Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上次导出以来的增量，没用量的那几次不发。它的序列不含起点
 （起点每个窗口都在走），`coding:otlp` 的 `windows` 记每条序列已经计到的时刻：窗口起点早于它的是重发，整点跳过；
 晚到的旧窗口也一起跳过（少算，不多算）。Devin 不发费用指标，有 token 的日子 `costComplete` 为假。会话数按 agent 分开记
-（`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 看 `agents-otlp` 里所有 agent 的桶（Mac 上的 Devin 进 `mac-otlp`，不在这里）。
+（`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 看 `agents-otlp` 里所有 agent 的桶（Mac 上的 Devin 进 `mac-otlp`，不在这里）；`omarchy-otlp` 的桶同法另算一份，Pulse 编码带里记成 Omarchy（`shared/pulse-coding-features.ts#CODING_AGENT_OMARCHY`）。
 `mac-otlp`、`omarchy-otlp` 走同一套做法，计数器各存在 `coding:otlp:<来源>`（`shared/coding-store.ts#codingOtlpKey`），各来源的会话数、窗口互不相干。
 
 Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有

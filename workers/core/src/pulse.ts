@@ -146,8 +146,8 @@ function coveredMs(spans: { from: number; to: number }[]): number {
   return total;
 }
 
-export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], window: PulseWindow, cloudActivity: Coverage[] = []): PulseCodingLane {
-  const band = codingBand(observations, cursor, window, cloudActivity);
+export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], window: PulseWindow, cloudActivity: Coverage[] = [], omarchyActivity: Coverage[] = []): PulseCodingLane {
+  const band = codingBand(observations, cursor, window, cloudActivity, omarchyActivity);
   const rows = band.flatMap((segment) => {
     const at = span(window, segment.from, segment.to);
     return at.endSec > at.startSec ? [{ ...at, value: segment.value, agentSources: segment.agentSources }] : [];
@@ -317,7 +317,7 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     window,
     lanes: {
       coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), window,
-        cloudAgentActivity(tokenBuckets["agents-otlp"] ?? null)),
+        cloudAgentActivity(tokenBuckets["agents-otlp"] ?? null), cloudAgentActivity(tokenBuckets["omarchy-otlp"] ?? null)),
       tokens: tokensLaneView(tokenBuckets, window),
       listening: stateLaneView("listening", lane("listening", 0), window, parsed(rows[6], parseListeningTrace)),
       watching: stateLaneView("watching", lane("watching", 2), window),

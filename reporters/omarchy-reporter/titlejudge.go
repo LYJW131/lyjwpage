@@ -212,6 +212,8 @@ func (j *titleJudge) resolve(applicationName, appID, title string) titleStatus {
 		return titleNone
 	case containsApp(j.rules.trusted, appID):
 		return titleTrusted
+	case strings.TrimSpace(j.rules.apiKey) == "":
+		return titleUnavailable
 	}
 	key := titleKey(appID, title)
 	if i := j.index(key); i >= 0 {
@@ -224,7 +226,7 @@ func (j *titleJudge) resolve(applicationName, appID, title string) titleStatus {
 		}
 		return titleStatus(e.Verdict)
 	}
-	if strings.TrimSpace(j.rules.apiKey) == "" || j.failures[key] >= titleMaxRetries {
+	if j.failures[key] >= titleMaxRetries {
 		return titleUnavailable
 	}
 	j.scheduleLocked(pendingTitle{applicationName, appID, title}, 0)
@@ -295,7 +297,9 @@ func (j *titleJudge) fire(app string) {
 	p, ok := j.pending[app]
 	key := titleKey(p.appID, p.title)
 	apiKey := strings.TrimSpace(j.rules.apiKey)
-	if !ok || j.index(key) >= 0 || j.inFlight[key] || apiKey == "" {
+	// Rules may have changed since the title was queued: switched off or listed means it never leaves.
+	stale := !j.rules.enabled || containsApp(j.rules.blacklist, p.appID) || containsApp(j.rules.trusted, p.appID)
+	if !ok || stale || j.index(key) >= 0 || j.inFlight[key] || apiKey == "" {
 		j.mu.Unlock()
 		return
 	}

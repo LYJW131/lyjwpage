@@ -181,6 +181,21 @@ func TestTitleJudgeFlow(t *testing.T) {
 	if j2.resolve("Docs", "browser", "Swift docs") != titleDisabled {
 		t.Fatal("switch off")
 	}
+	j2.configure(titleRules{enabled: true})
+	if j2.resolve("Docs", "browser", "Swift docs") != titleUnavailable {
+		t.Fatal("without a key even cached verdicts report no title")
+	}
+	// A title queued before the switch went off is never sent.
+	j2.configure(titleRules{enabled: true, apiKey: "k"})
+	if j2.resolve("Docs", "browser", "queued then switched off") != titleJudging {
+		t.Fatal("should queue")
+	}
+	j2.configure(titleRules{enabled: false, apiKey: "k"})
+	asked := calls.Load()
+	time.Sleep(titleSettleDelay + 200*time.Millisecond)
+	if calls.Load() != asked {
+		t.Fatal("queued title was sent after the switch went off")
+	}
 	// Clearing drops the owner's calls too, and stays cleared after a restart.
 	j2.clear()
 	if len(j2.review()) != 0 || len(newTitleJudge(path).review()) != 0 {
