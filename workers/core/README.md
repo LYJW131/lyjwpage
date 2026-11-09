@@ -277,9 +277,9 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   回放一段录下来的 iPhone 连续播放（`shared/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
   口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`shared/pulse-listening-replay.test.mts` 守住每分钟一轮与活跃档（`workers/collector` 的 `ACTIVE_POLL_MS`）一轮的下限。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
-  `pulse:token-buckets:agents-otlp` 现算，切片规则见 `shared/pulse-coding-features.ts#codingBand`（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
+  `pulse:token-buckets:agents-otlp`、Omarchy 的 `pulse:token-buckets:omarchy-otlp` 现算，切片规则见 `shared/pulse-coding-features.ts#codingBand`（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
-  或云端 Claude Code / Devin CLI 在这个 5 分钟桶里有用量（`shared/pulse-coding-features.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
+  或云端 Claude Code / Devin CLI、Omarchy 上的 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding-features.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
   Cursor 那一路的覆盖也算「看得见」：Mac 离线而 Cursor 覆盖着且没有活动时画 0（观测到没有 agent 活动），
   这时前台其实是未知。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
 - **充电瓦数** `pulse:v2:charging` `{t, watts, device?}`，上限 `CHARGING_SAMPLE_CAP`。闸门见 `planChargingSample`：

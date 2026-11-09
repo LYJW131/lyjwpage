@@ -258,3 +258,12 @@ test("只收普通文件：字符设备（Action 里被换掉的 .mcp.json）、
   assert.equal(isRegularFile("scripts"), false);
   assert.equal(isRegularFile("no-such-file"), false);
 });
+
+test("是不是 lyjw 的账号在 verify-receipt.ts 以外另判一份被拦，调 isTrustedUser 与注释里的字样放行", () => {
+  // 028ddd8 的 scripts/review-sieve.ts 与 scripts/pr-gate/threads.ts
+  const sieve = 'import { TRUSTED_AUTHOR_IDS } from "./verify-receipt.ts";\nconst trusted = (user: User | undefined) => TRUSTED_AUTHOR_IDS.has(user?.id ?? 0);';
+  assert.deepEqual(rules("scripts/review-sieve.ts", sieve), ["trusted-author@1", "trusted-author@2"]);
+  assert.deepEqual(rules("scripts/pr-gate/threads.ts", "const a = 1;\nconst x = { lastByLyjw: TRUSTED_AUTHOR_IDS.has(last.user?.id ?? 0) };"), ["trusted-author@2"]);
+  assert.equal(rules("scripts/verify-receipt.ts", "const TRUSTED_AUTHOR_IDS = new Set([1]);").length, 0);
+  assert.equal(rules("scripts/pr-gate/github.ts", "// 名单在 TRUSTED_AUTHOR_IDS\nexport const isTrustedAuthor = (pull: Pull) => isTrustedUser(pull.user);").length, 0);
+});
