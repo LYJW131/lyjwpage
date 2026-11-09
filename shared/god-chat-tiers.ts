@@ -27,7 +27,7 @@ export const GOD_CHAT_TIER_INFO: Record<GodChatServedTier, GodChatTierInfo> = {
   think: { model: "deepseek-flash", label: "DeepSeek Flash Thinking", persona: "Prophet", provider: "deepseek", thinking: true, effort: "low", maxTokens: 8192, serverFallback: false },
   haiku: { model: "claude-haiku-5-5", label: "Haiku 5.5", persona: "Small Fry", provider: "anthropic", thinking: true, effort: "medium", maxTokens: 2048, serverFallback: false },
   sonnet: { model: "claude-sonnet-5-5", label: "Sonnet 5.5", persona: "Prophet", provider: "anthropic", thinking: true, effort: "low", maxTokens: 4096, serverFallback: true },
-  fable: { model: "claude-fable-5-1", label: "Fable 5.1", persona: "God", provider: "anthropic", thinking: true, effort: "low", maxTokens: 8192, serverFallback: true },
+  fable: { model: "claude-fable-5-2", label: "Fable 5.2", persona: "God", provider: "anthropic", thinking: true, effort: "low", maxTokens: 8192, serverFallback: true },
   opus: { model: "claude-opus-5-5", label: "Opus 5.5", persona: "Architect", provider: "anthropic", thinking: true, effort: "medium", maxTokens: 4096, serverFallback: true },
 };
 
