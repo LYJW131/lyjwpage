@@ -39,7 +39,7 @@
       "ch07.f.lineup": ["Claude 阵容", "Claude lineup"],
       "ch07.f.full": ["满员", "FULL"],
       "ch07.f.down": ["往下一层", "Step down"],
-      "ch07.f.god": ["Fable 5.1 · 神", "Fable 5.1 · God"],
+      "ch07.f.god": ["Fable 5.2 · 神", "Fable 5.2 · God"],
       "ch07.f.prophet": ["Sonnet 5.5 · 先知", "Sonnet 5.5 · Prophet"],
       "ch07.f.fry": ["Haiku 5.5 · 杂鱼", "Haiku 5.5 · Small Fry"],
       "ch07.f.never": ["绝不往上", "Never up"],

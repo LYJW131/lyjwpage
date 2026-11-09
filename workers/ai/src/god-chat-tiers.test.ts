@@ -50,7 +50,7 @@ test("兜底模型的展示名从 id 推，本档模型用本档的名字", () =
   assert.equal(modelLabel("claude-opus-4-8"), "Opus 4.8");
   assert.equal(modelLabel("claude-opus-5"), "Opus 5");
   assert.equal(modelLabel("claude-opus-4-8-20260115"), "Opus 4.8");
-  assert.equal(modelLabel("claude-fable-5-1"), "Fable 5.1");
+  assert.equal(modelLabel("claude-fable-5-2"), "Fable 5.2");
 });
 
 test("三个档位的默认强度与合法的消息级强度都在当前访客消息之前生效", () => {

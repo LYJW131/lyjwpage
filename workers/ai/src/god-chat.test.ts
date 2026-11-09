@@ -119,7 +119,7 @@ test("trace 不进 system，也不带任何自由文本", () => {
   assert.deepEqual(model.filter((m) => m.role === "system"), [{ role: "system", content: [], output_config: { effort: "medium" } }]);
   const note = (model[0].content as { text: string }[])[1].text;
   assert.doesNotMatch(note, /ignore/i);
-  assert.match(note, /another Claude model standing in for the God \(Fable 5\.1\), which declined it after it called get_site_status for coding\.\]$/);
+  assert.match(note, /another Claude model standing in for the God \(Fable 5\.2\), which declined it after it called get_site_status for coding\.\]$/);
   const capped = parseGodChatRequest({ turnstileToken: "t", messages: [user("q"), { role: "assistant", content: "a", trace: { searches: 99 } }, user("q2")] });
   assert.equal(capped?.messages[1].trace?.searches, GOD_CHAT_LIMITS.maxWebSearches);
 });

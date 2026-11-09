@@ -23,7 +23,7 @@ const { ChatQuota } = await import("./chat/quota.ts");
 
 type Iteration = Anthropic.Beta.BetaIterationsUsage[number];
 const cacheFields = { cache_creation: null, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, input_tokens: 100 };
-const message = (output_tokens: number, model = "claude-fable-5-1"): Iteration => ({ ...cacheFields, type: "message", model, output_tokens });
+const message = (output_tokens: number, model = "claude-fable-5-2"): Iteration => ({ ...cacheFields, type: "message", model, output_tokens });
 const fallbackMessage = (output_tokens: number, model = "claude-opus-4-8"): Iteration => ({ ...cacheFields, type: "fallback_message", model, output_tokens });
 
 test("计费输出：没有兜底时各轮加起来，与顶层一致", () => {
