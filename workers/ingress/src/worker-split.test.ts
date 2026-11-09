@@ -17,7 +17,11 @@ test("split: server reports bypass the state core and land in the lag layer, the
   assert.equal(w.calls.ready, 0);
   assert.equal((await readLag<{ id: string }>(w.lag, LAG_KEYS.server))?.data.id, "misaka-jp");
   assert.equal((await readLag<{ commit: string }>(w.lag, LAG_KEYS.reporterServer))?.data.commit, "abc1234");
-  assert.equal(w.calls.archived.length, 1, "server hours go to D1");
+  assert.deepEqual(
+    w.calls.archived.map((batch) => batch.map((sql) => /INTO (\w+)/.exec(sql)?.[1])),
+    [["server_hours"], ["server_identity"]],
+    "server hours and the private identity row go to D1 in separate batches",
+  );
   assert.deepEqual(w.calls.revalidated, [[SERVER_TAG]]);
 });
 

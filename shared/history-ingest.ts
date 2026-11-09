@@ -150,10 +150,12 @@ export function limitStatements(db: HistoryDb, rows: readonly LimitHourRow[]): H
   ]);
 }
 
+// 迁移 0011 之前写下的小时行，load5_max 起的几列为 NULL；SQLite 多参数 MAX / MIN 遇 NULL 得 NULL，所以先 COALESCE。
 const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu_percent_sum, cpu_percent_max,
     load1_sum, load1_max, memory_used_bytes_sum, memory_total_bytes, rx_bytes_per_sec_max, tx_bytes_per_sec_max,
-    traffic_cycle_start, traffic_rx_bytes, traffic_tx_bytes, uptime_seconds, last_observed_at)
-  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    traffic_cycle_start, traffic_rx_bytes, traffic_tx_bytes, uptime_seconds, last_observed_at,
+    load5_max, load15_max, memory_available_bytes_min, disk_used_bytes, disk_total_bytes, rx_bytes, tx_bytes)
+  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(host, hour_at) DO UPDATE SET samples = samples + 1,
     cpu_percent_sum = cpu_percent_sum + excluded.cpu_percent_sum,
     cpu_percent_max = MAX(cpu_percent_max, excluded.cpu_percent_max),
@@ -167,7 +169,15 @@ const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu
     traffic_rx_bytes = excluded.traffic_rx_bytes,
     traffic_tx_bytes = excluded.traffic_tx_bytes,
     uptime_seconds = excluded.uptime_seconds,
-    last_observed_at = excluded.last_observed_at
+    last_observed_at = excluded.last_observed_at,
+    load5_max = MAX(COALESCE(load5_max, excluded.load5_max), excluded.load5_max),
+    load15_max = MAX(COALESCE(load15_max, excluded.load15_max), excluded.load15_max),
+    memory_available_bytes_min = MIN(COALESCE(memory_available_bytes_min, excluded.memory_available_bytes_min),
+      excluded.memory_available_bytes_min),
+    disk_used_bytes = excluded.disk_used_bytes,
+    disk_total_bytes = excluded.disk_total_bytes,
+    rx_bytes = excluded.rx_bytes,
+    tx_bytes = excluded.tx_bytes
   WHERE excluded.last_observed_at > server_hours.last_observed_at`;
 
 // 拒绝乱序旧样本是去重的代价：未逐条记账时，无法将旧样本与重放区分。
@@ -189,6 +199,13 @@ export function serverHourStatements(db: HistoryDb, status: ServerStatus): Histo
     status.traffic?.txBytes ?? null,
     Math.round(status.uptimeSeconds),
     status.observedAt,
+    status.load5,
+    status.load15,
+    status.memoryAvailableBytes,
+    status.diskUsedBytes,
+    status.diskTotalBytes,
+    status.networkRxBytes,
+    status.networkTxBytes,
   )];
 }
 
