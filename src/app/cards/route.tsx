@@ -20,6 +20,7 @@ import { QuestNowCard } from "@/components/live/quest-now-card";
 import { ServerCard } from "@/components/live/server-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
+import { usableCardKinds } from "@/components/live/vibecoding/reset-cards";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
@@ -70,14 +71,11 @@ const QUEST_HEIGHT = 98;
 // 须与 src/components/live/vibecoding/compact-agents.tsx 的行高同步。
 const COMPACT_AGENT_ROW_PX = 57;
 const VIBE_CODING_BASE_HEIGHT = 724;
+// 重置卡按钮组一行加上方 gap-3；须与 src/components/live/vibecoding/agent-panel.tsx 的摘要区排版同步。
+const RESET_CARD_TOGGLE_PX = 38;
 
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
 
-// README 是静态图，点不了重置卡切换，按钮组只会多占高度、把卡底裁掉。
-function withoutResetCards(limits: FirstScreen<"limits">): FirstScreen<"limits"> {
-  if (!limits.ok) return limits;
-  return { ...limits, data: { ...limits.data, claudeResetCards: undefined } };
-}
 // still：内容不随时间变（聊天卡），不标抓取时间。
 // height：内容随数据增减行的卡按这次的数据给出高度，盖过 ReadmeCard.height。
 type Rendered = { element: ReactElement; sample: boolean; still?: boolean; height?: number };
@@ -289,10 +287,14 @@ const CARDS: Record<string, ReadmeCard> = {
         status("coding"), status("codingNow"), status("limits"), status("limitsHistory"),
       ]);
       const rows = codingAgentRows(coding.ok ? coding.data : null, codingNow.ok ? codingNow.data : null, limits.ok ? limits.data : null);
+      const claude = rows.find((row) => row.id === "claude");
+      const resetCardToggleShown = !!claude && usableCardKinds(claude.limits, limits.ok ? limits.data.claudeResetCards : null).length > 0;
       return {
-        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={withoutResetCards(limits)} historyFallback={history} />,
+        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} historyFallback={history} />,
         sample: false,
-        height: VIBE_CODING_BASE_HEIGHT + rows.filter((row) => row.row === "compact").length * COMPACT_AGENT_ROW_PX,
+        height: VIBE_CODING_BASE_HEIGHT
+          + rows.filter((row) => row.row === "compact").length * COMPACT_AGENT_ROW_PX
+          + (resetCardToggleShown ? RESET_CARD_TOGGLE_PX : 0),
       };
     },
   },

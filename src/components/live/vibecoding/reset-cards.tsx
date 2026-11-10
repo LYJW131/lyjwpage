@@ -1,10 +1,10 @@
 "use client";
 
-import { FABLE_WEEKLY_SHARE_PERCENT, isFableLimit, weeklyLimit } from "@/components/live/vibecoding/limits";
+import { isFableLimit, weeklyLimit } from "@/components/live/vibecoding/limits";
 import { forecastWithCard, type LimitForecast } from "@/lib/limit-forecast";
 import { cn } from "@/lib/utils";
 import type { VibeCodingLimit } from "@shared/types";
-import type { ClaudeResetCards } from "@shared/vibecoding-limits";
+import { FABLE_WEEKLY_SHARE_PERCENT, type ClaudeResetCards } from "@shared/vibecoding-limits";
 
 export type ResetCardKind = keyof ClaudeResetCards;
 
@@ -26,14 +26,18 @@ function percentAfter(kind: ResetCardKind, forecast: LimitForecast, limits: Vibe
   return forecast.usedPercent - (fableUsed * FABLE_WEEKLY_SHARE_PERCENT) / 100;
 }
 
+export function usableCardKinds(limits: VibeCodingLimit[], cards: ClaudeResetCards | null | undefined): ResetCardKind[] {
+  if (!cards) return [];
+  return (["fable", "standard"] as const).filter((kind) => cards[kind] > 0 && (kind !== "fable" || limits.some(isFableLimit)));
+}
+
 export function resetCardScenarios(
   forecast: LimitForecast | null,
   limits: VibeCodingLimit[],
   cards: ClaudeResetCards | null,
 ): ResetCardScenario[] {
   if (!forecast || !cards) return [];
-  return (["fable", "standard"] as const)
-    .filter((kind) => cards[kind] > 0 && (kind !== "fable" || limits.some(isFableLimit)))
+  return usableCardKinds(limits, cards)
     .map((kind) => ({
       kind,
       label: CARD_LABELS[kind],

@@ -21,3 +21,5 @@ Thread titles are「<任务> · 定时任务」. Prompt texts (with the new bran
 **How to move a routine again:** update_trigger cannot change the bound session. Ask the coordinator for a new thread, read its session id and designated branch (get_session → outcomes.branches), create_trigger with persistent_session_id and the same prompt (swap branch names), read back with list_triggers, then disable and rename the old trigger. Anthropic 动态 needs the LYJW MCP Portal connector in the new session ([[x-mcp-portal]]).
 
 Related: [[commit-identity-signing]], [[lyjwpage-daily-review-routine]], [[skill-mining-routine]], [[anthropic-updates-routine]], [[morning-report-routine]], [[collector-superfan-routine]], [[repo-memory-mirror]].
+
+**Paused 2026-11-11 02:44 SGT at lyjw's request:** all except 08:41 Anthropic 动态 set enabled=false (read back). Re-enable with update_trigger enabled=true when lyjw asks. Note: with 晨报 off, nobody relays the Anthropic digest; its file is still written to anthropic-updates/<date>.md.

@@ -1,98 +1,69 @@
 # lyjwpage project
-- Owner: lyjw (GitHub LYJW131). Chinese. Repo https://github.com/LYJW131/lyjwpage (personal site). Goal: keep evolving the site on cutting-edge tech.
-- **Production domain is `https://lyjw.me`.** `lyjw.dev` is ONLY the branch-preview domain (`<branch>.preview.lyjw.dev`): [[prod-domain-lyjw-me]].
+- Owner: lyjw (GitHub LYJW131). Chinese. Repo https://github.com/LYJW131/lyjwpage. Goal: keep evolving the site on cutting-edge tech.
+- Prod domain `https://lyjw.me`; `lyjw.dev` is only branch previews `<branch>.preview.lyjw.dev`: [[prod-domain-lyjw-me]].
 
-## How lyjw wants us to work (put the relevant ones in every brief)
-- **Copy the existing in-repo pattern first** (lyjw 2026-10-29「先按站点当前类似的实现来做」, after CodeQL issue design changed many times in one day): before designing any automation/workflow/feature, find the closest existing one (e.g. standing issues #185/#280: lyjw opens the issue, bots only comment, fix PRs say `Refs #N`) and mirror it; deviate only with a stated reason.
-- **Thread effort per thread** (lyjw 2026-10-26): reading a link → `effort: low`; harder work → high/xhigh. Default Opus medium.
-- **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct address stays "你" (#313).
-- **Times in SGT** (e.g. "18:07 (SGT)") in everything shown to lyjw.
-- **Read official docs before calling an API** (lyjw 2026-10-23).
-- **Bare link = summarize, then judge;** if it may help the site, research how it would apply. No numbered proposal lists unless asked (2026-10-20).
-- **Reports:** one Artifact, never .md; 书页 style, ASD-STE100 short sentences: [[report-book-style]].
-- **New concepts: make lyjw think**, never block work: [[teach-new-concepts]].
-- **Latest stack, no legacy compat** (2026-10-15); exception: iOS reporter endpoints keep working.
-- **Exploring directions is allowed;** raise doubts early, closing a PR is not sunk cost: [[explore-directions]].
-- **Don't over-engineer** (「你过度设计了 提示词改一下就行了」): smallest change that works; small code additions aren't a cost. Asked why something was blocked/red and the cause is the guard or a non-blocking check → explain, let lyjw pick looser or stricter, don't tighten (「太过度防御了」): [[no-edge-case-hardening]].
-- **A vendor announcement is not a change** (「他只是宣布了 没有生效这么快」, 2026-10-31): report the impact, change code only when the reporter's raw data changes: [[announcement-is-not-a-change]].
-- **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
-- **Re-run transient build/deploy failures without asking.**
-- **Do it yourself if a tool can** (MCP/API/CLI/RC); ask lyjw only for hands or decisions (2026-10-22).
-- **Never ask lyjw to paste/run terminal commands** (「这很蠢」): use Mac Remote Control, ask for one approval click if blocked. Exception: Mac offline → lyjw may ask for the command (2026-10-24).
-- **Plans needing lyjw's decisions → interactive HTML plan page** (skill `lyjwpage-html-plan`): [[html-plan-skill]].
-- **Links as markdown** `[text](url)`: [[links-as-markdown]].
-- **Never auto-resolve shipped threads;** only lyjw resolves ("存档讨论串" = resolve it).
-- **Merge autonomy:** small changes and asked-for work merge at once; big direction needs lyjw's go; cloud can't push main, so PR then merge. CI waits by tier: [[merge-ci-wait-tiers]].
-- **Merge method:** <3 commits squash, ≥3 merge commit; enforced. Messages via `pnpm merge-message`: [[merge-commit-format]].
-- **Project threads skip repo hooks and nested rules; skills load** via Setup script symlinks. Follow AGENTS.md guard rules by hand: [[thread-sessions-skip-repo-hooks]].
-- **UI/UX changes need lyjw's OK after screenshots** (desktop + mobile, decision card once preview is up; exempt: clear bug fixes, and small changes lyjw named that only alter existing behavior with no new UI — merge after verification, keep Before | After table): [[design-md-ui-approval]], [[ui-before-after-reference-lines]], [[ink-tokens-keep-chroma]]. Removing an element means re-laying out, never leaving an empty slot (lyjw 2026-11-01「空一行在这里很恶心」, #788).
-- **UI PRs open with an unfolded Before | After table in the PR description** (t3code/Theo style, #765, 2026-10-29): the coding thread (not the verifier) shoots main/lyjw.me vs branch, pushes to `verify-shots/threads/<branch>/`, raw URLs; desktop + 375 rows, optional `(unchanged)` row. Only for UI/UX PRs. Put this in UI briefs.
-- **Screenshots/fixtures internally consistent** (「太假了」): one scene via `pnpm dev:scene <name>`; README cards are live `/cards/*.svg`; pain points /mnt/project-files/fixtures/痛点.md.
-- **Bot review only for real logic changes;** read every Devin/Codex/Claude review; fix only real bugs, reply「边缘情况，不改」to edge cases; one review-fix push, then merge (lyjw 2026-10-28); Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]].
-- **Verify receipt screenshots:** verifier keeps only 1–2 shots that show the change (max 4), folded in `<details>` (lyjw 2026-10-28「很多图片都是没有意义的」). A push that started no build gets rebuilt at once: [[workers-builds-parallel-race]].
-- **Post-merge:** check /api/version only; real prod test only for cache/purge, first-screen SSR, fonts, prod-only bindings.
-- **Bulk record reading → Haiku/Sonnet worker, never Opus:** [[batch-reading-goes-to-haiku]].
-- **Big-change PRs: run skill `lyjwpage-pr-review` (own Devin swe-2-max reviewer, in the cloud container, replaced swe-loop) first, unasked:** [[pr-review-auto]].
-- **Verification → Haiku 5.5 high worker** (skill `lyjwpage-verify`), lead spot-checks one: [[verification-haiku-worker]]; first-screen changes also `site-verify reload`: [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; Haiku accepts animation frames (#490).
-- **Verify Action in GitHub Actions:** gaps warn, never block; state (labels, high effort, notes-only reuse, incremental re-verify): [[verify-action-state]]; design: [[verify-in-actions-plan]].
-- **Verify A/B (#665) decided 2026-10-29 10:43 SGT: no switch.** A = Claude Code verifier keeps signing receipts; B = pi SDK verifier (`verify-pi` job, Haiku 5.5 via API key) keeps running as advisory only (artifact `verify-ab-pi`, never blocks, ~$3/day). Daily 21:07 watch stopped; re-read on request. Report: <private claude.ai link> (72 runs: B found 9 real minor issues, A steadier; B fails on UI-heavy PRs at 20-min cap): [[verify-pi-ab-watch]].
-- **Claude Actions stay on the subscription setup token;** no Max-plan API credit, no entrypoint stripping, no static API keys: [[claude-actions-billing-wif]].
-- **Throwaway test PRs get the `do-not-merge` label** (scripts read the label, never the title); gates block them.
-- **Chat testing never asks lyjw to send homepage chats;** use direct API calls, Turnstile test key, or ChatLog via Cloudflare MCP (workers/ai/README.md).
-- **Decision cards:** coordinator re-posts open cards in project chat and relays lyjw's choice. **Check precedent first** (lyjw 2026-11-01 00:05 SGT「这里可以加」, from jsnnsa's taste-judge article): if memory/not-adopting/HUMAN.md already answers the same kind of question, decide by it and cite the source instead of posting a card; irreversible steps and UI OKs still wait. Rule in AGENTS.md 工作方式.
-- **No task board;** progress lives in threads.
-- **Hand-offs carry lyjw's constraints:** [[handoff-carry-user-constraints]].
-- **Process steps go in the brief:** bug threads get 「改代码前先造一条会报红的复现」, threads that change code get 「开 PR 前的验证派 Haiku 子代理」; written only in skills/AGENTS.md, Opus skipped both, in the task text it did both 3/3 (eval 2026-10-26): [[agent-knowledge-eval-plan]].
-- **Secrets** piped on the Mac with `rotate-secret`, never pasted: [[credentials-pipe-only]]. Secret checks that flag memory get fixed, not the memory: [[repo-memory-mirror]].
-- **Commit identity:** as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
-- **X/Twitter:** use the `LYJW MCP Portal` connector (X official MCP as lyjw; reads bookmarks and likes): [[x-mcp-portal]]. When the MCP misses or truncates info (or the connector is missing), call api.x.com via proxy (app-only, public only) yourself and keep going, no asking (lyjw 2026-10-29): [[x-api-via-proxy]].
-- **Claude plan rename** (Max 5x→Max, Max 20x→Ultra): 5h limit gone in real reporter data; #788 (2026-11-01 00:52 SGT) dropped the 5h bar. lyjw 2026-11-01 01:04 SGT then asked to show the NEW plan names via mapping (「套餐名按新版显示吧 映射」), overriding the earlier no-mapping stance for this case; follow-up in thread 跟进 Claude 套餐改名的影响, which is also fixing the empty-slot layout.
-- HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
+## How lyjw wants us to work (put relevant ones in briefs)
+- **Copy the closest in-repo pattern first** (e.g. standing issues #185/#280: lyjw opens, bots comment, fix PRs `Refs #N`); deviate only with a stated reason.
+- Thread effort: reading a link → low; harder work → high/xhigh.
+- Call lyjw "lyjw" in third person everywhere (never 站主/owner/他/they); direct address "你". Times in SGT.
+- Read official docs before calling an API. Do it yourself if a tool can; ask lyjw only for hands or decisions.
+- Bare link = summarize, then judge; research application if useful. No numbered proposal lists unless asked.
+- Reports: one Artifact, 书页 style, short ASD-STE100 sentences: [[report-book-style]]. New concepts: make lyjw think, never block: [[teach-new-concepts]].
+- Latest stack, no legacy compat (except iOS reporter endpoints). Exploring allowed; raise doubts early: [[explore-directions]].
+- Don't over-engineer; when asked why something was blocked by a guard, explain and let lyjw choose, don't tighten: [[no-edge-case-hardening]].
+- A vendor announcement is not a change; code changes only when reporter raw data changes: [[announcement-is-not-a-change]].
+- Waits have timeouts (15 min hand loops, `--timeout` deploys): [[waits-have-timeouts]]. Re-run transient build/deploy failures without asking.
+- **No-config route first** (lyjw 2026-11-11「你有这种事情为什么不早说啊 还要我改东西」): before asking lyjw to touch a setting, offer what needs none (Cloudflare MCP etc.), check the field is editable, name what else depends on it: [[no-config-route-first]].
+- **Never merge anything lyjw hasn't approved into main just to make a preview work** (lyjw 2026-11-11「不可能给你这样的 以后也是」). lyjw must click through the real feature on the branch preview; make the preview carry the data on the branch itself.
+- Never ask lyjw to paste/run terminal commands; use Mac Remote Control (exception: Mac offline).
+- Plans needing decisions → interactive HTML plan page (skill `lyjwpage-html-plan`): [[html-plan-skill]]. Links as markdown.
+- Never auto-resolve shipped threads; only lyjw resolves ("存档讨论串").
+- Merge: small/asked-for work merges at once; big direction needs lyjw's go; PR then merge: [[merge-ci-wait-tiers]]. <3 commits squash, ≥3 merge commit, `pnpm merge-message`: [[merge-commit-format]].
+- Threads skip repo hooks; follow AGENTS.md guard rules by hand: [[thread-sessions-skip-repo-hooks]].
+- **UI/UX changes need lyjw's OK after desktop + 375 screenshots** (exempt: clear bug fixes, small named behavior changes): [[design-md-ui-approval]], [[ui-before-after-reference-lines]], [[ink-tokens-keep-chroma]]. Removing an element means re-laying out, no empty slot (#788). UI PRs open with an unfolded Before | After table shot by the coding thread, pushed to `verify-shots/threads/<branch>/` (#765).
+- README live cards show the site faithfully, controls included; grow height, never drop elements: [[readme-cards-mirror-site]].
+- Fixtures internally consistent: `pnpm dev:scene <name>`; pain points /mnt/project-files/fixtures/痛点.md.
+- Bot review only for real logic changes; fix real bugs, reply「边缘情况，不改」to edge cases; one fix push then merge; Codex ≤3 rounds: [[merge-requires-bot-review-pass]].
+- Verify: Haiku 5.5 high worker (skill `lyjwpage-verify`), keep 1–2 meaningful shots in `<details>`: [[verification-haiku-worker]], [[first-screen-reload-check]], [[workers-builds-parallel-race]]. Actions verify warns, never blocks: [[verify-action-state]]. Verify A/B (#665): no switch, pi verifier advisory only: [[verify-pi-ab-watch]].
+- Post-merge: check /api/version only, unless cache/SSR/fonts/prod bindings.
+- Bulk record reading → Haiku/Sonnet worker: [[batch-reading-goes-to-haiku]]. Big PRs: run skill `lyjwpage-pr-review` unasked: [[pr-review-auto]], [[pr-review-devin-reviewer]].
+- Claude Actions on subscription setup token: [[claude-actions-billing-wif]]. Throwaway PRs get `do-not-merge` label.
+- Chat testing: never ask lyjw to send homepage chats (workers/ai/README.md).
+- Decision cards: coordinator re-posts open cards and relays choices. Check precedent first (memory/not-adopting/HUMAN.md) and decide by it; irreversible steps and UI OKs still wait.
+- No task board. Hand-offs carry constraints: [[handoff-carry-user-constraints]].
+- Briefs include process steps: bug → 「改代码前先造一条会报红的复现」; code change → 「开 PR 前的验证派 Haiku 子代理」: [[agent-knowledge-eval-plan]].
+- Secrets via `rotate-secret` on Mac: [[credentials-pipe-only]]. Commits as lyjw signed, Claude Co-Authored-By: [[commit-identity-signing]].
+- X: `LYJW MCP Portal` connector; fallback api.x.com via proxy without asking: [[x-mcp-portal]], [[x-api-via-proxy]].
+- Claude plan rename (Max 5x→Max, 20x→Ultra): 5h bar dropped (#788); show new names via mapping (lyjw 2026-11-01).
+- HUMAN.md = lyjw-facing collaboration guide; keep in sync.
 
 ## Tools and environment
-- **Devin CLI can take work** (skill `lyjwpage-devin-dispatch`): [[devin-free-tier-limit]].
-- Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys, CF config writes, credential reads, remote branch deletes. misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
-- Cloud Anthropic test key `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`, never printed: [[cloud-env-gaps]].
-- Egress-injected APIs: OpenRouter ([[openrouter-egress]]), misaka.io (`/v3/mc2/metrics/account-throughput` only; strip email/name), Gemini ([[gemini-video-qa-result]]), Apple Music ([[apple-music-user-api]]), TypeSafe Jev, Exa, Parallel, tokens.ci.
-- **Cloud Claude OTLP needs `OTEL_EXPORTER_OTLP_HEADERS` in env vars** (main process skips the egress proxy); Devin OTLP ~92% accurate: [[cloud-otlp-telemetry-audit]].
-- **tokens.ci Stop hook** at user level via Setup script: [[tokens-ci-cloud-hook]].
-- **Site previews:** `<branch>.preview.lyjw.dev` only, never `*-site.lyjw.workers.dev`: [[preview-access-removed]]. Non-site preview comments auto-minimized (#676).
-- Collector manual run: GitHub Actions "Run Collector Jobs".
-- Repo memory mirror `.claude/memory/`, daily 03:15 routine: [[repo-memory-mirror]].
-- Old account project: [[old-account-project-import]]. wrangler → cf CLI partial: [[cf-cli-migration]].
-- **lyjw.page** (bought 2026-10-29) 301-redirects to lyjw.me via Cloudflare (all one-level subdomains, path+query kept, null MX/SPF/DMARC reject); record in docs/ops-facts.md (#747).
+- Devin CLI: skill `lyjwpage-devin-dispatch`, [[devin-free-tier-limit]].
+- Mac RC folder ~/Developer/lyjwpage (auto mode blocks prod deploys, CF config writes, credential reads, remote branch deletes). misaka-jp via dsm jump host; agents-reporter docker /opt/lyjwpage.
+- Cloud Anthropic key `$LYJWPAGE_ANTHROPIC_API_KEY`, never printed: [[cloud-env-gaps]]. Egress APIs: OpenRouter, misaka.io (throughput only), Gemini, Apple Music, Jev, Exa, Parallel, tokens.ci: [[openrouter-egress]], [[apple-music-user-api]].
+- OTLP: [[cloud-otlp-telemetry-audit]], [[tokens-ci-cloud-hook]].
+- Previews only `<branch>.preview.lyjw.dev`: [[preview-access-removed]].
+- Collector manual run: Actions "Run Collector Jobs". Memory mirror `.claude/memory/` daily 03:15: [[repo-memory-mirror]]. [[old-account-project-import]], [[cf-cli-migration]].
+- lyjw.page 301 → lyjw.me (#747, docs/ops-facts.md).
 
 ## Routines
-- **All six moved to new threads 2026-10-28 06:33 SGT** (old signing key revoked); trigger/session/branch table and how to move again: [[routine-bindings]]. Old triggers disabled, not deleted. New routine sessions' auto mode blocks self-merge ([Merge Without Review]) because prompt text isn't lyjw's words; fix = lyjw's own approval written into the routine prompt (asked in 记忆镜像 thread 2026-10-29).
-- 04:00 daily code review: [[lyjwpage-daily-review-routine]]. CodeQL (2026-10-29): being reworked to the #185/#280 pattern — lyjw-opened standing issue (replacing bot-opened #761), bot only comments on alert changes, fix PRs `Refs #N`.
-- 04:53 skill-mining + drift review: [[skill-mining-routine]].
-- 08:41 Anthropic updates digest: [[anthropic-updates-routine]].
-- 4x daily collector superfan: [[collector-superfan-routine]].
-- 09:00 morning report in「晨报 · 定时任务」(moved from 08:56, lyjw 2026-10-31): [[morning-report-routine]].
-- Routine prompts change only from the routine's own session (text in /mnt/project-files/routine-prompts/, update_trigger + read back).
-- [[agent-automation-practices]], [[token-efficiency-review]].
+- **Paused by lyjw 2026-11-11 02:44 SGT**（「把最近的定时任务都停了吧 就留anthropic动态那个」）: review, skill-mining, collector, 晨报, memory mirror disabled (not deleted); only 08:41 Anthropic 动态 runs. Re-enable only when lyjw asks: [[routine-bindings]].
+- Six routines, bindings and how to move: [[routine-bindings]]. Self-merge blocked unless lyjw's approval is in the routine prompt.
+- **Gaps are expected:** lyjw pauses this project in Claude on purpose when the site needs no changes (lyjw 2026-11-11 02:05 SGT); routines don't run then and fire once each on return. Not a bug; don't investigate or report: [[routines-pause-when-project-idle]].
+- 04:00 code review [[lyjwpage-daily-review-routine]]; 04:53 skill-mining [[skill-mining-routine]]; 08:41 Anthropic digest [[anthropic-updates-routine]]; 4x collector [[collector-superfan-routine]]; 09:00 晨报 [[morning-report-routine]]. CodeQL moving to #185/#280 pattern.
+- Routine prompts change only from the routine's own session (/mnt/project-files/routine-prompts/). [[agent-automation-practices]], [[token-efficiency-review]].
 
 ## Decisions and state
-- **Aoko summon easter egg live** (#673 #690 #695, merge 55f94ba, 2026-10-27 01:20 SGT): dark mode, wide desktop, Konami code ↑↑↓↓←→←→BA Enter; runtime code in `src/components/space-backdrop/aoko*`; assets `public/mascots/aoko*.webp` (incl. `aoko-normal.webp`) prefetched on first key. Real normal-map lighting since #745 (2026-10-29; LIGHTS/GROUND in aoko-figure.ts). **Character-art production moved out (#738) to private repo LYJW131/character-art:** skill `.claude/skills/character-art`, export script `scripts/fx/aoko-fx-assets.ts`, preview `preview/index.html`; `.claude/rules/character-art.md` points there. When site Aoko shader constants/lights change, sync character-art `characters/aoko/coords.json`. Source library on lyjw's T9 drive, Jev catalog `~/Desktop/mahoyo-catalog/`. Unverified: real-GPU fps, real no-WebGL device. Summon not persisted (localStorage needs lyjw's OK). Handoff: /mnt/user-data/uploads/hearth/478f8dff-1229-4c8a-8ea4-be5c17177dc1/478f8dff-1229-4c8a-8ea4-be5c17177dc1.md
-- **PS5 in-game card live** (#743, 2026-10-29): uses n100 playstation-reporter presence; core infers session start.
-- **Site `/mcp` is public-only again** (#778, lyjw 2026-10-30): OAuth sign-in, `read_private_history` and Code Mode removed; private data goes only through lyjwhub's lyjwpage plugin via Service Binding to core `PrivateHistory`: [[private-data-inventory]].
-- **Limits history reads StateHub DO, D1 is archive-only** (#742, 2026-10-29); D1 has no public reader. DO keeps Pulse 7 d, limit hours 23 d; D1 complete only since archiving began (most tables ~09-28, coding obs 09-21, limit_hours 10-21); gaps 10-03/05/06 nights likely Mac offline (checked 2026-10-29).
-- **Visitor build guards relaxed** (#710, lyjw「太过度防御了」): only paths executed or auto-loaded before merge are denied; others dropped/flagged for review: [[visitor-build-relaxed]].
-- Git history slimming parked: [[repo-history-slim]]. Chat tiers/consent/logs: [[chat-tiers]]. DO locations: [[do-physical-locations]].
-- Workers Issues alert emails stay as-is (lyjw「不用了」): platform DO/D1 storage errors are not downgraded to warn. `/image` upstream-timeout 502s (~1/day) are by design.
-- **Cron late delivery** (Cloudflare): core and collector claim slots (#675, #681): [[core-heartbeat-slot-claim]], [[core-cron-internal-error]].
-- **Stored-but-not-public data inventory** and its only reader (lyjwhub plugin, not `/mcp`): [[private-data-inventory]].
-- Small settled site decisions: [[site-small-decisions]]. Claude limit forecast backtest, no change until ~4 hourly weeks: [[limit-forecast-backtest]]. Desktop CLS: [[desktop-cls-scrollbar]].
-- New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy.
-- iOS app paused; keep only its reporting endpoints.
-- **File-size rule (soft):** [[file-size-rule]]. README short; diagrams from `pnpm docs:diagrams`: [[readme-diagrams]].
-- [[sentry-exit-done]], [[api-rename-to-core]], [[same-origin-api-traps]].
-- First screen: [[first-screen-perf]], [[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]].
-- [[build-actions-migration]], [[avatar-watch-restored]], [[codeql-policy]], [[pulse-tokens-lane-coverage]].
-- **Not adopting** (don't re-propose; list and reasons): [[not-adopting]]. No reporter OTel migration: [[reporter-otel-decision]].
-- **Own change reviewer `agents/pr-review`** (Devin swe-2-max in the cloud thread, prompt tuned by eval; Cursor Free tier can't run the Agent SDK): [[pr-review-devin-reviewer]].
-- WebMCP eval CLI tried, 70/70, not in CI, rerun by hand: [[webmcp-evals-baseline]].
-- Jev comment check (advisory): [[jev-comment-check]]. Chat prefetch: [[idea-jev-context-prefetch]]. Chat web search: [[chat-web-search]].
-- .mjs→TS; no new `scripts/*.mjs`: [[mjs-to-ts-migration]].
-- **Baselines shrink-only;** only lyjw adds `baseline-exception`.
-- **HiTw93 rules 13/17/19 adopted** (lyjw 2026-10-29, #762): diagnose stops after 3 failed fixes and hands off to a new thread; a「回滚：」line in commits when git revert can't undo (merge-message carries it); `chat:probe` regression-set mode (rerun on model/prompt change). Report: <private claude.ai link>
+- Aoko summon easter egg live (dark, wide desktop, Konami code); code `src/components/space-backdrop/aoko*`; art production in private repo LYJW131/character-art (#738), sync `characters/aoko/coords.json` when shader lights change.
+- PS5 in-game card live (#743).
+- `/mcp` public-only (#778); private data only via lyjwhub plugin → core `PrivateHistory`: [[private-data-inventory]].
+- Limits history reads StateHub DO; D1 archive-only (#742).
+- **Reset cards** live (#802): lyjw states counts in chat → thread POSTs them; routes and semantics: [[reset-card-counts]].
+- Visitor build guards relaxed (#710): [[visitor-build-relaxed]]. [[repo-history-slim]], [[chat-tiers]], [[do-physical-locations]].
+- Workers alert emails stay as-is; `/image` 502s by design. Cron slots: [[core-heartbeat-slot-claim]], [[core-cron-internal-error]].
+- [[site-small-decisions]], [[limit-forecast-backtest]], [[desktop-cls-scrollbar]].
+- New model/source/Worker: update every sibling place incl. chat consent copy. iOS app paused.
+- [[file-size-rule]], [[readme-diagrams]], [[sentry-exit-done]], [[api-rename-to-core]], [[same-origin-api-traps]], [[first-screen-perf]], [[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]], [[build-actions-migration]], [[avatar-watch-restored]], [[codeql-policy]], [[pulse-tokens-lane-coverage]].
+- Not adopting: [[not-adopting]], [[reporter-otel-decision]]. [[webmcp-evals-baseline]], [[jev-comment-check]], [[idea-jev-context-prefetch]], [[chat-web-search]].
+- No new `scripts/*.mjs`: [[mjs-to-ts-migration]]. Baselines shrink-only; only lyjw adds `baseline-exception`.
+- HiTw93 rules adopted (#762): diagnose stops after 3 failed fixes; 「回滚：」line when revert can't undo; `chat:probe` regression mode.

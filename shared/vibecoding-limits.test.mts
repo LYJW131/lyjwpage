@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentLimitsLayoutKey, agentLimitsOf, mergeAgentLimits } from "./vibecoding-limits.ts";
+import { agentLimitsLayoutKey, agentLimitsOf, detectResetCardUse, mergeAgentLimits } from "./vibecoding-limits.ts";
 
 const window = {
   key: "claude.primary",
@@ -72,4 +72,38 @@ test("布局键只看来源集合，读数变了不算布局变化", () => {
   assert.equal(a, agentLimitsLayoutKey({ agents: { claude: { ...row, updatedAt: 9 }, codex: row } }));
   assert.notEqual(a, agentLimitsLayoutKey({ agents: { claude: row } }));
   assert.equal(agentLimitsLayoutKey(null), "[]");
+});
+
+test("用卡判据：同一窗口里读数往下掉就是用卡，不看两封之间用得多快，卡前全是 Fable 用量时两种都返回", () => {
+  const at = 1_800_000_000_000;
+  const resetsAt = at / 1000 + 3 * 86_400;
+  const row = (weekly: number, fable: number) => ({
+    plan: null,
+    limitsError: null,
+    updatedAt: at,
+    limits: [
+      { key: "weekly_all", label: null, group: null, windowMinutes: 10080, usedPercent: weekly, resetsAt },
+      { key: "claude-weekly-scoped-fable", label: "Fable only", group: null, windowMinutes: 10080, usedPercent: fable, resetsAt },
+    ],
+  });
+  assert.deepEqual(detectResetCardUse(row(20, 40), row(0, 0), at), ["fable", "standard"], "全是 Fable 用量，两种卡都说得通");
+  assert.deepEqual(detectResetCardUse(row(80, 99), row(32, 2), at), ["fable"], "卡后马上又用了一点");
+  assert.deepEqual(detectResetCardUse(row(80, 40), row(3, 2), at), ["standard"], "周卡后马上又用了一点");
+  assert.deepEqual(detectResetCardUse(row(80, 99), row(60, 30), at), ["fable"], "卡后到下一封之间用掉很多也认得出");
+  assert.deepEqual(detectResetCardUse(row(80, 40), row(45, 30), at), ["standard"], "比 Fable 卡能退到的还低");
+  assert.deepEqual(detectResetCardUse(row(41, 33), row(25, 0), at), ["fable"]);
+  assert.deepEqual(detectResetCardUse(row(60, 40), row(0, 0), at), ["standard"]);
+  assert.deepEqual(detectResetCardUse(row(3, 2), row(0, 0), at), ["fable", "standard"], "用得少也认得出");
+  assert.deepEqual(detectResetCardUse(row(41, 33), row(40, 33), at), [], "差 1 是取整");
+  const fableWindow = (weekly: number, fable: number, fableResetsAt: number) => {
+    const base = row(weekly, fable);
+    return { ...base, limits: [base.limits[0]!, { ...base.limits[1]!, resetsAt: fableResetsAt }] };
+  };
+  assert.deepEqual(
+    detectResetCardUse(fableWindow(20, 6, at / 1000 - 60), fableWindow(20, 0, at / 1000 + 7 * 86_400), at),
+    [],
+    "Fable 自己的窗口到点归零不是用卡",
+  );
+  assert.deepEqual(detectResetCardUse(row(41, 33), row(42, 34), at), []);
+  assert.deepEqual(detectResetCardUse(undefined, row(0, 0), at), []);
 });

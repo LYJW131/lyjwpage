@@ -45,6 +45,8 @@ test("凭据检测：真凭据报出来，记忆里常见的名字、引用、sh
   assert.deepEqual(hits(`${"ghp"}_AbCdEfGhIjKlMnOpQrStUvWxYz012345`), ["GitHub token", "opaque token"]);
   assert.deepEqual(hits("-----BEGIN PRIVATE KEY-----"), ["private key"]);
   assert.deepEqual(hits("ACCESS_CLIENT_SECRET=9f8e7d6c5b4a3210"), ["secret assignment"]);
+  assert.deepEqual(hits("ACCESS_CLIENT_SECRET: [ab12cd34ef56gh78ij90]"), ["secret assignment"]);
+  assert.deepEqual(hits("ACCESS_CLIENT_SECRET: [[ab12cd34ef56gh78ij90]]"), ["secret assignment"]);
   assert.deepEqual(hits("token Zx9Qw3Er5Ty7Ui9Op1As3Df5Gh7Jk9Lz1Xc3Vb5Nm7Qa9Ws"), ["opaque token"]);
   for (const benign of [
     "env var `LYJWPAGE_ANTHROPIC_API_KEY`; use `ANTHROPIC_API_KEY=\"$LYJWPAGE_ANTHROPIC_API_KEY\"`",
@@ -55,6 +57,7 @@ test("凭据检测：真凭据报出来，记忆里常见的名字、引用、sh
     "commit 5e077b49f0c5260d92dc70a1b2c3d4e5f6a7b8c9 merged",
     "Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY`, issue #185",
     "`workers/ai/src/build/github.ts#BUILD_READY_CHECKS`",
+    "Claude Actions on subscription setup token: [[claude-actions-billing-wif]].",
   ]) assert.deepEqual(hits(benign), [], benign);
 });
 
