@@ -14,7 +14,7 @@ export type AgentLimitsRow = {
 
 // Claude 账户里手上的重置卡张数。上报器读不到（服务端按调用客户端放行），由 lyjw 在讨论串里说、云端线程经
 // /api/ingest/agents/cards 写；跟限额分开存，免得上报器整行替换 claude 时冲掉。
-// fable：清零 Fable 窗口并把本周 Fable 用量从周额度里退回；standard：周额度清零。两种都不动重置时间。
+// fable：清零 Fable 窗口并把本周 Fable 用量从周额度里退回；standard：周额度连同 Fable 窗口一起清零。两种都不动重置时间。
 export type ClaudeResetCards = {
   fable: number;
   standard: number;
