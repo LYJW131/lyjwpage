@@ -3,6 +3,7 @@ import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { AppVersionCard } from "@/components/app-version-card";
 import { CardBoundary } from "@/components/card-boundary";
+import { ClawdPerch } from "@/components/clawd-perch";
 import { StaleTabReload } from "@/components/stale-tab-reload";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
@@ -349,9 +350,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 />
               </CardBoundary>
 
+              <ClawdPerch />
+
               <div
                 id="watching"
-                className="mt-6 scroll-mt-28 border-t border-line pt-5 defer-offscreen-always [contain-intrinsic-size:auto_270px]"
+                className="scroll-mt-28 pt-3 defer-offscreen-always [contain-intrinsic-size:auto_270px]"
               >
                 <div className="mb-3 flex items-baseline justify-between">
                   <h3 className="text-sm font-medium">Recently Watched</h3>

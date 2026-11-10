@@ -1,0 +1,53 @@
+{
+  "base": "/mascots/clawd/",
+  "bodyPx": 59.4,
+  "patrol": { "speed": 24, "edgeMin": 24, "walkMs": [2200, 2400], "lookMs": [1000, 2200], "resumeMs": 900 },
+  "wave": { "reach": 0.65, "top": 0.1, "leaveMs": 250, "driftMs": 350, "afterMs": 150 },
+  "acts": {
+    "everyMs": 11000,
+    "chance": 0.55,
+    "recent": 5,
+    "cache": 6,
+    "list": [
+      ["Clawd-Thinking.json", 10],
+      ["Clawd-Coffee.json", 10],
+      ["Clawd-Laptop.json", 9],
+      ["Clawd-Phone.json", 8],
+      ["Clawd-Desktop.json", 7],
+      ["Clawd-Notebook.json", 7],
+      ["Clawd-Headphones.json", 6],
+      ["Clawd-Watch.json", 6],
+      ["Clawd-Turning.json", 6],
+      ["Clawd-Sunglasses.json", 5],
+      ["Clawd-Snooze.json", 4],
+      ["Clawd-Lightbulb.json", 4],
+      ["Clawd-Spark.json", 4],
+      ["Clawd-Swaying.json", 3],
+      ["Clawd-Juggling.json", 3],
+      ["Clawd-HulaHoop.json", 3],
+      ["Clawd-Bubble.json", 3],
+      ["Clawd-Fishing.json", 2],
+      ["Clawd-Watering.json", 2],
+      ["Clawd-BerryPicking.json", 2],
+      ["Clawd-Blooming.json", 2],
+      ["Clawd-Rainbow.json", 2],
+      ["Clawd-Rose.json", 2],
+      ["Clawd-Heart.json", 2],
+      ["Clawd-Arcade.json", 2],
+      ["Clawd-Meditating.json", 2],
+      ["Clawd-Excited.json", 1.5],
+      ["Clawd-JumpingHappy.json", 1.5],
+      ["Clawd-Dancing.json", 1.5],
+      ["Clawd-Confetti.json", 1],
+      ["Clawd-DancingHappy.json", 1],
+      ["Clawd-BreakDancing.json", 0.7],
+      ["Clawd-ConfettiHappy.json", 0.7]
+    ],
+    "holds": {
+      "Clawd-Coffee.json": { "at": 0.55, "ms": 4500 },
+      "Clawd-Watering.json": { "at": 0.6, "ms": 5000 }
+    }
+  },
+  "kite": { "everyMs": 12000, "chance": 0.45, "flyMs": [38000, 10000] },
+  "pry": { "knockMs": 650, "pryMs": 700, "unzipMs": 650, "lensHalf": 40, "falloff": 22, "crouch": 4, "push": 5, "land": 13 }
+}
