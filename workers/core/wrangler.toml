@@ -69,6 +69,8 @@ to = "StateHub"
 # Preview 不继承生产绑定，要用的绑定（DO、AI、限流）都得在下面重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
+# 仅本分支预览用来注入卡数让 lyjw 点按钮，合并前删掉。
+DEV_OVERRIDES = "true"
 UPSTREAM_API_URL = "https://lyjw.me"
 STORAGE_PREFIX = "lyjwpage-preview"
 ALLOWED_ORIGINS = "https://*.preview.lyjw.dev"
