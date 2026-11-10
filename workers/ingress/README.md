@@ -179,9 +179,9 @@ Claude Code 不把 `OTEL_*` 传给它运行的命令，`OTEL_EXPORTER_OTLP_PROTO
 回执：202 `{ ok: true, data }`；不是 POST 405；鉴权 401 / 403；请求体不合格 400 带原因；没绑 `LAG` 或写 KV 失败 503；预览版本 403。
 站点拿张数画「此刻用卡」的预测（`src/components/live/vibecoding/reset-cards.tsx`）。
 
-用卡自动扣张数：限额上报落可滞后层时（`src/lag-ingest.ts#commitLagIngest`），拿上一份 `claude` 读数比，周额度重置时间离到点还早、读数却清零，
-就当用了一张，记的张数减一并清 `limits` 首屏标签（判据 `shared/vibecoding-limits.ts#detectResetCardUse`）：Fable 清零且周额度正好退回 Fable 用量 × 50% 是 Fable 卡，
-周额度清零是周卡；记的已是 0 只记日志 `[reset-cards]`。新拿到卡仍要 lyjw 说一声。
+用卡自动扣张数：限额上报落可滞后层时（`src/lag-ingest.ts#commitLagIngest`），拿上一份 `claude` 读数比，周额度重置时间离到点还早、读数却往下掉了一截
+（同一窗口里用量只涨不跌，卡后到下一封上报之间又用掉一点也认得出），就当用了一张，记的张数减一并清 `limits` 首屏标签（判据 `shared/vibecoding-limits.ts#detectResetCardUse`）：
+周额度退回的正好是 Fable 掉的量 × 50% 是 Fable 卡，其余周额度往下掉的是周卡；记的已是 0 只记日志 `[reset-cards]`。新拿到卡仍要 lyjw 说一声。
 
 ## 部署通知
 

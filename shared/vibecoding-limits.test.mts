@@ -74,7 +74,7 @@ test("布局键只看来源集合，读数变了不算布局变化", () => {
   assert.equal(agentLimitsLayoutKey(null), "[]");
 });
 
-test("用卡判据：周额度全是 Fable 用量时一起归零也算 Fable 卡，小抖动不算", () => {
+test("用卡判据：读数在同一窗口里明显往下掉才算，卡后又用了一点也认得出，全是 Fable 用量时算 Fable 卡", () => {
   const at = 1_800_000_000_000;
   const resetsAt = at / 1000 + 3 * 86_400;
   const row = (weekly: number, fable: number) => ({
@@ -87,6 +87,8 @@ test("用卡判据：周额度全是 Fable 用量时一起归零也算 Fable 卡
     ],
   });
   assert.equal(detectResetCardUse(row(20, 40), row(0, 0), at), "fable");
+  assert.equal(detectResetCardUse(row(80, 99), row(32, 2), at), "fable", "卡后马上又用了一点");
+  assert.equal(detectResetCardUse(row(80, 40), row(3, 2), at), "standard", "周卡后马上又用了一点");
   assert.equal(detectResetCardUse(row(41, 33), row(25, 0), at), "fable");
   assert.equal(detectResetCardUse(row(60, 40), row(0, 0), at), "standard");
   assert.equal(detectResetCardUse(row(3, 2), row(0, 0), at), null);

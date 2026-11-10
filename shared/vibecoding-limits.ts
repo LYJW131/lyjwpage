@@ -30,10 +30,9 @@ const MAX_RESET_CARDS = 99;
 // Fable 条满格折合周额度的百分比（条的死区与 Fable 卡退回的周额度都按它算）。
 export const FABLE_WEEKLY_SHARE_PERCENT = 50;
 
-// 用卡判据：重置时间离到点还早，读数却从至少 MIN_USED 掉到不超过 CLEARED。
-// Fable 卡还要求周额度正好退回 Fable 用量 × 50%（差 REFUND_SLACK 以内），全是 Fable 用量时周额度也会归零，靠这条跟周卡分开。
-const RESET_CARD_MIN_USED_PERCENT = 5;
-const RESET_CARD_CLEARED_PERCENT = 1;
+// 用卡判据：同一个周窗口里用量只涨不跌，重置时间离到点还早、读数却掉了至少 MIN_DROP 就是用了卡；卡后到下一封上报之间可能又用掉一点，不要求归零。
+// Fable 卡退回的周额度是「Fable 掉的量 × 50%」（差 REFUND_SLACK 以内），对不上而周额度掉了的算周卡；全是 Fable 用量时两种都说得通，按 Fable 卡算。
+const RESET_CARD_MIN_DROP_PERCENT = 5;
 const RESET_CARD_REFUND_SLACK_PERCENT = 3;
 const NATURAL_RESET_SLACK_MS = 3_600_000;
 
@@ -47,13 +46,14 @@ export function detectResetCardUse(
   const [weeklyBefore, weeklyAfter] = [weekly(previous), weekly(next)];
   if (!weeklyBefore || !weeklyAfter || weeklyBefore.resetsAt == null) return null;
   if (weeklyBefore.resetsAt * 1000 <= at + NATURAL_RESET_SLACK_MS) return null;
+  const weeklyDrop = weeklyBefore.usedPercent - weeklyAfter.usedPercent;
   const [fableBefore, fableAfter] = [fable(previous), fable(next)];
-  const cleared = (before: number, after: number) => before >= RESET_CARD_MIN_USED_PERCENT && after <= RESET_CARD_CLEARED_PERCENT;
-  if (fableBefore && fableAfter && cleared(fableBefore.usedPercent, fableAfter.usedPercent)) {
-    const refund = weeklyBefore.usedPercent - weeklyAfter.usedPercent;
-    if (Math.abs(refund - (fableBefore.usedPercent * FABLE_WEEKLY_SHARE_PERCENT) / 100) <= RESET_CARD_REFUND_SLACK_PERCENT) return "fable";
-  }
-  return cleared(weeklyBefore.usedPercent, weeklyAfter.usedPercent) ? "standard" : null;
+  const fableDrop = fableBefore && fableAfter ? fableBefore.usedPercent - fableAfter.usedPercent : 0;
+  if (
+    fableDrop >= RESET_CARD_MIN_DROP_PERCENT &&
+    Math.abs(weeklyDrop - (fableDrop * FABLE_WEEKLY_SHARE_PERCENT) / 100) <= RESET_CARD_REFUND_SLACK_PERCENT
+  ) return "fable";
+  return weeklyDrop >= RESET_CARD_MIN_DROP_PERCENT ? "standard" : null;
 }
 
 export function parseClaudeResetCards(input: unknown): ClaudeResetCards {
