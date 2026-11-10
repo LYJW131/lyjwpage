@@ -3,10 +3,10 @@ import test from "node:test";
 
 import { SERVER_STALE_MS } from "@shared/freshness";
 import { installLagReader } from "@shared/lag";
-import { getServerSnapshot } from "@shared/lag-views";
+import { getAgentLimits, getServerSnapshot } from "@shared/lag-views";
 import { STATUS_VIEWS } from "@shared/status-views";
 import { MemoryKv } from "@shared/testing/memory-kv";
-import type { AgentLimitsPayload, ClaudeResetCards } from "@shared/vibecoding-limits";
+import type { AgentLimitsPayload, ClaudeResetCardStock } from "@shared/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 
 import { prepareIngest } from "@shared/ingest/prepare";
@@ -219,23 +219,43 @@ function claudeLimits(weekly: number, fable: number, resetsAt: number, at: numbe
   };
 }
 
-test("重置卡：读数显示用了卡就把记的张数减一，自然到点重置不算", async () => {
+test("重置卡：读数显示用了卡就划掉最早到期的那张，过期的不算，自然到点重置不算", async () => {
   const kv = new MemoryKv();
   const tag = STATUS_VIEWS.limits.tag;
   const resetsAt = Math.floor(NOW / 1000) + 3 * 86_400;
-  const cards = async () => (await readLag<ClaudeResetCards>(kv, LAG_KEYS.claudeResetCards))?.data;
-  await writeLag(kv, LAG_KEYS.claudeResetCards, { fable: 2, standard: 1 }, NOW);
+  const [soon, later, expired] = [resetsAt + 86_400, resetsAt + 30 * 86_400, Math.floor(NOW / 1000) - 60];
+  const cards = async () => (await readLag<ClaudeResetCardStock>(kv, LAG_KEYS.claudeResetCards))?.data;
+  await writeLag(kv, LAG_KEYS.claudeResetCards, { fable: [later, soon], standard: [later] }, NOW);
   await land(kv, "agents", claudeLimits(41, 33, resetsAt, NOW), NOW);
   assert.deepEqual(await land(kv, "agents", claudeLimits(25, 0, resetsAt, NOW + 60_000), NOW + 60_000), [tag]);
-  assert.deepEqual(await cards(), { fable: 1, standard: 1 });
+  assert.deepEqual(await cards(), { fable: [later], standard: [later] }, "先划快过期的");
   await land(kv, "agents", claudeLimits(60, 40, resetsAt, NOW + 120_000), NOW + 120_000);
   assert.deepEqual(await land(kv, "agents", claudeLimits(0, 0, resetsAt, NOW + 180_000), NOW + 180_000), [tag]);
-  assert.deepEqual(await cards(), { fable: 1, standard: 0 });
+  assert.deepEqual(await cards(), { fable: [later], standard: [] });
   await land(kv, "agents", claudeLimits(30, 10, resetsAt, NOW + 240_000), NOW + 240_000);
-  assert.deepEqual(await land(kv, "agents", claudeLimits(0, 0, resetsAt, NOW + 300_000), NOW + 300_000), [], "张数已是 0 不再减");
-  assert.deepEqual(await cards(), { fable: 1, standard: 0 });
+  assert.deepEqual(await land(kv, "agents", claudeLimits(0, 0, resetsAt, NOW + 300_000), NOW + 300_000), [], "没有周卡不再划");
+  assert.deepEqual(await cards(), { fable: [later], standard: [] });
   const nearReset = (resetsAt - 60) * 1000;
   await land(kv, "agents", claudeLimits(80, 50, resetsAt, nearReset - 60_000), nearReset - 60_000);
   await land(kv, "agents", claudeLimits(0, 0, resetsAt + 7 * 86_400, nearReset), nearReset);
-  assert.deepEqual(await cards(), { fable: 1, standard: 0 }, "到点的周重置不是用卡");
+  assert.deepEqual(await cards(), { fable: [later], standard: [] }, "到点的周重置不是用卡");
+
+  await writeLag(kv, LAG_KEYS.claudeResetCards, { fable: [expired], standard: [later] }, NOW);
+  await land(kv, "agents", claudeLimits(3, 2, resetsAt, NOW + 360_000), NOW + 360_000);
+  await land(kv, "agents", claudeLimits(0, 0, resetsAt, NOW + 420_000), NOW + 420_000);
+  assert.deepEqual(await cards(), { fable: [], standard: [] }, "分不出卡种时过期的 Fable 卡不算，扣周卡");
+});
+
+test("重置卡：对外只给此刻没过期的张数", async () => {
+  const kv = new MemoryKv();
+  const now = Math.floor(Date.now() / 1000);
+  await writeLag(kv, LAG_KEYS.limits, { agents: {} }, NOW);
+  await writeLag(kv, LAG_KEYS.claudeResetCards, { fable: [now + 86_400, now - 60], standard: [now + 60] }, NOW);
+  installLagReader((key) => readLag(kv, key));
+  try {
+    const { data } = await getAgentLimits();
+    assert.deepEqual(data.claudeResetCards, { fable: 1, standard: 1, updatedAt: NOW });
+  } finally {
+    installLagReader(null);
+  }
 });

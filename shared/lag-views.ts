@@ -31,7 +31,7 @@ import type {
   Workout,
   WorkoutsPayload,
 } from "@shared/types";
-import type { AgentLimitsPayload, ClaudeResetCards } from "@shared/vibecoding-limits";
+import { countResetCards, type AgentLimitsPayload, type ClaudeResetCardStock } from "@shared/vibecoding-limits";
 import { publicWorkout } from "@shared/workouts";
 
 export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<TimezonePayload>> {
@@ -69,10 +69,10 @@ export async function getServerSnapshot(): Promise<LagResult<ServerPayload>> {
 export async function getAgentLimits(): Promise<LagResult<AgentLimitsPayload>> {
   const [limits, cards] = await Promise.all([
     loadLag<AgentLimitsPayload>(LAG_KEYS.limits, "尚未收到限额上报"),
-    readLagEntry<ClaudeResetCards>(LAG_KEYS.claudeResetCards),
+    readLagEntry<ClaudeResetCardStock>(LAG_KEYS.claudeResetCards),
   ]);
   if (!cards) return limits;
-  return limits.map((data) => ({ ...data, claudeResetCards: { ...cards.data, updatedAt: cards.updatedAt } }));
+  return limits.map((data) => ({ ...data, claudeResetCards: { ...countResetCards(cards.data, Date.now()), updatedAt: cards.updatedAt } }));
 }
 
 export async function getReportersStatus(): Promise<LagResult<ReportersPayload>> {
