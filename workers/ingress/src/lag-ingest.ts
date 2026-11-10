@@ -4,7 +4,7 @@ import { LIMITS_TAG, SERVER_TAG } from "@shared/live-events";
 import { STATUS_VIEWS } from "@shared/status-views";
 import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@shared/reporter-ledger";
 import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@shared/types";
-import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@shared/vibecoding-limits";
+import { agentLimitsLayoutKey, detectResetCardUse, mergeAgentLimits, type AgentLimitsPayload, type ClaudeResetCards } from "@shared/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
 import { publicServer } from "@shared/server";
 import { publicWorkout } from "@shared/workouts";
@@ -34,6 +34,8 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
         const next = mergeAgentLimits(previous?.data ?? null, command.limits, command.receivedAt);
         writes.push(writeLag(kv, LAG_KEYS.limits, next, command.receivedAt));
         if (agentLimitsLayoutKey(previous?.data ?? null) !== agentLimitsLayoutKey(next)) tags.push(LIMITS_TAG);
+        const used = detectResetCardUse(previous?.data.agents.claude, next.agents.claude, command.receivedAt);
+        if (used && (await spendResetCard(kv, used, command.receivedAt)) && !tags.includes(LIMITS_TAG)) tags.push(LIMITS_TAG);
       }
       await Promise.all(writes);
       return tags;
@@ -66,6 +68,18 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
     default:
       return [];
   }
+}
+
+// 张数记的是 lyjw 说过的数，上报器读不到卡；读数显示用了一张就减一，已经是 0 的不动。
+async function spendResetCard(kv: LagStore, kind: keyof ClaudeResetCards, at: number): Promise<boolean> {
+  const cards = await readLag<ClaudeResetCards>(kv, LAG_KEYS.claudeResetCards);
+  if (!cards || cards.data[kind] <= 0) {
+    console.log("[reset-cards] 读数像用了卡，但记的张数是 0", kind);
+    return false;
+  }
+  await writeLag(kv, LAG_KEYS.claudeResetCards, { ...cards.data, [kind]: cards.data[kind] - 1 }, at);
+  console.log("[reset-cards] 认出用了一张", kind);
+  return true;
 }
 
 function writeTimezone(kv: LagStore, timezone: TimezoneActivity | null, at: number): Promise<void> {

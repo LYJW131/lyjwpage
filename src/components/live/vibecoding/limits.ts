@@ -1,5 +1,6 @@
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import type { VibeCodingLimit } from "@shared/types";
+import { FABLE_WEEKLY_SHARE_PERCENT } from "@shared/vibecoding-limits";
 
 const LIMIT_WARN_PERCENT = 75;
 const LIMIT_ALERT_PERCENT = 90;
@@ -121,7 +122,6 @@ export type WeeklyCap =
   | { session: VibeCodingLimit; sharePercent: number; note: string };
 
 // 条拉满对应周限额的百分比。Fable 是 50%；5 小时窗口按 lyjw 的经验值：Pro 与 Max 一周约 7 个窗口，Ultra 的 5 小时是 Pro 的 20 倍、周限额只有 10 倍，所以翻倍。没见过的套餐不画。
-export const FABLE_WEEKLY_SHARE_PERCENT = 50;
 const SESSION_WEEKLY_SHARE_PERCENT: Readonly<Record<string, number>> = {
   "Pro": 100 / 7,
   "Max": 100 / 7,

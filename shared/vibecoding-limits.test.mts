@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentLimitsLayoutKey, agentLimitsOf, mergeAgentLimits } from "./vibecoding-limits.ts";
+import { agentLimitsLayoutKey, agentLimitsOf, detectResetCardUse, mergeAgentLimits } from "./vibecoding-limits.ts";
 
 const window = {
   key: "claude.primary",
@@ -72,4 +72,24 @@ test("布局键只看来源集合，读数变了不算布局变化", () => {
   assert.equal(a, agentLimitsLayoutKey({ agents: { claude: { ...row, updatedAt: 9 }, codex: row } }));
   assert.notEqual(a, agentLimitsLayoutKey({ agents: { claude: row } }));
   assert.equal(agentLimitsLayoutKey(null), "[]");
+});
+
+test("用卡判据：周额度全是 Fable 用量时一起归零也算 Fable 卡，小抖动不算", () => {
+  const at = 1_800_000_000_000;
+  const resetsAt = at / 1000 + 3 * 86_400;
+  const row = (weekly: number, fable: number) => ({
+    plan: null,
+    limitsError: null,
+    updatedAt: at,
+    limits: [
+      { key: "weekly_all", label: null, group: null, windowMinutes: 10080, usedPercent: weekly, resetsAt },
+      { key: "claude-weekly-scoped-fable", label: "Fable only", group: null, windowMinutes: 10080, usedPercent: fable, resetsAt },
+    ],
+  });
+  assert.equal(detectResetCardUse(row(20, 40), row(0, 0), at), "fable");
+  assert.equal(detectResetCardUse(row(41, 33), row(25, 0), at), "fable");
+  assert.equal(detectResetCardUse(row(60, 40), row(0, 0), at), "standard");
+  assert.equal(detectResetCardUse(row(3, 2), row(0, 0), at), null);
+  assert.equal(detectResetCardUse(row(41, 33), row(42, 34), at), null);
+  assert.equal(detectResetCardUse(undefined, row(0, 0), at), null);
 });

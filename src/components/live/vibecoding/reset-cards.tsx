@@ -1,10 +1,10 @@
 "use client";
 
-import { FABLE_WEEKLY_SHARE_PERCENT, isFableLimit, weeklyLimit } from "@/components/live/vibecoding/limits";
+import { isFableLimit, weeklyLimit } from "@/components/live/vibecoding/limits";
 import { forecastWithCard, type LimitForecast } from "@/lib/limit-forecast";
 import { cn } from "@/lib/utils";
 import type { VibeCodingLimit } from "@shared/types";
-import type { ClaudeResetCards } from "@shared/vibecoding-limits";
+import { FABLE_WEEKLY_SHARE_PERCENT, type ClaudeResetCards } from "@shared/vibecoding-limits";
 
 export type ResetCardKind = keyof ClaudeResetCards;
 
