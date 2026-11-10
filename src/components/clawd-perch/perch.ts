@@ -33,15 +33,16 @@ const KITE_BODY = (() => {
 })();
 const KITE_LOOP = (() => {
   const aloft = KITE_FRAMES.map((f) => f.slice(0, Math.floor(kite.h * 0.3) * kite.w).some((c) => c !== 255));
-  let best: [number, number] = [0, KITE_FRAMES.length - 1];
+  // 候选从空开始：原版拿整段当初值，严格比长度永远换不掉，结果整段放出收回循环重播、收线时直接消失。
+  let best: [number, number] | null = null;
   let run: [number, number] | null = null;
   aloft.forEach((up, i) => {
     if (!up) return void (run = null);
     if (run) run[1] = i;
     else run = [i, i];
-    if (run[1] - run[0] > best[1] - best[0]) best = [...run];
+    if (!best || run[1] - run[0] > best[1] - best[0]) best = [...run];
   });
-  return best;
+  return best ?? ([0, KITE_FRAMES.length - 1] as [number, number]);
 })();
 
 export function clawdPerch(band: HTMLElement) {
