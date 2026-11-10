@@ -1,7 +1,7 @@
 {
   "base": "/mascots/clawd/",
   "bodyPx": 59.4,
-  "patrol": { "speed": 24, "edgeMin": 24, "walkMs": [2200, 2400], "lookMs": [1000, 2200], "resumeMs": 900, "noticePx": 220, "noticeLeaveMs": 1200, "dwellMs": 200 },
+  "patrol": { "speed": 24, "edgeMin": 24, "walkMs": [2200, 2400], "lookMs": [1000, 2200], "resumeMs": 900, "noticePx": 220, "noticeDelayMs": 500, "noticeLeaveMs": 1200 },
   "wave": { "reach": 0.65, "top": 0.1, "leaveMs": 250, "driftMs": 350, "afterMs": 150 },
   "acts": {
     "everyMs": 11000,
