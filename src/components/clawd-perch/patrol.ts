@@ -64,6 +64,7 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
   let turnAnim: AnimationItem | null = null;
   let turnFp: Footprint | null = null;
   let turning = false;
+  let turnDone: (() => void) | null = null;
 
   const startWalk = () => {
     walking = true;
@@ -155,6 +156,7 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
     const anim = turnAnim;
     const done = () => {
       anim.removeEventListener("complete", done);
+      turnDone = null;
       turnStage.style.visibility = "hidden";
       if (stopped || !turning) return;
       walkStage.style.visibility = "";
@@ -162,6 +164,7 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
       dir = next;
       startWalk();
     };
+    turnDone = done;
     anim.addEventListener("complete", done);
     anim.playSegments((dir > 0 ? TURN : [TURN[1], TURN[0]]) as [number, number], true);
   };
@@ -243,6 +246,9 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
       if (walking) stopWalk(false);
       hideLook();
       turning = false;
+      // 转身被打断时 complete 不会触发，回调要手动摘掉，否则下次转身时旧回调把方向改回去。
+      if (turnDone) turnAnim?.removeEventListener("complete", turnDone);
+      turnDone = null;
       turnAnim?.stop();
       turnStage.style.visibility = "hidden";
       nextAt = Infinity;
