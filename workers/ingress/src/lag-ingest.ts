@@ -35,7 +35,7 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
         writes.push(writeLag(kv, LAG_KEYS.limits, next, command.receivedAt));
         if (agentLimitsLayoutKey(previous?.data ?? null) !== agentLimitsLayoutKey(next)) tags.push(LIMITS_TAG);
         const used = detectResetCardUse(previous?.data.agents.claude, next.agents.claude, command.receivedAt);
-        if (used && (await spendResetCard(kv, used, command.receivedAt)) && !tags.includes(LIMITS_TAG)) tags.push(LIMITS_TAG);
+        if (used.length && (await spendResetCard(kv, used, command.receivedAt)) && !tags.includes(LIMITS_TAG)) tags.push(LIMITS_TAG);
       }
       await Promise.all(writes);
       return tags;
@@ -70,11 +70,12 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
   }
 }
 
-// 张数记的是 lyjw 说过的数，上报器读不到卡；读数显示用了一张就减一，已经是 0 的不动。
-async function spendResetCard(kv: LagStore, kind: keyof ClaudeResetCards, at: number): Promise<boolean> {
+// 张数记的是 lyjw 说过的数，上报器读不到卡；读数显示用了一张就减一，读数分不出卡种时扣手上有的那种，都是 0 就不动。
+async function spendResetCard(kv: LagStore, kinds: (keyof ClaudeResetCards)[], at: number): Promise<boolean> {
   const cards = await readLag<ClaudeResetCards>(kv, LAG_KEYS.claudeResetCards);
-  if (!cards || cards.data[kind] <= 0) {
-    console.log("[reset-cards] 读数像用了卡，但记的张数是 0", kind);
+  const kind = kinds.find((candidate) => (cards?.data[candidate] ?? 0) > 0);
+  if (!cards || !kind) {
+    console.log("[reset-cards] 读数像用了卡，但记的张数是 0", kinds);
     return false;
   }
   await writeLag(kv, LAG_KEYS.claudeResetCards, { ...cards.data, [kind]: cards.data[kind] - 1 }, at);
