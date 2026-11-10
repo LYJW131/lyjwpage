@@ -207,7 +207,7 @@
   - 状态：采用。只在深色模式挂载，落在 `src/components/space-backdrop/walker.ts`、`src/components/space-backdrop/rock-fx.ts`。
 - **[claude.dev](https://claude.dev/) 文章底部「相关文章」栏上巡逻的 Clawd**（Anthropic）
   - 是什么：claude.dev 文章页 `.more-sec .tabs-line` 那条线上的 `.clawd-perch`：Lottie 画的像素 Clawd 从右往左来回走，走到头播转身，歇下时眼睛跟着光标转，光标凑近就挥手；每 11 秒五成五概率从 33 段带权重的小动作里抽一段（喝咖啡、钓鱼、杂耍、跳舞等，最近演过的五段不重抽），每 12 秒四成五概率放一次像素风筝（放 38–48 秒，点风筝收线），进场是从右上跳下来落到线上。
-  - 取了什么：巡逻、转身、看光标、挥手、小动作和风筝的逻辑照原样移植（量眼睛位移建「4 行 × 3 列」视线表、换动画时按量出的身体中心和脚底对齐、300ms 一次只留一块舞台露面、减少动态效果时停在一个静止姿势）；37 段 Lottie 整份拷进 `public/mascots/clawd/`，风筝精灵数据拷进 `src/components/clawd-perch/clawd-kite.json`，播放器用 npm 的 `lottie-web`（MIT）轻量画布版，没拷它的 min.js。改动：挂在首页 Recently Watched 上方那条分隔线，深浅色都显示；进场换成自己做的「扒缝」：线先被里面顶两下，Clawd 蹲下再举手把上下两条线撑开，缝向两头拉开成通道，他落地后在两条线之间踱步；通道高度静态预留，扒缝只改画面不推内容；挥手改成监听整页指针，盒子本身不接指针事件，不挡上方卡片的点击；滚出视口就收起、线合上，再滚到底重新扒一次。
+  - 取了什么：巡逻、转身、看光标、挥手、小动作和风筝的逻辑照原样移植（量眼睛位移建「4 行 × 3 列」视线表、换动画时按量出的身体中心和脚底对齐、300ms 一次只留一块舞台露面、减少动态效果时停在一个静止姿势）；37 段 Lottie 整份拷进 `public/mascots/clawd/`，风筝精灵数据拷进 `src/components/clawd-perch/clawd-kite.json`，播放器用 npm 的 `lottie-web`（MIT）轻量画布版，没拷它的 min.js。改动：挂在首页 Recently Watched 上方那条分隔线，深浅色都显示；进场换成自己做的「扒缝」：线先被里面顶两下，Clawd 蹲下再举手把上下两条线撑开，缝向两头拉开成通道，他落地后在两条线之间踱步；通道高度静态预留，扒缝只改画面不推内容；原版只在踱步间隙的张望里跟光标、光标凑过去时它多半在走，这里改成光标进到身边（`clawd-perch.json` 的 `noticePx`）就停下一直盯着看，离开一会儿再走；挥手改成监听整页指针，盒子本身不接指针事件，不挡上方卡片的点击；滚出视口就收起、线合上，再滚到底重新扒一次。
   - 状态：采用。落在 `src/components/clawd-perch.tsx`、`src/components/clawd-perch/`，常量在 `src/components/clawd-perch/clawd-perch.json`。
 - **[Live2D Cubism 的自动眨眼](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Effect/CubismEyeBlink.cpp)**（`CubismEyeBlink`）
   - 是什么：Cubism SDK 的自动眨眼，默认闭眼 0.1s、闭住 0.05s、睁眼 0.15s，下一次眨眼的时刻随机。

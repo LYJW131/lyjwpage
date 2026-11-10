@@ -15,7 +15,7 @@ import {
 import type { AnimationItem } from "lottie-web";
 import type { Footprint, GazeMap } from "./stage";
 
-const { speed, edgeMin, walkMs, lookMs, resumeMs } = config.patrol;
+const { speed, edgeMin, walkMs, lookMs, resumeMs, noticePx, noticeLeaveMs } = config.patrol;
 // clawd-walking.json：0–4 帧起步，8–24 帧是一步一步走的循环；clawd-looking.json 的帧是眼睛看向各个方向；Clawd-Turning.json 15→22 帧是向左转身到向右，倒放就是反过来。
 const START = [0, 4];
 const STRIDE = [8, 24];
@@ -127,7 +127,25 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
   });
 
   let gazePending = false;
+  // 原版只在踱步间隙的张望里跟光标，光标凑过来时它多半在走、看不出来；光标进到身边就停下盯着看，离开一会儿再接着走。
+  let noticing = false;
+  const notice = (e: MouseEvent) => {
+    if (stopped || paused || reduced || !gaze) return;
+    const r = host.getBoundingClientRect();
+    const near = Math.hypot(e.clientX - (r.left + bodyX()), e.clientY - (r.bottom - 0.25 * stageH)) < noticePx;
+    if (near) {
+      noticing = true;
+      if (turning) return;
+      if (walking || lookStage.style.visibility === "hidden") stopWalk();
+      nextAt = Infinity;
+    } else if (noticing) {
+      noticing = false;
+      nextAt = performance.now() + noticeLeaveMs;
+    }
+  };
+
   const onMouse = (e: MouseEvent) => {
+    notice(e);
     if (stopped || walking || !gaze || !lookAnim || lookStage.style.visibility === "hidden" || gazePending) return;
     gazePending = true;
     requestAnimationFrame(() => {
@@ -257,6 +275,7 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
     },
     resume() {
       paused = false;
+      noticing = false;
       walkStage.style.visibility = "";
       nextAt = performance.now() + resumeMs;
     },
