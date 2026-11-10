@@ -55,6 +55,7 @@ test("凭据检测：真凭据报出来，记忆里常见的名字、引用、sh
     "commit 5e077b49f0c5260d92dc70a1b2c3d4e5f6a7b8c9 merged",
     "Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY`, issue #185",
     "`workers/ai/src/build/github.ts#BUILD_READY_CHECKS`",
+    "Claude Actions on subscription setup token: [[claude-actions-billing-wif]].",
   ]) assert.deepEqual(hits(benign), [], benign);
 });
 
