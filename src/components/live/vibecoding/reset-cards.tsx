@@ -1,6 +1,6 @@
 "use client";
 
-import { FABLE_WEEKLY_SHARE_PERCENT, isFableLimit } from "@/components/live/vibecoding/limits";
+import { FABLE_WEEKLY_SHARE_PERCENT, isFableLimit, weeklyLimit } from "@/components/live/vibecoding/limits";
 import { forecastWithCard, type LimitForecast } from "@/lib/limit-forecast";
 import { cn } from "@/lib/utils";
 import type { VibeCodingLimit } from "@shared/types";
@@ -41,6 +41,17 @@ export function resetCardScenarios(
       fromPercent: forecast.usedPercent,
       forecast: forecastWithCard(forecast, percentAfter(kind, forecast, limits)),
     }));
+}
+
+// 限额条跟着选的卡走：两种卡都清空本周 Fable，周额度取卡后的读数。
+export function limitsAfterCard(limits: VibeCodingLimit[], scenario: ResetCardScenario | null): VibeCodingLimit[] {
+  if (!scenario) return limits;
+  const weekly = weeklyLimit({ limits });
+  return limits.map((limit) => {
+    if (isFableLimit(limit)) return { ...limit, usedPercent: 0 };
+    if (limit === weekly) return { ...limit, usedPercent: scenario.forecast.usedPercent };
+    return limit;
+  });
 }
 
 function Option({ label, pressed, onClick }: { label: string; pressed: boolean; onClick: () => void }) {

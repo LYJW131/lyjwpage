@@ -7,7 +7,7 @@ import { useState, type ReactNode } from "react";
 import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
 import { LimitMeters } from "@/components/live/vibecoding/limit-table";
 import { LIMITS_SILENT, featuredLimitRows, loginExpiryNote } from "@/components/live/vibecoding/limits";
-import { ResetCardToggle, resetCardScenarios, type ResetCardKind } from "@/components/live/vibecoding/reset-cards";
+import { ResetCardToggle, limitsAfterCard, resetCardScenarios, type ResetCardKind } from "@/components/live/vibecoding/reset-cards";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
 import { SourceIssue } from "@/components/live/vibecoding/total-usage";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
@@ -81,12 +81,14 @@ export function AgentPanel({
     : 0;
   const { active, sources, model } = useAgentActive(row, macDeclaredOffline, clocks);
   const displayModel = model ? displayModelName(model) : "No model";
-  const limitRows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const loginNote = loginExpiryNote(row.authRefreshExpiresAt, now);
   const [cardKind, setCardKind] = useState<ResetCardKind | null>(null);
   const scenarios = resetCardScenarios(forecast, row.limits, resetCards);
   const scenario = scenarios.find((entry) => entry.kind === cardKind) ?? null;
   const shown = scenario?.forecast ?? forecast;
+  const limitRows = featuredLimitRows(
+    limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : { ...row, limits: limitsAfterCard(row.limits, scenario) },
+  );
   const limitItems = limitRows.map((item) =>
     item.kind === "limit"
       ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
