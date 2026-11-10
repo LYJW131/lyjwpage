@@ -50,7 +50,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 - `global_fetch_strictly_public`：让 `UPSTREAM_API_URL` 能访问同账号的生产自定义域，避免绕过 Worker 后返回 522。
 - `PREVIEW_COMMIT_SHA` 为 Builds 当前提交；组合入口仅在 `PREVIEW_WORKER=true` 时工作，并提供 `PREVIEW_REVISION_PATH` 供构建校验。
 
-预览绑定由 core 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
+预览绑定由 core 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入被隔离，上报入口不参加预览。已有端点的新字段会被生产那份整份盖掉：本地看用注入夹具；要让 lyjw 在分支预览上点，就只在本分支的 `[previews.vars]` 加 `DEV_OVERRIDES = "true"`，用 `DEV_WORKER_URL=<core 预览地址> pnpm dev:override` 或 `pnpm dev:scene` 往预览注入（`workers/core/README.md`「本地开发」），合并前撤掉这一行；不拆一个先合进 main 的小 PR 让生产先带上字段。
 
 core 与 site 的 Preview 和生产同服务名，Workers Issues 的摘要只能按服务名数、分不出 Preview，所以两边的 Preview 只留日志与 traces，关掉 Issues：core 写在 `wrangler.toml` 的 `[previews.observability]`，site 由 `scripts/site-preview.mjs#sitePreviewConfig` 生成。查 Preview 的报错用遥测查询，按有没有 `$workers.preview.slug` 区分。
 
