@@ -332,7 +332,6 @@ export function clawdPerch(band: HTMLElement) {
     );
   }
 
-  // 扒缝进场：线先被里面的东西顶两下，再蹲下、举手把上下两条撑开，最后缝向两头拉开成一条通道，落地开始踱步。
   let entryRaf = 0;
   const openNow = () => {
     rift.set({ amp: 1, half: band.clientWidth * 2, fall: 1, over: 0, cx: band.clientWidth / 2 });
