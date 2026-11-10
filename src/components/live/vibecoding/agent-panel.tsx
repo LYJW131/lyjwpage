@@ -2,11 +2,12 @@
 
 import ClaudeCodeText from "@lobehub/icons/es/ClaudeCode/components/Text";
 import NumberFlow from "@/components/ui/number-flow";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
 import { LimitMeters } from "@/components/live/vibecoding/limit-table";
 import { LIMITS_SILENT, featuredLimitRows, loginExpiryNote } from "@/components/live/vibecoding/limits";
+import { ResetCardToggle, resetCardScenarios, type ResetCardKind } from "@/components/live/vibecoding/reset-cards";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
 import { SourceIssue } from "@/components/live/vibecoding/total-usage";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
@@ -15,6 +16,7 @@ import { useStale } from "@/hooks/use-stale";
 import { agentUsageUrl } from "@/lib/agent-usage-url";
 import { codingSourceHealth, describeCodingSources, type CodingAgentRow } from "@/lib/coding-agents";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
+import type { ClaudeResetCards } from "@shared/vibecoding-limits";
 import type { LimitForecast } from "@/lib/limit-forecast";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +56,7 @@ export function AgentPanel({
   newWeek,
   timeZone,
   now,
+  resetCards,
 }: {
   row: CodingAgentRow;
   macDeclaredOffline: boolean;
@@ -63,6 +66,7 @@ export function AgentPanel({
   newWeek: boolean;
   timeZone: string | undefined;
   now: number;
+  resetCards: ClaudeResetCards | null;
 }) {
   const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const lastDay = row.usage?.lastDay ?? null;
@@ -79,6 +83,10 @@ export function AgentPanel({
   const displayModel = model ? displayModelName(model) : "No model";
   const limitRows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const loginNote = loginExpiryNote(row.authRefreshExpiresAt, now);
+  const [cardKind, setCardKind] = useState<ResetCardKind | null>(null);
+  const scenarios = resetCardScenarios(forecast, row.limits, resetCards);
+  const scenario = scenarios.find((entry) => entry.kind === cardKind) ?? null;
+  const shown = scenario?.forecast ?? forecast;
   const limitItems = limitRows.map((item) =>
     item.kind === "limit"
       ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
@@ -151,7 +159,7 @@ export function AgentPanel({
         >
           {row.plan?.label ?? "—"}
         </Stat>
-        {forecastStats(forecast).map((stat) => (
+        {forecastStats(shown).map((stat) => (
           <Stat key={stat.label} label={stat.label} title={stat.title}>{stat.value}</Stat>
         ))}
         <Stat label="Resets in">
@@ -161,10 +169,13 @@ export function AgentPanel({
 
       <div className="grid gap-6 border-t border-line pt-4 md:grid-cols-2 md:gap-8 lg:pt-5">
         <div className="flex min-w-0 flex-col justify-between gap-5">
-          <ForecastSummary forecast={forecast} newWeek={newWeek} timeZone={timeZone} />
+          <div className="grid gap-3">
+            <ForecastSummary forecast={shown} newWeek={newWeek} timeZone={timeZone} card={scenario} />
+            <ResetCardToggle scenarios={scenarios} selected={scenario?.kind ?? null} onSelect={setCardKind} />
+          </div>
           <LimitMeters items={limitItems} href={agentUsageUrl(row.id)} agentLabel={row.label} />
         </div>
-        <ForecastBlock forecast={forecast} newWeek={newWeek} timeZone={timeZone} />
+        <ForecastBlock forecast={shown} newWeek={newWeek} timeZone={timeZone} />
       </div>
     </div>
   );

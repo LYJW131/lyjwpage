@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收，站点不提供上报路由、rewrite 或转发 | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES`（另有 `/api/ingest/agents/otlp`）；校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/core` 的 `StateCore.commitIngest` |
 | 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
-| 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
+| 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名；上报器读不到的 Claude 重置卡张数也归它，路径 `/api/ingest/agents/cards` |
 | 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个上报方一把 Cloudflare Access service token（同一上报方管多个来源时共用一把），上报入口按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 限定可写来源 | 新上报方要新建 token、加进 Access 策略并登记 client id；改这张表要同步 Access 策略，两边不一致会拦住上报；不再让一把凭据通吃所有来源 |
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
 | 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |

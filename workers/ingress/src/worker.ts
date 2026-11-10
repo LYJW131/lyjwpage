@@ -5,7 +5,10 @@ import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collect
 import { jsonResponse } from "@shared/http-origins";
 import { describeRejections } from "@shared/ingest/coding";
 import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
+import { LAG_KEYS, writeLag } from "@shared/lag";
+import { LIMITS_TAG } from "@shared/live-events";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
+import { parseClaudeResetCards } from "@shared/vibecoding-limits";
 
 import { authorize } from "./access-auth";
 import { previewWorkerEnabled, type Env } from "./env";
@@ -18,6 +21,9 @@ const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 // 一个 OTLP 入口，按凭据持有的权限分来源：云端环境的 token 记 agents-otlp，Mac 的记 mac-otlp，Omarchy 的记 omarchy-otlp。
 // 不看 payload 里的 os.type 或资源属性，那是客户端自报的。
 const OTLP_SOURCES = ["agents-otlp", "mac-otlp", "omarchy-otlp"] as const satisfies readonly OtlpCodingSource[];
+// 重置卡张数不是哪台机器观测到的，是 lyjw 口述、云端线程代写的账户事实，归 agents；只放行 ingest:agents-cards，
+// 拿这把权限写不了限额本身。
+const RESET_CARDS_PATH = "/api/ingest/agents/cards";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
 const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);
@@ -39,6 +45,10 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
 
   if (url.pathname === OTLP_INGEST_PATH) {
     return handleIngest(request, env, ctx, OTLP_SOURCES, true);
+  }
+
+  if (url.pathname === RESET_CARDS_PATH) {
+    return handleResetCards(request, env, ctx);
   }
 
   if (url.pathname.startsWith(INGEST_PREFIX)) {
@@ -197,6 +207,25 @@ async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promi
     }
     return result + decoder.decode();
   } finally { reader.releaseLock(); }
+}
+
+async function handleResetCards(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  if (previewWorkerEnabled()) {
+    return jsonResponse({ ok: false, error: "预览 Worker 不接收上报" }, { status: 403 });
+  }
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const auth = await authorize(request, env, "ingest:agents-cards");
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
+  if (!env.LAG) return unavailable("agents-cards", "LAG binding missing");
+  let cards;
+  try {
+    cards = parseClaudeResetCards(parseBody(await readBoundedBody(request.body)));
+  } catch (error) {
+    return jsonResponse({ ok: false, error: reason(error) }, { status: 400 });
+  }
+  await writeLag(env.LAG, LAG_KEYS.claudeResetCards, cards, Date.now());
+  ctx.waitUntil(env.CORE.revalidate([LIMITS_TAG]).catch((error: unknown) => console.error("[revalidate]", reason(error))));
+  return jsonResponse({ ok: true, data: cards }, { status: 202 });
 }
 
 async function handleSiteDeployed(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

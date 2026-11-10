@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { LimitHistoryPoint } from "@shared/limit-history";
-import { forecastLimit, recentRate, sampleForecast, usageIntervals } from "./limit-forecast.ts";
+import { forecastLimit, forecastWithCard, recentRate, sampleForecast, usageIntervals } from "./limit-forecast.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -124,4 +124,32 @@ test("a reset card mid-window restarts the pace, the even line and the run-out c
   assert.deepEqual(forecast.window.slice(-3), [[cardAt, 100], [cardAt, 0], [now, 12]]);
   assert.equal(sampleForecast(forecast, cardAt - HOUR).even, null);
   assert.equal(sampleForecast(forecast, forecast.resetAt).even, 100);
+});
+
+test("a card used now drops the line at now, keeps the pace, and moves the even line to start from what is left", () => {
+  const now = start + 3 * DAY + 23 * HOUR;
+  const base = forecastLimit(weekly(80), readings([20, 40, 60]), now)!;
+  assert.ok(base.runOutAt != null, "without a card the week runs out");
+  const card = forecastWithCard(base, 30);
+  assert.equal(card.rate, base.rate);
+  assert.equal(card.usedPercent, 30);
+  assert.equal(card.cardAt, now);
+  assert.deepEqual(card.window.slice(-2), [[now, 80], [now, 30]]);
+  assert.ok(Math.abs(card.percentAtReset! - Math.min(100, 30 + base.rate! * (card.resetAt - now))) < 1e-9);
+  assert.equal(sampleForecast(card, now).even, 30);
+  assert.equal(sampleForecast(card, card.resetAt).even, 100);
+  assert.equal(card.drawTarget, false);
+
+  const cleared = forecastWithCard(base, 0);
+  assert.equal(cleared.runOutAt, null);
+  assert.ok(cleared.percentAtReset! < 100);
+});
+
+test("a card used after the week already ran out starts over from now at the same pace", () => {
+  const now = start + 3 * DAY;
+  const forecast = forecastLimit(weekly(100), readings([40, 100]), now)!;
+  const card = forecastWithCard(forecast, 0);
+  assert.equal(card.ranOut, false);
+  assert.ok(Math.abs(card.runOutAt! - (now + 100 / forecast.rate!)) < 1e-6);
+  assert.ok(card.runOutAt! > now);
 });

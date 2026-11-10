@@ -15,6 +15,7 @@ export const LAG_KEYS = {
   health: "health:v1",
   server: "server:v1",
   limits: "limits:v1",
+  claudeResetCards: "claude-reset-cards:v1",
   timezone: "timezone:v1",
   activity: "activity:v1",
   workouts: "workouts:v1",

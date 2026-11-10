@@ -12,6 +12,7 @@
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `core`，预览版收下的上报会直接写进生产状态；`[previews.vars]` 里的 `PREVIEW_WORKER` 是最后一道闸，预览版本只会拒收。
 - 自定义域名 `ingest.homepage.lyjw.llc` 只写在本目录的 `wrangler.toml`（一个域名只写在一份配置）：Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的自定义域名。
 - OTLP 路由（`/api/ingest/agents/otlp`）只认 JSON（可 gzip），要专属权限 `ingest:agents-otlp`、`ingest:mac-otlp` 或 `ingest:omarchy-otlp`，按凭据持有的那个分来源（`src/worker.ts#OTLP_SOURCES`），不看 payload 自报的属性；`ingest:agents` 不能写它。Claude Code 遥测的环境变量只配在云端环境设置里，不进仓库、不配在 Mac（Mac 由 ccusage 统计）；Omarchy 那台机器没有 ccusage，在本机配，用 Omarchy 那把 token（`README.md#claude-codeomarchy`）；Mac 上的 Devin CLI 用 Mac 那把 token 直接推（`README.md#devin-climac`）。
+- 重置卡路由（`/api/ingest/agents/cards`）只写可滞后层 KV 的独立键、不经状态核心，权限 `ingest:agents-cards` 只给云端那把；拿它写不了限额（`README.md#重置卡张数`）。
 
 ## 新增来源要一起做
 

@@ -39,6 +39,8 @@ export type LimitForecast = {
   usedPercent: number;
   // 窗口中途用了重置卡的时刻（同一个 resetsAt 下读数往下掉）；之后的经过时间、匀速线、用完判断都从这里算。
   cardAt: number | null;
+  // 匀速线的起点读数，配 cardAt（没用卡时配 startAt）。真实读数里看到的卡当作清零；假设此刻用卡时是卡退回后剩下的。
+  cardPercent: number;
   elapsedFraction: number;
   // 百分点 / 毫秒；null 表示数据不够，不出预测。
   rate: number | null;
@@ -136,6 +138,7 @@ export function forecastLimit(
     now,
     usedPercent,
     cardAt,
+    cardPercent: 0,
     elapsedFraction: elapsed / (resetAt - periodStart),
     evenRate,
     drawTarget: usedPercent < RUN_OUT_PERCENT && !nearEven(targetRate, evenRate),
@@ -178,6 +181,31 @@ export function forecastLimit(
   };
 }
 
+// 假设此刻用一张重置卡：读数落到 afterPercent，重置时间不变，之后照原预测的速度接着用。
+// 匀速线改成从卡后读数匀速用到重置正好 100%，它和「用到重置正好 100%」那条线重合，后者不再另画。
+export function forecastWithCard(forecast: LimitForecast, afterPercent: number): LimitForecast {
+  const { now, resetAt, rate } = forecast;
+  const usedPercent = Math.min(forecast.usedPercent, Math.max(0, afterPercent));
+  const evenRate = (RUN_OUT_PERCENT - usedPercent) / (resetAt - now);
+  const runOutAt = rate != null && rate > 0 ? now + (RUN_OUT_PERCENT - usedPercent) / rate : null;
+  const runsOut = runOutAt != null && runOutAt < resetAt;
+  return {
+    ...forecast,
+    usedPercent,
+    cardAt: now,
+    cardPercent: usedPercent,
+    elapsedFraction: 0,
+    evenRate,
+    ranOut: false,
+    runOutAt: runsOut ? runOutAt : null,
+    lockedMs: runsOut ? resetAt - runOutAt : null,
+    percentAtReset: rate == null ? null : runsOut ? 100 : Math.min(100, usedPercent + rate * (resetAt - now)),
+    drawProjection: rate != null && (runsOut || !nearEven(rate, evenRate)),
+    drawTarget: false,
+    window: [...forecast.window, [now, usedPercent]],
+  };
+}
+
 export type ForecastSample = {
   at: number;
   phase: "used" | "projected" | "locked";
@@ -191,7 +219,9 @@ export type ForecastSample = {
 
 export function sampleForecast(forecast: LimitForecast, at: number): ForecastSample {
   const evenFrom = forecast.cardAt ?? forecast.startAt;
-  const even = at >= evenFrom ? (100 * (at - evenFrom)) / (forecast.resetAt - evenFrom) : null;
+  const even = at >= evenFrom
+    ? forecast.cardPercent + ((100 - forecast.cardPercent) * (at - evenFrom)) / (forecast.resetAt - evenFrom)
+    : null;
   const target = at >= forecast.now && forecast.drawTarget
     ? forecast.usedPercent + ((100 - forecast.usedPercent) * (at - forecast.now)) / (forecast.resetAt - forecast.now)
     : null;

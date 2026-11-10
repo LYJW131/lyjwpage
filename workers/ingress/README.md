@@ -23,6 +23,7 @@
 | --- | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
 | POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp`、`ingest:mac-otlp` 或 `ingest:omarchy-otlp` | Claude Code 与 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip），按权限分来源 |
+| POST | `/api/ingest/agents/cards` | `ingest:agents-cards` | Claude 手上的重置卡张数，见下文「重置卡张数」 |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
@@ -118,9 +119,9 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 （没法去重，重发会重复计数），只记一行 `[otlp] delta temporality points skipped` 的 warn。
 端点要用 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`（原样使用）；通用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 会被自动拼上 `/v1/metrics`。
 只认 JSON（可 gzip），不认 protobuf；只在这条路由解压，按解压后的字节数限制大小。
-鉴权要求专属 OTLP 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。
+鉴权要求专属 OTLP 权限，`ingest:agents` 不能写此端点；云端凭据除此之外只能写重置卡张数，不能写限额或设备上报。
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
-`[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境（环境变量与 Network secret 各一份），不用配置 Worker secret。
+`[vars.ACCESS_CLIENTS]`，授予 `["ingest:agents-otlp", "ingest:agents-cards"]`（后者见下文「重置卡张数」）；Client Secret 只放云端环境（环境变量与 Network secret 各一份），不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
 收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
 
@@ -165,6 +166,18 @@ Omarchy 那台机器没有 ccusage，本机 Claude Code（CLI 与桌面 App 的 
 云端线程里由 Claude 调度的 Devin CLI 推到同一个入口，用云端那把 `lyjwpage-claude-cloud`，记进 `agents-otlp`，站点标 Cloud。
 `~/.config/devin/config.json` 只写端点、不写 headers；鉴权头由云端环境的 Network secret 在出口代理上加（配置见 [ops-facts](../../docs/ops-facts.md#claude-code-云端-routine)）。
 Claude Code 不把 `OTEL_*` 传给它运行的命令，`OTEL_EXPORTER_OTLP_PROTOCOL=http/json` 要由启动 Devin 的 wrapper 自己设。
+
+## 重置卡张数
+
+上报器读不到 Claude 账户里的重置卡（服务端按调用的客户端放行，见 `reporters/agents-reporter/README.md`），张数由 lyjw 在项目讨论串里说，
+云端线程代写：`POST https://ingest.homepage.lyjw.llc/api/ingest/agents/cards`，请求体 `{ "fable": <张数>, "standard": <张数> }`，两项都要给、0–99 的整数，
+整份覆盖（`shared/vibecoding-limits.ts#parseClaudeResetCards`）。鉴权用 `lyjwpage-claude-cloud`：云端环境的 Network secret 按主机与路径前缀加 Access 头，
+前缀要盖住这条路径（`/api/ingest/agents`）。
+
+不经状态核心、不归档：直接写可滞后层 KV 的 `shared/lag.ts#LAG_KEYS.claudeResetCards`，跟限额分开存，上报器整行替换 `claude` 的限额时冲不掉它；
+`/api/status/limits` 读的时候拼成 `claudeResetCards`（`shared/lag-views.ts#getAgentLimits`），写完在 `waitUntil` 里清 `limits` 首屏标签。
+回执：202 `{ ok: true, data }`；不是 POST 405；鉴权 401 / 403；请求体不合格 400 带原因；没绑 `LAG` 503；预览版本 403。
+站点拿张数画「此刻用卡」的预测（`src/components/live/vibecoding/reset-cards.tsx`）。
 
 ## 部署通知
 

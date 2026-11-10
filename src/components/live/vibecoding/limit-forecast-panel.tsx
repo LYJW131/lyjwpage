@@ -103,7 +103,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
         )}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-hidden>
           <line
-            x1={x(forecast.cardAt ?? forecast.startAt)} y1="100" x2="100" y2="0"
+            x1={x(forecast.cardAt ?? forecast.startAt)} y1={y(forecast.cardPercent)} x2="100" y2="0"
             className="text-muted-foreground" stroke="currentColor" strokeWidth="1" strokeDasharray="1 3"
             vectorEffect="non-scaling-stroke"
           />
@@ -197,13 +197,18 @@ export function forecastStats(forecast: LimitForecast | null) {
   ];
 }
 
-function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZone: string | undefined) {
+// 假设此刻用卡时，摘要第二行写卡把周额度从多少退到多少。
+export type ForecastCardNote = { label: string; fromPercent: number };
+
+function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZone: string | undefined, card: ForecastCardNote | null) {
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
   if (!forecast && newWeek) return { headline: "New week", detail: "Waiting for the first reading" };
   if (!forecast) return { headline: "No forecast yet", detail: "Waiting for a weekly reading" };
-  const window = forecast.cardAt != null
-    ? `Used ${Math.round(forecast.usedPercent)}% since the reset card ${clock.format(forecast.cardAt)}`
-    : `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
+  const window = card
+    ? `${card.label} now: ${Math.round(card.fromPercent)}% → ${Math.round(forecast.usedPercent)}%`
+    : forecast.cardAt != null
+      ? `Used ${Math.round(forecast.usedPercent)}% since the reset card ${clock.format(forecast.cardAt)}`
+      : `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
   if (forecast.ranOut && forecast.runOutAt != null) {
     return { headline: `Ran out ${clock.format(forecast.runOutAt)}`, detail: `Locked until ${clock.format(forecast.resetAt)}` };
   }
@@ -218,12 +223,14 @@ export function ForecastSummary({
   forecast,
   newWeek,
   timeZone,
+  card = null,
 }: {
   forecast: LimitForecast | null;
   newWeek: boolean;
   timeZone: string | undefined;
+  card?: ForecastCardNote | null;
 }) {
-  const { headline, detail } = forecastSummary(forecast, newWeek, timeZone);
+  const { headline, detail } = forecastSummary(forecast, newWeek, timeZone, card);
   return (
     <div className="grid gap-1.5">
       <div className={cn("text-lg leading-none font-semibold tracking-tight lg:text-xl", forecast?.runOutAt != null && "text-signal-red")}>

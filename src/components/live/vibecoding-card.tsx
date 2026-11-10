@@ -100,6 +100,7 @@ export function VibeCodingCard({
               newWeek={row.id === "claude" && weekly.newWeek}
               timeZone={weekly.timeZone}
               now={weekly.now}
+              resetCards={row.id === "claude" ? (limits?.claudeResetCards ?? null) : null}
             />
           ))}
           <CompactAgents
