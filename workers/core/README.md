@@ -41,7 +41,7 @@
 | GET | `/api/cards/voronoi.svg` | 模型 token 占比的 Voronoi 卡片 SVG（每个模型一块领地，面积 = 份额），给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding` 的 totals（含 `activeDays`、`modelCount`）与 `topModels` 前 7 名，布局见下文「README 卡片的 Voronoi 布局」，缓存头与 week.svg 相同 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
-上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
+上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/ingest/agents/cards`、`/api/internal/site-deployed`）、鉴权和回执契约都在
 [上报入口](../ingress/README.md)，这里没有上报路由。下面几节讲的是各来源收下之后在状态核心里怎么存、怎么推。
 
 `/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，

@@ -17,6 +17,7 @@ export const MAC_ONLY = "mac-only.access";
 export const MAC_OTLP = "mac-otlp-client.access";
 export const OMARCHY = "omarchy-client.access";
 export const DEPLOYER = "github-actions.access";
+export const CLOUD = "claude-cloud.access";
 const SOURCES = ["mac", "iphone", "homepod", "emby", "playstation", "server", "agents"];
 
 const pair = await crypto.subtle.generateKey(
@@ -112,6 +113,7 @@ export function world(setup: Setup = {}) {
       [MAC_OTLP]: ["ingest:mac", "ingest:mac-otlp"],
       [OMARCHY]: ["ingest:omarchy", "ingest:omarchy-otlp"],
       [DEPLOYER]: ["internal:site-deployed", "internal:collector-refresh"],
+      [CLOUD]: ["ingest:agents-otlp", "ingest:agents-cards"],
     },
   } satisfies Env;
   const pending: Promise<unknown>[] = [];

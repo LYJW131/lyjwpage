@@ -1,0 +1,10 @@
+{
+  "description": "限额与限额历史现取生产，claude 加上 Fable 卡 2 张、标准卡 1 张：限额图下出「No card / Fable card ×2 / Weekly card ×1」切换",
+  "views": {
+    "/api/status/limits": {
+      "from": { "fetch": "https://lyjw.me/api/status/limits" },
+      "set": { "data.claudeResetCards": { "fable": 2, "standard": 1, "updatedAt": "$now-60000" } }
+    },
+    "/api/status/limits/history": { "fetch": "https://lyjw.me/api/status/limits/history" }
+  }
+}
