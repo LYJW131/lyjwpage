@@ -15,7 +15,7 @@ import {
 import type { AnimationItem } from "lottie-web";
 import type { Footprint, GazeMap } from "./stage";
 
-const { speed, edgeMin, walkMs, lookMs, resumeMs, noticePx, noticeLeaveMs } = config.patrol;
+const { speed, edgeMin, walkMs, lookMs, resumeMs, noticePx, noticeLeaveMs, dwellMs } = config.patrol;
 // clawd-walking.json：0–4 帧起步，8–24 帧是一步一步走的循环；clawd-looking.json 的帧是眼睛看向各个方向；Clawd-Turning.json 15→22 帧是向左转身到向右，倒放就是反过来。
 const START = [0, 4];
 const STRIDE = [8, 24];
@@ -126,7 +126,7 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
     });
   });
 
-  let gazePending = false;
+  let gazeTimer = 0;
   // 原版只在踱步间隙的张望里跟光标，光标凑过来时它多半在走、看不出来；光标进到身边就停下盯着看，离开一会儿再接着走。
   let noticing = false;
   const notice = (e: MouseEvent) => {
@@ -144,16 +144,16 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
     }
   };
 
+  // 光标停稳 dwellMs 才转眼睛，一路挪动时不跟，看着比逐帧跟随迟钝一些。
   const onMouse = (e: MouseEvent) => {
     notice(e);
-    if (stopped || walking || !gaze || !lookAnim || lookStage.style.visibility === "hidden" || gazePending) return;
-    gazePending = true;
-    requestAnimationFrame(() => {
-      gazePending = false;
-      if (!gaze || !lookAnim) return;
+    clearTimeout(gazeTimer);
+    if (stopped || walking || !gaze || !lookAnim || lookStage.style.visibility === "hidden") return;
+    gazeTimer = window.setTimeout(() => {
+      if (!gaze || !lookAnim || walking || lookStage.style.visibility === "hidden") return;
       const r = lookStage.getBoundingClientRect();
       lookAnim.goToAndStop(gazeFrame(gaze, e.clientX - (r.left + r.width / 2), e.clientY - (r.top + 0.45 * r.height)), true);
-    });
+    }, dwellMs);
   };
   addEventListener("mousemove", onMouse, { passive: true });
 
@@ -251,6 +251,7 @@ export function clawdPatrol(host: HTMLElement, bodyPx: number, { startRight = tr
     stop() {
       stopped = true;
       cancelAnimationFrame(raf);
+      clearTimeout(gazeTimer);
       removeEventListener("mousemove", onMouse);
       walkAnim?.destroy();
       lookAnim?.destroy();

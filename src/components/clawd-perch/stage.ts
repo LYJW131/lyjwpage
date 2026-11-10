@@ -143,9 +143,12 @@ export function buildGazeMap(stage: HTMLElement, anim: AnimationItem): GazeMap {
   };
 }
 
+// 原版按 4 行取视线；这里只分上、平、下三档，取视线表的第 0、1、3 行（第 2 行是微微往下看，和平视、往下看都分不太开）。
+const GAZE_ROWS = [0, 1, 3];
+
 export function gazeFrame(map: GazeMap, dx: number, dy: number) {
   const len = Math.hypot(dx, dy) || 1;
-  const row = Math.min(3, Math.max(0, Math.floor(((dy / len + 1) / 2) * 4)));
+  const row = dy < -len / 3 ? 0 : dy > len / 3 ? 2 : 1;
   const col = dx < -0.28 * len ? 0 : dx > 0.28 * len ? 2 : 1;
-  return map.grid[row][col];
+  return map.grid[GAZE_ROWS[row]][col];
 }
