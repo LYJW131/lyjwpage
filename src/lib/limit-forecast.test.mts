@@ -137,6 +137,7 @@ test("a card used now drops the line at now, keeps the pace, and moves the even 
   assert.deepEqual(card.window.slice(-2), [[now, 80], [now, 30]]);
   assert.ok(Math.abs(card.percentAtReset! - Math.min(100, 30 + base.rate! * (card.resetAt - now))) < 1e-9);
   assert.equal(sampleForecast(card, now).even, 30);
+  assert.equal(sampleForecast(card, now).percent, 30, "hovering the drop reads the value after the card");
   assert.equal(sampleForecast(card, card.resetAt).even, 100);
   assert.equal(card.drawTarget, false);
 

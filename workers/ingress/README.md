@@ -176,7 +176,7 @@ Claude Code 不把 `OTEL_*` 传给它运行的命令，`OTEL_EXPORTER_OTLP_PROTO
 
 不经状态核心、不归档：直接写可滞后层 KV 的 `shared/lag.ts#LAG_KEYS.claudeResetCards`，跟限额分开存，上报器整行替换 `claude` 的限额时冲不掉它；
 `/api/status/limits` 读的时候拼成 `claudeResetCards`（`shared/lag-views.ts#getAgentLimits`），写完在 `waitUntil` 里清 `limits` 首屏标签。
-回执：202 `{ ok: true, data }`；不是 POST 405；鉴权 401 / 403；请求体不合格 400 带原因；没绑 `LAG` 503；预览版本 403。
+回执：202 `{ ok: true, data }`；不是 POST 405；鉴权 401 / 403；请求体不合格 400 带原因；没绑 `LAG` 或写 KV 失败 503；预览版本 403。
 站点拿张数画「此刻用卡」的预测（`src/components/live/vibecoding/reset-cards.tsx`）。
 
 ## 部署通知

@@ -197,7 +197,6 @@ export function forecastStats(forecast: LimitForecast | null) {
   ];
 }
 
-// 假设此刻用卡时，摘要第二行写卡把周额度从多少退到多少。
 export type ForecastCardNote = { label: string; fromPercent: number };
 
 function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZone: string | undefined, card: ForecastCardNote | null) {

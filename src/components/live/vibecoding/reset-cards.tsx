@@ -26,7 +26,6 @@ function percentAfter(kind: ResetCardKind, forecast: LimitForecast, limits: Vibe
   return forecast.usedPercent - (fableUsed * FABLE_WEEKLY_SHARE_PERCENT) / 100;
 }
 
-// 手上没有的卡不出选项；Fable 卡要有 Fable 窗口才算得出退回多少。
 export function resetCardScenarios(
   forecast: LimitForecast | null,
   limits: VibeCodingLimit[],

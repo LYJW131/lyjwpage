@@ -223,7 +223,11 @@ async function handleResetCards(request: Request, env: Env, ctx: ExecutionContex
   } catch (error) {
     return jsonResponse({ ok: false, error: reason(error) }, { status: 400 });
   }
-  await writeLag(env.LAG, LAG_KEYS.claudeResetCards, cards, Date.now());
+  try {
+    await writeLag(env.LAG, LAG_KEYS.claudeResetCards, cards, Date.now());
+  } catch (error) {
+    return unavailable("agents-cards", reason(error));
+  }
   ctx.waitUntil(env.CORE.revalidate([LIMITS_TAG]).catch((error: unknown) => console.error("[revalidate]", reason(error))));
   return jsonResponse({ ok: true, data: cards }, { status: 202 });
 }

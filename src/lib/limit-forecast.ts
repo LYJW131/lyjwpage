@@ -228,10 +228,11 @@ export function sampleForecast(forecast: LimitForecast, at: number): ForecastSam
   if (forecast.runOutAt != null && at >= forecast.runOutAt) return { at, phase: "locked", percent: null, target, even };
   if (at <= forecast.now) {
     const window = forecast.window;
-    const after = window.findIndex(([pointAt]) => pointAt >= at);
-    const [toAt, toUsed] = window[Math.max(0, after)]!;
-    const [fromAt, fromUsed] = window[Math.max(0, after - 1)]!;
-    const percent = toAt > fromAt ? fromUsed + ((toUsed - fromUsed) * (at - fromAt)) / (toAt - fromAt) : toUsed;
+    // 同一时刻有两个点（用卡的竖直落差）时取后一个，悬停在落差处读到的是卡后读数。
+    const after = window.findIndex(([pointAt]) => pointAt > at);
+    const [fromAt, fromUsed] = window[after === -1 ? window.length - 1 : Math.max(0, after - 1)]!;
+    const [toAt, toUsed] = window[after === -1 ? window.length - 1 : after]!;
+    const percent = toAt > fromAt ? fromUsed + ((toUsed - fromUsed) * (at - fromAt)) / (toAt - fromAt) : fromUsed;
     return { at, phase: "used", percent, target, even };
   }
   const percent = forecast.rate == null || !forecast.drawProjection ? null : Math.min(100, forecast.usedPercent + forecast.rate * (at - forecast.now));
