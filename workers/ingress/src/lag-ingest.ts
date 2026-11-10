@@ -4,7 +4,14 @@ import { LIMITS_TAG, SERVER_TAG } from "@shared/live-events";
 import { STATUS_VIEWS } from "@shared/status-views";
 import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@shared/reporter-ledger";
 import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@shared/types";
-import { agentLimitsLayoutKey, detectResetCardUse, mergeAgentLimits, type AgentLimitsPayload, type ClaudeResetCards } from "@shared/vibecoding-limits";
+import {
+  agentLimitsLayoutKey,
+  detectResetCardUse,
+  mergeAgentLimits,
+  spendResetCardFromStock,
+  type AgentLimitsPayload,
+  type ClaudeResetCardStock,
+} from "@shared/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
 import { publicServer } from "@shared/server";
 import { publicWorkout } from "@shared/workouts";
@@ -70,17 +77,18 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
   }
 }
 
-// 张数记的是 lyjw 说过的数，上报器读不到卡；读数显示用了一张就减一，读数分不出卡种时扣手上有的那种，都是 0 就不动。
-async function spendResetCard(kv: LagStore, kinds: (keyof ClaudeResetCards)[], at: number): Promise<boolean> {
-  const cards = await readLag<ClaudeResetCards>(kv, LAG_KEYS.claudeResetCards);
-  const kind = kinds.find((candidate) => (cards?.data[candidate] ?? 0) > 0);
-  if (!cards || !kind) {
-    console.log("[reset-cards] 读数像用了卡，但记的张数是 0", kinds);
-    return false;
+// 记的是 lyjw 说过的卡，上报器读不到；读数显示用了一张就划掉一张，读数分不出卡种时扣手上有的那种，都没有就不动。
+async function spendResetCard(kv: LagStore, kinds: (keyof ClaudeResetCardStock)[], at: number): Promise<boolean> {
+  const cards = await readLag<ClaudeResetCardStock>(kv, LAG_KEYS.claudeResetCards);
+  for (const kind of kinds) {
+    const next = cards && spendResetCardFromStock(cards.data, kind, at);
+    if (!next) continue;
+    await writeLag(kv, LAG_KEYS.claudeResetCards, next, at);
+    console.log("[reset-cards] 认出用了一张", kind);
+    return true;
   }
-  await writeLag(kv, LAG_KEYS.claudeResetCards, { ...cards.data, [kind]: cards.data[kind] - 1 }, at);
-  console.log("[reset-cards] 认出用了一张", kind);
-  return true;
+  console.log("[reset-cards] 读数像用了卡，但记的没有没过期的", kinds);
+  return false;
 }
 
 function writeTimezone(kv: LagStore, timezone: TimezoneActivity | null, at: number): Promise<void> {

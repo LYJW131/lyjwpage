@@ -169,19 +169,21 @@ Claude Code 不把 `OTEL_*` 传给它运行的命令，`OTEL_EXPORTER_OTLP_PROTO
 
 ## 重置卡张数
 
-上报器读不到 Claude 账户里的重置卡（服务端按调用的客户端放行，见 `reporters/agents-reporter/README.md`），张数由 lyjw 在项目讨论串里说，
-云端线程代写：`POST https://ingest.homepage.lyjw.llc/api/ingest/agents/cards`，请求体 `{ "fable": <张数>, "standard": <张数> }`，两项都要给、0–99 的整数，
+上报器读不到 Claude 账户里的重置卡（服务端按调用的客户端放行，见 `reporters/agents-reporter/README.md`），有几张、各自哪天过期由 lyjw 在项目讨论串里说
+（Claude 设置页 Limit resets 那一栏），云端线程代写：`POST https://ingest.homepage.lyjw.llc/api/ingest/agents/cards`，
+请求体 `{ "fable": [<过期时间>, …], "standard": [<过期时间>, …] }`，一张卡一项，过期时间是 Unix 秒；两项都要给、至多 99 张，
 整份覆盖（`shared/vibecoding-limits.ts#parseClaudeResetCards`）。鉴权用 `lyjwpage-claude-cloud`：云端环境的 Network secret 按主机与路径前缀加 Access 头，
 前缀要盖住这条路径（`/api/ingest/agents`）。
 
 不经状态核心、不归档：直接写可滞后层 KV 的 `shared/lag.ts#LAG_KEYS.claudeResetCards`，跟限额分开存，上报器整行替换 `claude` 的限额时冲不掉它；
-`/api/status/limits` 读的时候拼成 `claudeResetCards`（`shared/lag-views.ts#getAgentLimits`），写完在 `waitUntil` 里清 `limits` 首屏标签。
+`/api/status/limits` 读的时候数出此刻没过期的张数，拼成 `claudeResetCards: { fable, standard, updatedAt }`（`shared/lag-views.ts#getAgentLimits`），
+过期时间不对外；写完在 `waitUntil` 里清 `limits` 首屏标签。首屏缓存里的张数要等下一次 `limits` 清缓存才跟上过期。
 回执：202 `{ ok: true, data }`；不是 POST 405；鉴权 401 / 403；请求体不合格 400 带原因；没绑 `LAG` 或写 KV 失败 503；预览版本 403。
 站点拿张数画「此刻用卡」的预测（`src/components/live/vibecoding/reset-cards.tsx`）。
 
 用卡自动扣张数：限额上报落可滞后层时（`src/lag-ingest.ts#commitLagIngest`），拿上一份 `claude` 读数比（判据 `shared/vibecoding-limits.ts#detectResetCardUse`）。
 同一个周窗口里用量只涨不跌，读数掉了 2 个百分点以上（取整误差之外）就是用了卡，不假设两封上报之间用得多快：Fable 掉了而周额度不低于 Fable 卡能退到的是 Fable 卡，
-更低或只有周额度掉的是周卡，卡前几乎全是 Fable 用量时两种分不出、扣手上有的那种（先 Fable）。认出后记的张数减一并清 `limits` 首屏标签；记的已是 0 只记日志 `[reset-cards]`。
+更低或只有周额度掉的是周卡，卡前几乎全是 Fable 用量时两种分不出、扣手上有的那种（先 Fable）。认出后划掉那种卡里没过期、最早到期的一张并清 `limits` 首屏标签；没有没过期的只记日志 `[reset-cards]`。
 新拿到卡仍要 lyjw 说一声。
 
 ## 部署通知
