@@ -48,9 +48,12 @@ export function detectResetCardUse(
   if (weeklyBefore?.resetsAt == null || weeklyAfter?.resetsAt == null) return [];
   const sameWindow = weeklyBefore.resetsAt * 1000 > at && Math.abs(weeklyAfter.resetsAt - weeklyBefore.resetsAt) < SAME_WINDOW_SLACK_SECONDS;
   if (!sameWindow) return [];
+  const fableSameWindow = (before: VibeCodingLimit, after: VibeCodingLimit) =>
+    before.resetsAt == null || after.resetsAt == null ||
+    (before.resetsAt * 1000 > at && Math.abs(after.resetsAt - before.resetsAt) < SAME_WINDOW_SLACK_SECONDS);
   const share = (percent: number) => (percent * FABLE_WEEKLY_SHARE_PERCENT) / 100;
   const [fableBefore, fableAfter] = [fable(previous), fable(next)];
-  const fableDrop = fableBefore && fableAfter ? fableBefore.usedPercent - fableAfter.usedPercent : 0;
+  const fableDrop = fableBefore && fableAfter && fableSameWindow(fableBefore, fableAfter) ? fableBefore.usedPercent - fableAfter.usedPercent : 0;
   if (fableBefore && fableDrop >= RESET_CARD_ROUNDING_PERCENT) {
     const fableCardFloor = weeklyBefore.usedPercent - share(fableDrop);
     if (weeklyAfter.usedPercent < fableCardFloor - RESET_CARD_ROUNDING_PERCENT) return ["standard"];

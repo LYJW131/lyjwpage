@@ -46,6 +46,7 @@ test("凭据检测：真凭据报出来，记忆里常见的名字、引用、sh
   assert.deepEqual(hits("-----BEGIN PRIVATE KEY-----"), ["private key"]);
   assert.deepEqual(hits("ACCESS_CLIENT_SECRET=9f8e7d6c5b4a3210"), ["secret assignment"]);
   assert.deepEqual(hits("ACCESS_CLIENT_SECRET: [ab12cd34ef56gh78ij90]"), ["secret assignment"]);
+  assert.deepEqual(hits("ACCESS_CLIENT_SECRET: [[ab12cd34ef56gh78ij90]]"), ["secret assignment"]);
   assert.deepEqual(hits("token Zx9Qw3Er5Ty7Ui9Op1As3Df5Gh7Jk9Lz1Xc3Vb5Nm7Qa9Ws"), ["opaque token"]);
   for (const benign of [
     "env var `LYJWPAGE_ANTHROPIC_API_KEY`; use `ANTHROPIC_API_KEY=\"$LYJWPAGE_ANTHROPIC_API_KEY\"`",

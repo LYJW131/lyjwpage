@@ -95,6 +95,15 @@ test("用卡判据：同一窗口里读数往下掉就是用卡，不看两封�
   assert.deepEqual(detectResetCardUse(row(60, 40), row(0, 0), at), ["standard"]);
   assert.deepEqual(detectResetCardUse(row(3, 2), row(0, 0), at), ["fable", "standard"], "用得少也认得出");
   assert.deepEqual(detectResetCardUse(row(41, 33), row(40, 33), at), [], "差 1 是取整");
+  const fableWindow = (weekly: number, fable: number, fableResetsAt: number) => {
+    const base = row(weekly, fable);
+    return { ...base, limits: [base.limits[0]!, { ...base.limits[1]!, resetsAt: fableResetsAt }] };
+  };
+  assert.deepEqual(
+    detectResetCardUse(fableWindow(20, 6, at / 1000 - 60), fableWindow(20, 0, at / 1000 + 7 * 86_400), at),
+    [],
+    "Fable 自己的窗口到点归零不是用卡",
+  );
   assert.deepEqual(detectResetCardUse(row(41, 33), row(42, 34), at), []);
   assert.deepEqual(detectResetCardUse(undefined, row(0, 0), at), []);
 });
