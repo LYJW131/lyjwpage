@@ -72,6 +72,12 @@ const COMPACT_AGENT_ROW_PX = 57;
 const VIBE_CODING_BASE_HEIGHT = 724;
 
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
+
+// README 是静态图，点不了重置卡切换，按钮组只会多占高度、把卡底裁掉。
+function withoutResetCards(limits: FirstScreen<"limits">): FirstScreen<"limits"> {
+  if (!limits.ok) return limits;
+  return { ...limits, data: { ...limits.data, claudeResetCards: undefined } };
+}
 // still：内容不随时间变（聊天卡），不标抓取时间。
 // height：内容随数据增减行的卡按这次的数据给出高度，盖过 ReadmeCard.height。
 type Rendered = { element: ReactElement; sample: boolean; still?: boolean; height?: number };
@@ -284,7 +290,7 @@ const CARDS: Record<string, ReadmeCard> = {
       ]);
       const rows = codingAgentRows(coding.ok ? coding.data : null, codingNow.ok ? codingNow.data : null, limits.ok ? limits.data : null);
       return {
-        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} historyFallback={history} />,
+        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={withoutResetCards(limits)} historyFallback={history} />,
         sample: false,
         height: VIBE_CODING_BASE_HEIGHT + rows.filter((row) => row.row === "compact").length * COMPACT_AGENT_ROW_PX,
       };
