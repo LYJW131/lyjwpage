@@ -269,7 +269,7 @@ export function clawdPerch(band: HTMLElement) {
       if (!kiting) return;
       if (outroAt === null && (reelIn || now - t0 > flyFor)) outroAt = now;
       if (outroAt !== null) {
-        const f = loopB + 1 + Math.floor(((now - outroAt) / 1000) * kite.fps);
+        const f = loopB + 1 + Math.max(0, Math.floor(((now - outroAt) / 1000) * kite.fps));
         if (f >= n) {
           kiting = false;
           kiteCanvas.style.visibility = "hidden";
@@ -279,7 +279,8 @@ export function clawdPerch(band: HTMLElement) {
         }
         drawKite(f);
       } else {
-        const f = Math.floor(((now - t0) / 1000) * kite.fps);
+        // rAF 给的时间戳是这一帧开始的时刻，可能早于 flyKite 里记的 t0，差值要夹到 0 以上，否则帧号是负的、取帧越界。
+        const f = Math.max(0, Math.floor(((now - t0) / 1000) * kite.fps));
         drawKite(f <= loopB ? f : loopA + ((f - loopA) % (loopB - loopA + 1)));
       }
       kiteRaf = requestAnimationFrame(step);
@@ -376,7 +377,7 @@ export function clawdPerch(band: HTMLElement) {
     };
     const frame = (now: number) => {
       if (killed) return;
-      const t = now - t0;
+      const t = Math.max(0, now - t0);
       if (!pryAt) {
         const u = Math.min(1, t / knockMs);
         const thump = (a: number, b: number, h: number) => (u > a && u < b ? h * Math.sin((Math.PI * (u - a)) / (b - a)) : 0);
