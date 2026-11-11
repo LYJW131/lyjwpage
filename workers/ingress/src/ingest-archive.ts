@@ -1,5 +1,6 @@
 import {
   activityDayStatements,
+  playerEventStatements,
   runHistory,
   serverHourStatements,
   workoutStatements,
@@ -17,6 +18,8 @@ export function ingestHistoryStatements(db: HistoryDb, command: PreparedIngest):
       ];
     case "server":
       return serverHourStatements(db, command.status);
+    case "player":
+      return playerEventStatements(db, command.device, command.events, command.stored.receivedAt);
     default:
       return [];
   }

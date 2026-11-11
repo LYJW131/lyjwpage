@@ -3,6 +3,7 @@ import { candidateFrom, type TrackEnrichment } from "@shared/track-enrichment";
 import {
   type StoredHomePod
 } from "@shared/homepod-store";
+import type { StoredPlayer } from "@shared/player-store";
 import { type NowListeningSnapshot } from "@shared/now-listening";
 import {
   type PlayingQueueTrack
@@ -143,6 +144,7 @@ export function snapshotFrom(
     enrichment?: TrackEnrichment | null;
   },
   activeModules: ReadonlySet<string> | readonly string[] = telemetryState.activeModules,
+  playerStored: StoredPlayer | null = null,
 ): NowListeningSnapshot {
   const source = macSnapshotInput(mac);
   const musicEnabled = new Set(activeModules).has("appleMusic");
@@ -151,6 +153,7 @@ export function snapshotFrom(
   return {
     mac: macCandidate,
     homePod,
+    player: playerStored ? candidateFrom(playerStored.music, playerStored.receivedAt, playerStored.enrichment) : null,
     macReceivedAt: source.receivedAt,
   };
 }

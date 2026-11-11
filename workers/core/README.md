@@ -41,7 +41,7 @@
 | GET | `/api/cards/voronoi.svg` | 模型 token 占比的 Voronoi 卡片 SVG（每个模型一块领地，面积 = 份额），给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding` 的 totals（含 `activeDays`、`modelCount`）与 `topModels` 前 7 名，布局见下文「README 卡片的 Voronoi 布局」，缓存头与 week.svg 相同 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
-上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/ingest/agents/cards`、`/api/internal/site-deployed`）、鉴权和回执契约都在
+上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/ingest/mac/otlp`、`/api/ingest/omarchy/otlp`、`/api/ingest/agents/cards`、`/api/internal/site-deployed`）、鉴权和回执契约都在
 [上报入口](../ingress/README.md)，这里没有上报路由。下面几节讲的是各来源收下之后在状态核心里怎么存、怎么推。
 
 `/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，
@@ -183,7 +183,9 @@ ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边
 
 站点缓存仍采用后台重建（stale-while-revalidate），通知成功不代表新 HTML 已生成。ESA 后台回源可能取得仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-「正在听」的补全由采集 Worker 做，core 不请求 Apple：上报入口在提交前请采集 Worker 查好（`Collector.enrichTrack`），命令带着 `enrichment`（含 `null`）交给 `StateCore.commitIngest`，这里原样提交；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。回执后的歌词预热与没查出结果的重查也归采集 Worker（见它的 [README](../collector/README.md#apple-music)），重查多查到东西就经 `StateCore.commitEnrichmentPatch` 交来，由 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`）。最近播放首项的动态封面由采集 Worker 查好放进该项的 `motion`；没查出结果（`undefined`）时沿用同一项已存的那份（`src/stores/apple-music-store.ts`）。
+「正在听」有三格：Mac 的 Music.app（Mac 信封的 `appleMusic` 模块，随 Mac 存活）、HomePod（`shared/homepod-store.ts`）和自己报事件的播放器（Mac 或 Omarchy 上的 Ringo，`shared/player-store.ts`，两台机器谁后报算谁，`music.source` 是 `mac` / `omarchy`）。后两格各存最新一份快照、按快照的可见期限判还在不在放，互不覆盖。`listening/now` 按 Music.app → 播放器 → HomePod 选一格（在放或刚暂停都算），另一格也在放就作为 `alternate`（`shared/now-listening.ts#pickNowListening`）。播放器的提交在 `src/player-ingest.ts`，命令由上报入口从 OTLP 日志收敛（`shared/ingest/player.ts`），见 [Ingress](../ingress/README.md#播放事件)。
+
+「正在听」的补全由采集 Worker 做，core 不请求 Apple：上报入口在提交前请采集 Worker 查好（`Collector.enrichTrack`），命令带着 `enrichment`（含 `null`）交给 `StateCore.commitIngest`，这里原样提交；Mac 存成遥测字段 `musicEnrichment`，HomePod 与播放器存成各自快照的 `enrichment`。回执后的歌词预热与没查出结果的重查也归采集 Worker（见它的 [README](../collector/README.md#apple-music)），重查多查到东西就经 `StateCore.commitEnrichmentPatch` 交来，由 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`）。最近播放首项的动态封面由采集 Worker 查好放进该项的 `motion`；没查出结果（`undefined`）时沿用同一项已存的那份（`src/stores/apple-music-store.ts`）。
 
 公开 API 为 `/api/status/*`，没有聚合端点（`/api/cards/*` 是给站外 `<img>` 引用的 SVG 卡片，不是状态视图，不进 `STATUS_VIEWS`）；`/api/lyrics`、`/api/motion-artwork`、`/api/musickit/token` 由采集 Worker 回答。site Worker 渲染首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
@@ -248,7 +250,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   条数上限见 `shared/pulse-timeline.ts` 的 `STATE_LANE_CAPS`）。同一状态、同一标题只续 `seenAt`、`holdUntil`、`endsBy`，每条道每分钟最多写一次
   （有效期或结束时刻挪动超过一分钟也写）；状态或标题变了在那一刻关上旧段、开新段。
   `holdUntil` 是每次观测带宽限的有效期，只决定这段还开不开着、在线时画到此刻：Mac 的播放、Emby 播放与暂停
-  用 `PULSE_STATE_HOLD_MS`；HomePod 只在状态变化时由 HA 推一次，按那份快照的可见期限（`shared/homepod-store.ts`
+  用 `PULSE_STATE_HOLD_MS`；HomePod 只在状态变化时由 HA 推一次，播放器（Mac 或 Omarchy 上的 Ringo）只在开始、暂停或结束、跳转时报一次，两者都按那份快照的可见期限（`shared/homepod-store.ts`
   的 `homePodVisibleUntil`：剩余时长加宽限，单曲循环另算，与首页判 HomePod 是否还在放同一个口径）；主机没醒时
   只按闲档查一次，用 `GAMING_HOLD_MS`；Emby 明确停播之后一直是空闲、`holdUntil` 为 null，开着的那一段不设过期，
   七天没开播仍是观测到的空闲。
@@ -256,10 +258,10 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   定期确认的来源（Mac、Emby、PSN）`endsBy` 为 null，认到最后一次确认；HomePod 的 `endsBy` 是这首按剩余时长
   该放完的那一刻（单曲循环、没有时长时为 null），一首长歌只有开头那一次推送也能整段留下到曲终。
   过期还没被下一次观测关上的段在图上也只画到那一刻，关上之后画法不变。原始字段分开存：listening 是
-  `source`（mac / homepod）、`title`、`artist`、`album`、`trackId`；watching 是 `itemId`、`title`、`subtitle`；
+  `source`（mac / homepod / omarchy；Mac 上的播放器也记 mac）、`title`、`artist`、`album`、`trackId`；watching 是 `itemId`、`title`、`subtitle`；
   gaming 是 `titleId`、`title`。标题只防病态长度（`PULSE_TITLE_MAX`）。
-  - listening 每封 Mac 信封（纯心跳也算）和每次 HomePod 事件都记一次，不查 Apple 目录：
-    Mac 在放 → HomePod 在放 → Mac 暂停 → HomePod 暂停 → 空闲。不套首页 Hero 的 10 秒暂停宽限，
+  - listening 每封 Mac 信封（纯心跳也算）、每次 HomePod 事件和每批播放器事件都记一次，不查 Apple 目录：
+    Mac 在放 → 播放器在放 → HomePod 在放 → Mac 暂停 → 播放器暂停 → HomePod 暂停 → 空闲。不套首页 Hero 的 10 秒暂停宽限，
     音乐 App 停在暂停就是暂停。Mac 离线（或关了 `appleMusic` 模块）而 HomePod 也没有有效快照时是未知。
   - watching 只在 Emby 推来播放状态时记；详情按 itemId 对上才用，位置更新没带详情时沿用存着的那份。
   - gaming 每次 PSN presence 都记（它本身就是心跳）。
@@ -309,7 +311,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 | 表 | 内容 | 自然键 |
 | --- | --- | --- |
-| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod，曲名 / 艺人 / 专辑 / 曲目 id）与别处播放的原始窗口（`certain = 0`，`source = 'recent'`，`started_at` / `ended_at` 是开播所在的 `(since, t]`，同一轮多首按播放先后给 `started_at` 加 0、1、2… 毫秒；曲名 / 艺人 / 专辑照列、曲目 id 在 `item_id`；`title` 为空的是专辑粒度的痕迹，专辑 / 歌单名在 `album`） | `(source, started_at)` |
+| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod / omarchy，曲名 / 艺人 / 专辑 / 曲目 id）与别处播放的原始窗口（`certain = 0`，`source = 'recent'`，`started_at` / `ended_at` 是开播所在的 `(since, t]`，同一轮多首按播放先后给 `started_at` 加 0、1、2… 毫秒；曲名 / 艺人 / 专辑照列、曲目 id 在 `item_id`；`title` 为空的是专辑粒度的痕迹，专辑 / 歌单名在 `album`） | `(source, started_at)` |
 | `watching_sessions` | 同一条目首尾相接的播放 + 暂停，`playing_seconds` 只算在播 | `(item_id, started_at)` |
 | `game_sessions` | 在游戏里的时段 | `(title_id, started_at)` |
 | `charging_samples` / `charging_sessions` | 过了闸门的瓦数；一次充电的起止、峰值、能量、设备 | `t` / `started_at` |

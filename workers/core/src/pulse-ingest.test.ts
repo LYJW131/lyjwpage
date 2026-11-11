@@ -72,6 +72,36 @@ test("HomePod 只在换曲时推：Mac 离线时一首二十分钟的歌照样�
   ]);
 }));
 
+test("播放器那一格：Omarchy 上开播到暂停记成一段，来源是 omarchy；它在放时压过 HomePod，HomePod 那格不被覆盖", withStorage(async (storage) => {
+  const { commitPreparedPlayerEvents } = await import("@core/player-ingest");
+  const { commitPreparedHomePodEvent } = await import("@core/homepod-ingest");
+  const { prepareHomePodEvent } = await import("@shared/ingest/homepod");
+  const { preparePlayerEvents } = await import("@shared/ingest/player");
+  const { mirror: homePodMirror } = await import("@shared/homepod-store");
+  const record = (at: number, eventName: string, extra: Record<string, string> = {}) => ({
+    timeUnixNano: `${BigInt(at) * 1_000_000n}`, observedTimeUnixNano: "0", eventName, severityText: "", body: null, resource: {},
+    attributes: { "music.track.id": "1440818839", "music.track.name": "Wait for It", "music.artist.name": "Hamilton", "music.album.name": "Hamilton",
+      "music.track.duration_ms": 193_000, "music.position_ms": 0, ...extra },
+  });
+  const play = (at: number, ...records: ReturnType<typeof record>[]) =>
+    inRequest(() => commitPreparedPlayerEvents(preparePlayerEvents(records, "omarchy", at)!));
+
+  await inRequest(() => commitPreparedHomePodEvent(prepareHomePodEvent({
+    state: "playing", title: "Path 5", artist: "Max Richter", album: "Sleep", positionMs: 0, durationMs: 20 * 60_000, entityId: "media_player.homepod",
+  }, T0)));
+  const start = T0 + 60_000;
+  await play(start, record(start, "ringo.play.start"));
+  assert.equal((await open(storage, "listening")).source, "omarchy");
+  const pause = start + 60_000;
+  await play(pause, record(pause, "ringo.play.end", { "music.stop.reason": "paused" }));
+  assert.deepEqual((await closed(storage, "listening")).map((row) => [row.source, row.state, row.title, row.from, row.to]), [
+    ["homepod", "playing", "Path 5", T0, start],
+    ["omarchy", "playing", "Wait for It", start, pause],
+  ]);
+  assert.equal((await open(storage, "listening")).title, "Path 5", "the paused player gives way to the HomePod still playing");
+  assert.equal((await homePodMirror.get())?.music.title, "Path 5");
+}));
+
 test("Mac 死了：在听的那一段只认到最后一次心跳", withStorage(async (storage) => {
   await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("playing", T0) }), T0));
   await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 60_000, ["appleMusic"]), T0 + 60_000));
@@ -120,4 +150,24 @@ test("Recently played song changes become listening traces with lengths; the fir
 test("没有播放可接的暂停（Mac 上线时 Music 已经停着）记成空闲", withStorage(async (storage) => {
   await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("paused", T0) }), T0));
   assert.equal((await open(storage, "listening")).state, "idle");
+}));
+
+test("播放器那一格两台机器共用：Omarchy 还在放时，Mac 上的暂停不顶掉它；Mac 开播就换成 Mac", withStorage(async (storage) => {
+  const { commitPreparedPlayerEvents } = await import("@core/player-ingest");
+  const { preparePlayerEvents } = await import("@shared/ingest/player");
+  const { mirror } = await import("@shared/player-store");
+  const record = (at: number, eventName: string, title: string, extra: Record<string, string> = {}) => ({
+    timeUnixNano: `${BigInt(at) * 1_000_000n}`, observedTimeUnixNano: "0", eventName, severityText: "", body: null, resource: {},
+    attributes: { "music.track.id": title, "music.track.name": title, "music.track.duration_ms": 193_000, "music.position_ms": 0, ...extra },
+  });
+  const play = (device: "mac" | "omarchy", at: number, ...records: ReturnType<typeof record>[]) =>
+    inRequest(() => commitPreparedPlayerEvents(preparePlayerEvents(records, device, at)!));
+
+  await play("omarchy", T0, record(T0, "ringo.play.start", "Wait for It"));
+  await play("mac", T0 + 30_000, record(T0 + 30_000, "ringo.play.end", "Helpless", { "music.stop.reason": "paused" }));
+  assert.equal((await mirror.get())?.music.source, "omarchy");
+  assert.equal((await open(storage, "listening")).title, "Wait for It");
+  await play("mac", T0 + 60_000, record(T0 + 60_000, "ringo.play.start", "Helpless"));
+  assert.equal((await mirror.get())?.music.source, "mac");
+  assert.equal((await open(storage, "listening")).source, "mac");
 }));

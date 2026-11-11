@@ -106,7 +106,7 @@ function NowListeningCard() {
       <Hero
         image={<div className="w-24"><Thumb {...artwork(music.artworkUrl, HERO_PX)} /></div>}
         tone={music.state === "playing" ? "live" : "idle"}
-        status={`${music.state === "playing" ? "Now playing" : "Paused"} · ${music.source === "homepod" ? "HomePod" : "Mac"}`}
+        status={`${music.state === "playing" ? "Now playing" : "Paused"} · ${music.source === "homepod" ? "HomePod" : music.source === "omarchy" ? "Omarchy" : "Mac"}`}
         title={music.title ?? "Unknown track"}
         subtitle={[music.artist, music.album].filter(Boolean).join(" · ")}
         href={live?.link}

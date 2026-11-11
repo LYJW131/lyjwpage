@@ -46,7 +46,8 @@ export type ListeningPayload = {
 };
 
 export type LocalNowPlaying = {
-  source: "apple-music" | "homepod";
+  // apple-music 是 Mac Hub 读到的 Music.app；mac / omarchy 是那台机器上自己发 OTLP 播放事件的播放器（Ringo），存在独立的一格。
+  source: "apple-music" | "homepod" | "mac" | "omarchy";
   state: "playing" | "paused" | "stopped";
   title: string | null;
   artist: string | null;

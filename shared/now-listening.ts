@@ -8,6 +8,7 @@ export const MUSIC_PAUSE_GRACE_MS = 10_000;
 export type NowListeningSnapshot = {
   mac: NowListeningCandidate | null;
   homePod: NowListeningCandidate | null;
+  player?: NowListeningCandidate | null;
   macReceivedAt: number;
   traces?: ListeningTrace[];
   container?: PlayingContainer | null;
@@ -49,17 +50,22 @@ export function pickNowListening(
   const mac = offlineByLiveness(live, now) ? null : snapshot.mac;
   const homePod =
     snapshot.homePod && homePodVisibleAt(snapshot.homePod, now) ? snapshot.homePod : null;
+  const player =
+    snapshot.player && homePodVisibleAt(snapshot.player, now) ? snapshot.player : null;
+  // Mac 的 Music.app 优先，其次是自己报事件的播放器，最后是 HomePod；在放或刚暂停的都算，前一格刚暂停也压过后一格在放。
+  const candidates = [mac, player, homePod];
 
-  const chosen =
-    (mac?.music.state === "playing" ? mac : null) ??
-    (mac && isPausedFresh(mac.music, now) ? mac : null) ??
-    (homePod?.music.state === "playing" ? homePod : null) ??
-    (homePod && isPausedFresh(homePod.music, now) ? homePod : null);
-  const alternate =
-    chosen && chosen === mac && homePod?.music.state === "playing" ? alternateOf(homePod) : null;
+  const chosen = candidates.find((candidate) =>
+    candidate && (candidate.music.state === "playing" || isPausedFresh(candidate.music, now))) ?? null;
+  const other = chosen
+    ? candidates.find((candidate) => candidate && candidate !== chosen && candidate.music.state === "playing")
+    : null;
+  const alternate = other ? alternateOf(other) : null;
   const inferred = playingElsewhere(snapshot.traces ?? [], now, snapshot.container ?? null);
-  const reported = !!inferred && [mac, homePod].some((candidate) =>
-    candidate?.music.state === "playing" && sameSong(candidate.music, inferred));
+  // 播放器报的艺人是逗号连起来的，Apple 列表里多位艺人另有写法；补全查到的目录 id 对上也算同一首。
+  const reported = !!inferred && candidates.some((candidate) =>
+    candidate?.music.state === "playing"
+      && ((!!candidate.songId && candidate.songId === inferred.songId) || sameSong(candidate.music, inferred)));
 
   return withPresence({
     music: chosen?.music ?? null,
@@ -67,6 +73,7 @@ export function pickNowListening(
       Math.max(
         snapshot.macReceivedAt || live.lastSeenAt || 0,
         snapshot.homePod?.receivedAt ?? 0,
+        snapshot.player?.receivedAt ?? 0,
       ) || null,
     idle: !chosen,
     id: chosen?.id ?? null,

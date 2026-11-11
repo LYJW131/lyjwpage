@@ -2,6 +2,7 @@
 // time 是按时间筛选与排序的列：ms 为 epoch 毫秒，day 为站点日（Asia/Shanghai）的 YYYY-MM-DD。
 export const PRIVATE_HISTORY_TABLES = {
   listening_plays: { time: "started_at", unit: "ms", about: "Every music play: Mac/HomePod measured spans (certain=1) and Apple Music recently-played windows (certain=0); title, artist, album" },
+  listening_events: { time: "occurred_at", unit: "ms", about: "Raw events from the music player on the Mac or Omarchy (play start, end, seek): track, position, heard ms, every attribute as JSON" },
   watching_sessions: { time: "started_at", unit: "ms", about: "Emby viewing sessions per item, with seconds actually playing" },
   game_sessions: { time: "started_at", unit: "ms", about: "Time spent in a game (PlayStation, Quest)" },
   charging_sessions: { time: "started_at", unit: "ms", about: "Each charge: start, end, peak watts, energy Wh, charged device name" },

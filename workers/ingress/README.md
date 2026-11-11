@@ -14,7 +14,7 @@
 - 根目录 `shared/ingest/`：各来源的 prepare（收敛、逐字段校验、Emby 的 R2 HEAD），产出能结构化复制的命令。
   状态核心只 `import type` 这里的命令类型；PlayStation 上报器通过 `/api/ingest/playstation` 交入原始信封，由本入口 prepare。
 - `src/lag-ingest.ts`：可滞后层那一半（KV `LAG`，格式见 `shared/lag.ts`），布局变了才请状态核心失效首屏。
-- `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总（限额快照由状态核心从 StateHub 归档）。
+- `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总、播放器的每条播放事件（限额快照由状态核心从 StateHub 归档）。
 - `src/env.ts`：绑定与变量。
 
 ## 端点
@@ -23,6 +23,7 @@
 | --- | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
 | POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp`、`ingest:mac-otlp` 或 `ingest:omarchy-otlp` | Claude Code 与 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip），按权限分来源 |
+| POST | `/api/ingest/mac/otlp`、`/api/ingest/omarchy/otlp` | `ingest:mac-otlp` / `ingest:omarchy-otlp` | 那台机器上音乐播放器（Ringo）的播放事件（OTLP/HTTP 日志，protobuf 或 JSON，可 gzip），见下文「播放事件」 |
 | POST | `/api/ingest/agents/cards` | `ingest:agents-cards` | Claude 手上的重置卡张数，见下文「重置卡张数」 |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
@@ -37,7 +38,7 @@
 | 状态 | 正文 | 什么时候 |
 | --- | --- | --- |
 | 202 | `{ ok: true, data }` | 整封收下。`data` 是状态核心各来源 commit 的回执（Mac 的 `desktopIconAvailable`、Emby 的 `missingImages`……），落地节点是 `{ id }` |
-| 200 | `{}` | 只在 OTLP 路由：成功时换成 exporter 要的 ExportMetricsServiceResponse |
+| 200 | `{}` | 只在 OTLP 路由：成功时换成 exporter 要的 ExportMetricsServiceResponse；播放事件路由收 protobuf 时回空体、`Content-Type: application/x-protobuf`（空的 ExportLogsServiceResponse） |
 | 403 | `{ ok: false, error: "预览 Worker 不接收上报" }` | 预览版本（见「配置」） |
 | 405 | `{ ok: false, error: "只接受 POST" }` | 方法不对 |
 | 404 | `{ ok: false, error: "没有这个上报来源：<来源>" }` | 来源不认识，在鉴权之前判 |
@@ -277,3 +278,20 @@ Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/i
 ## Omarchy 前台应用
 
 [Omarchy 上报器](../../reporters/omarchy-reporter/README.md)交 Hyprland 的前台窗口，入口 `/api/ingest/omarchy`，权限 `ingest:omarchy`。信封为 `{ version: 1, observedAt, modules: { desktop } }`，没有聚焦窗口时 `desktop: null`，字段约束见 `shared/ingest/omarchy.ts#prepareOmarchyReport`。应用图标同 Mac：`iconHash` 加上报器直传 R2 的 `iconObjectKey`，入口 HEAD 查得到对象才收键。StateCore 只存最新一份（`shared/omarchy.ts#omarchyMirror`），不推送、不失效缓存，站点暂不展示。
+
+## 播放事件
+
+Ringo（lyjw 的 Apple Music 桌面客户端）在设置 → 高级填了 OTLP 端点后，把每次开始、暂停或结束、跳转作为 OTLP 日志事件发来
+（`ringo.play.start` / `.end` / `.seek`，字段见 Ringo 仓库的 `internal/telemetry/plays.go`）。来源按它在哪台机器上放：
+Mac 上的填 `https://ingest.homepage.lyjw.llc/api/ingest/mac/otlp`，请求头用 Mac 那把 token；Omarchy 上的填
+`https://ingest.homepage.lyjw.llc/api/ingest/omarchy/otlp`，用 Omarchy 那把。端点要写完整路径：Ringo 只在路径为空时才补 `/v1/logs`。
+请求头写成 `CF-Access-Client-Id=<id>,CF-Access-Client-Secret=<secret>`，由 Access 在边缘核对，不收 Bearer。
+
+解码在 `shared/ingest/otlp-logs.ts`（protobuf 与 OTLP JSON），收敛在 `shared/ingest/player.ts#preparePlayerEvents`：一批里时刻最晚的那条
+决定此刻的状态（开始、跳转是在放，因暂停结束是暂停，其余结束是停下），交给状态核心的播放器那一格（见
+[core](../core/README.md)），和 HomePod 一样先请采集 Worker 补全；不是这三种事件、缺曲目 id 或时刻的记录跳过，只记一行警告。
+状态核心收下后，每条事件在 `waitUntil` 里归档进 D1 `listening_events`（迁移 `0012_listening_events.sql`）：常用的曲目、艺人、专辑、时长、
+位置、听了多久单列，全部属性原样存成 JSON，主键按来源与事件自身的时刻、名称、曲目，exporter 重发不重复。
+
+回执：成功时 protobuf 请求回空体与 `Content-Type: application/x-protobuf`（空的 ExportLogsServiceResponse），JSON 请求回 `{}`；
+`Content-Type` 不是这两种回 415，解不出的 protobuf 或 JSON 回 400，状态核心暂时收不了回 503（exporter 会重发），其余同上表。

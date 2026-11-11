@@ -8,13 +8,13 @@ export type EnrichTrack = (music: LocalNowPlaying | null, upcomingTracks: Playin
 
 // 命令已带 enrichment（含 null）表示补全过，原样返回，回执后的预热与重查归补全它的一方。
 export async function enrichCommand(command: CoreCommand, enrich: EnrichTrack): Promise<EnrichedCommand> {
-  if (command.source === "homepod") {
+  if (command.source === "homepod" || command.source === "player") {
     if (command.stored.enrichment !== undefined) return { command, followUp: null };
     const music = command.stored.music;
     const outcome = await enrich(music, []);
     return {
       command: { ...command, stored: { ...command.stored, enrichment: outcome?.enrichment ?? null } },
-      followUp: outcome ? { target: "homepod", music, upcomingTracks: [], outcome } : null,
+      followUp: outcome ? { target: command.source, music, upcomingTracks: [], outcome } : null,
     };
   }
   if (command.source === "mac" && command.modules.appleMusic) {

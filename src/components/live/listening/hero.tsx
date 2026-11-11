@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
 
+import { Monitor } from "lucide-react";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { HeroLyrics, HeroLyricsSkeleton } from "@/components/live/hero-lyrics";
 import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
@@ -191,11 +192,13 @@ export function ListeningHero({
                       <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-2xs leading-4 text-muted-foreground">
                         {hero.track.source === "homepod" ? (
                           <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
+                        ) : hero.track.source === "omarchy" ? (
+                          <Monitor className="size-3 shrink-0" aria-hidden />
                         ) : (
                           <MacBookProIcon className="size-3 shrink-0" aria-hidden />
                         )}
                         <span className="truncate">
-                          {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
+                          {hero.track.source === "homepod" ? "HomePod mini" : hero.track.source === "omarchy" ? "Omarchy" : "MacBook Pro"}
                         </span>
                       </span>
                     )}
