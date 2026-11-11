@@ -17,7 +17,6 @@ claude plugin install html-plan@claude-community --scope project
 ## 什么时候用
 
 - 计划里有要 lyjw 定的分叉，且不止一步。小事照旧直接做，一条消息说得完的也不用。
-- lyjw 说「出个计划书」。
 - 不用于汇报和调研：那些照项目记忆 report-book-style 发书页 Artifact。
 
 ## 和原版不同的地方
