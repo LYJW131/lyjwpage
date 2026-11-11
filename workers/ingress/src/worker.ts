@@ -4,13 +4,16 @@ import type { OtlpCodingSource } from "@shared/coding-usage-sources";
 import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
 import { jsonResponse } from "@shared/http-origins";
 import { describeRejections } from "@shared/ingest/coding";
+import { decodeOtlpLogsJson, decodeOtlpLogsProtobuf, OtlpDecodeError, type OtlpLogRecord } from "@shared/ingest/otlp-logs";
+import { preparePlayerEvents } from "@shared/ingest/player";
 import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
+import type { PlayerDevice } from "@shared/player-store";
 import { LAG_KEYS, writeLag } from "@shared/lag";
 import { LIMITS_TAG } from "@shared/live-events";
-import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import { parseClaudeResetCards } from "@shared/vibecoding-limits";
 
 import { authorize } from "./access-auth";
+import { decompressedBody, readBoundedBody, readBoundedBytes, UnsupportedEncoding } from "./body";
 import { previewWorkerEnabled, type Env } from "./env";
 import { archiveIngest } from "./ingest-archive";
 import { commitLagIngest } from "./lag-ingest";
@@ -24,6 +27,11 @@ const OTLP_SOURCES = ["agents-otlp", "mac-otlp", "omarchy-otlp"] as const satisf
 // 重置卡张数不是哪台机器观测到的，是 lyjw 口述、云端线程代写的账户事实，归 agents；只放行 ingest:agents-cards，
 // 拿这把权限写不了限额本身。
 const RESET_CARDS_PATH = "/api/ingest/agents/cards";
+// 音乐播放器（Ringo）在哪台机器上放，播放事件就归哪个来源，用那台机器的那把 token（权限 ingest:<来源>-otlp）。
+const PLAYER_OTLP_PATHS: Record<string, PlayerDevice> = {
+  "/api/ingest/mac/otlp": "mac",
+  "/api/ingest/omarchy/otlp": "omarchy",
+};
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
 const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);
@@ -45,6 +53,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
 
   if (url.pathname === OTLP_INGEST_PATH) {
     return handleIngest(request, env, ctx, OTLP_SOURCES, true);
+  }
+
+  const playerDevice = PLAYER_OTLP_PATHS[url.pathname];
+  if (playerDevice) {
+    return handlePlayerOtlp(request, env, ctx, playerDevice);
   }
 
   if (url.pathname === RESET_CARDS_PATH) {
@@ -95,15 +108,9 @@ async function handleIngest(
 
   let raw: string;
   try {
-    const encoding = otlp ? request.headers.get("Content-Encoding")?.trim().toLowerCase() : undefined;
-    if (encoding && encoding !== "identity" && encoding !== "gzip") {
-      return jsonResponse({ ok: false, error: `不支持的压缩：${encoding}` }, { status: 415 });
-    }
-    const body = encoding === "gzip" && request.body
-      ? request.body.pipeThrough(new DecompressionStream("gzip"))
-      : request.body;
-    raw = await readBoundedBody(body);
+    raw = await readBoundedBody(otlp ? decompressedBody(request) : request.body);
   } catch (error) {
+    if (error instanceof UnsupportedEncoding) return jsonResponse({ ok: false, error: error.message }, { status: 415 });
     console.error("[ingest] 读取请求体失败", source, reason(error));
     return jsonResponse({ ok: false, error: "无法读取上报数据" }, { status: 400 });
   }
@@ -113,9 +120,19 @@ async function handleIngest(
 }
 
 async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw: string): Promise<Response> {
+  let command: PreparedIngest;
   try {
-    const body = parseBody(raw);
-    const command = await prepareIngest(source, body, Date.now(), env.IMAGES);
+    command = await prepareIngest(source, parseBody(raw), Date.now(), env.IMAGES);
+  } catch (error) {
+    if ((error as { retryable?: unknown } | null)?.retryable === true) return unavailable(source, reason(error));
+    console.error("[ingest]", source, reason(error));
+    return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
+  }
+  return commitPrepared(env, ctx, source, command);
+}
+
+async function commitPrepared(env: Env, ctx: ExecutionContext, source: string, command: PreparedIngest): Promise<Response> {
+  try {
     if ((command.source === "mac" || command.source === "agents") && command.rejected.length) {
       console.warn("[ingest] rejected", source, describeRejections(command.rejected));
     }
@@ -160,6 +177,52 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
   }
 }
 
+async function handlePlayerOtlp(request: Request, env: Env, ctx: ExecutionContext, device: PlayerDevice): Promise<Response> {
+  if (previewWorkerEnabled()) {
+    return jsonResponse({ ok: false, error: "预览 Worker 不接收上报" }, { status: 403 });
+  }
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const source = `${device}-otlp`;
+  const auth = await authorize(request, env, `ingest:${source}`);
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
+
+  const type = request.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase();
+  if (type !== "application/x-protobuf" && type !== "application/json") {
+    return jsonResponse({ ok: false, error: "只接受 application/x-protobuf 或 application/json" }, { status: 415 });
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = await readBoundedBytes(decompressedBody(request));
+  } catch (error) {
+    if (error instanceof UnsupportedEncoding) return jsonResponse({ ok: false, error: error.message }, { status: 415 });
+    console.error("[ingest] 读取请求体失败", source, reason(error));
+    return jsonResponse({ ok: false, error: "无法读取上报数据" }, { status: 400 });
+  }
+  let records: OtlpLogRecord[];
+  try {
+    records = type === "application/x-protobuf"
+      ? decodeOtlpLogsProtobuf(bytes)
+      : decodeOtlpLogsJson(JSON.parse(new TextDecoder().decode(bytes)) as unknown);
+  } catch (error) {
+    if (!(error instanceof OtlpDecodeError || error instanceof SyntaxError)) throw error;
+    console.error("[ingest]", source, reason(error));
+    return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
+  }
+
+  const command = preparePlayerEvents(records, device, Date.now());
+  if (command && command.events.length < records.length) {
+    console.warn("[ingest] 跳过", source, records.length - command.events.length, "条不是播放事件或缺曲目、时刻的记录");
+  }
+  if (command) {
+    const response = await commitPrepared(env, ctx, source, command);
+    if (response.status !== 202) return response;
+  }
+  // OTLP exporter 要的是 ExportLogsServiceResponse：protobuf 请求回空体（空消息），JSON 请求回 {}。
+  return type === "application/x-protobuf"
+    ? new Response(null, { status: 200, headers: { "Content-Type": "application/x-protobuf", "Cache-Control": "no-store" } })
+    : jsonResponse({});
+}
+
 // collector 调不通时原样提交：状态核心不请求 Apple，没带 enrichment 只沿用同一曲目已存的补全；补全失败不该挡住上报。
 async function enrichListening(env: Env, command: CoreCommand): Promise<EnrichedCommand> {
   const collector = env.COLLECTOR;
@@ -189,24 +252,6 @@ function receiptData(command: PreparedIngest, data: unknown): unknown {
 // 部分接受时仍须归档并公开已收下的训练与圆环，避免实时事实与展示列表分歧。
 export function partiallyAccepted(command: PreparedIngest): boolean {
   return command.source === "iphone" && (command.failure?.stage === "beforeActivity" || command.failure?.stage === "beforeFocus");
-}
-
-async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-  if (!stream) return "";
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let result = "";
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > STORAGE_MAX_BYTES) { await reader.cancel(); throw new Error("Body too large"); }
-      result += decoder.decode(value, { stream: true });
-    }
-    return result + decoder.decode();
-  } finally { reader.releaseLock(); }
 }
 
 async function handleResetCards(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

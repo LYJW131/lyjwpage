@@ -3,14 +3,14 @@ import { liveTrack } from "@shared/home-layout";
 import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@shared/track-enrichment";
 import { NOW_LISTENING_TAG } from "@shared/live-events";
 import { fanout } from "@core/fanout";
-import { homePodListening, patchedListeningEffect } from "@core/stores/telemetry";
+import { patchedListeningEffect, slotListening } from "@core/stores/telemetry";
 import type { PreparedHomePodEvent } from "@shared/ingest/homepod";
 
 export async function commitPreparedHomePodEvent({ stored: incoming }: PreparedHomePodEvent) {
   const previous = await mirror.get();
   const stored = { ...incoming, enrichment: keepEnrichment(incoming.music, incoming.enrichment, previous?.enrichment, true) };
   const layoutChanged = (liveTrack(previous?.music) != null) !== (liveTrack(stored.music) != null);
-  const listening = homePodListening(stored);
+  const listening = slotListening(stored.receivedAt, { homePod: stored });
   await fanout({
     writes: [mirror.put(stored), listening.pulse],
     listening: [listening.effect],
@@ -26,6 +26,6 @@ export async function patchHomePodEnrichment(enrichment: TrackEnrichment): Promi
   if (!merged) return false;
   const patched = { ...stored, enrichment: merged };
   await mirror.put(patched);
-  await fanout({ listening: [patchedListeningEffect(patched)] });
+  await fanout({ listening: [patchedListeningEffect({ homePod: patched })] });
   return true;
 }

@@ -19,7 +19,7 @@ export const GAMING_STATES = ["offline", "online", "in-game"] as const;
 
 export type ListeningFacts = {
   state: (typeof LISTENING_STATES)[number];
-  source: "mac" | "homepod" | null;
+  source: "mac" | "homepod" | "omarchy" | null;
   title: string | null;
   artist: string | null;
   album: string | null;
@@ -83,7 +83,7 @@ export function laneFacts<L extends StateLane>(lane: L, value: unknown): StateLa
     if (key === "state") continue;
     const raw = row[key as string];
     if (key === "source") {
-      if (raw !== null && raw !== "mac" && raw !== "homepod") return null;
+      if (raw !== null && raw !== "mac" && raw !== "homepod" && raw !== "omarchy") return null;
       facts.source = raw;
       continue;
     }

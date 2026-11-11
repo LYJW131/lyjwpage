@@ -358,6 +358,10 @@
 
 ## 前端与工具链
 
+- **[OTLP 规范](https://opentelemetry.io/docs/specs/otlp/)**（OpenTelemetry）与 **[opentelemetry-proto](https://github.com/open-telemetry/opentelemetry-proto)** 的 logs、common、resource 三份 `.proto`
+  - 是什么：OTLP/HTTP 的请求与回执约定（protobuf 或 JSON，JSON 里 64 位整数写成字符串），以及 ExportLogsServiceRequest 的字段号。
+  - 取了什么：手写只读解码，不引 protobuf 库；纳秒时间戳按十进制字符串保留；成功回空的 ExportLogsServiceResponse，可重试的故障回 503、坏数据回 4xx。
+  - 状态：采用。落在 `shared/ingest/otlp-logs.ts` 与 `workers/ingress/src/worker.ts#handlePlayerOtlp`。
 - **[WebMCP 规范草案](https://webmachinelearning.github.io/webmcp/)**（W3C Web Machine Learning CG）与 **[Chrome 的 WebMCP 文档](https://developer.chrome.com/docs/ai/webmcp)**
   - 是什么：页面用 `document.modelContext.registerTool` 把能力注册成浏览器内 agent 可调的工具，Chrome 149 起有开关与 origin trial，DevTools Application 面板可查看和手动运行。
   - 取了什么：把公开状态视图注册成一个只读工具，标 `readOnlyHint` 与 `untrustedContentHint`，经 `AbortSignal` 注销；报错写清怎么改。

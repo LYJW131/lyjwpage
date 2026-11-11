@@ -125,3 +125,33 @@ test("没有 Mac / HomePod 在放同一首时，带上推断出的别处播放�
   assert.equal(pickNowListening(snapshot({ ...namesake, music: { ...namesake.music, artist: "yoasobi" } }), online, NOW).elsewhere, null, "case aside, same title and artist");
   assert.equal(pickNowListening(snapshot({ ...namesake, music: { ...namesake.music, artist: "Pinocchio-P" } }), online, NOW).elsewhere?.title, "Idol", "another artist's song of the same name");
 });
+
+test("播放器那一格：Mac 没在放时选它，HomePod 也在放就作为 alternate；Mac 在放时它当 alternate", () => {
+  const fromPlayer = pickNowListening(
+    { mac: candidate("apple-music", "stopped", "mac"), homePod: candidate("homepod", "playing", "pod"), player: candidate("omarchy", "playing", "ringo"), macReceivedAt: NOW },
+    online,
+    NOW,
+  );
+  assert.equal(fromPlayer.music?.title, "ringo");
+  assert.equal(fromPlayer.music?.source, "omarchy");
+  assert.equal(fromPlayer.alternate?.music.title, "pod");
+
+  const fromMac = pickNowListening(
+    { mac: candidate("apple-music", "playing", "mac"), homePod: null, player: candidate("mac", "playing", "ringo"), macReceivedAt: NOW },
+    online,
+    NOW,
+  );
+  assert.equal(fromMac.music?.title, "mac");
+  assert.equal(fromMac.alternate?.music.title, "ringo");
+});
+
+test("别处播放：在放的那格补全出的目录 id 与推断的同一首对上，即使艺人写法不同也不另报别处", () => {
+  const playing = { ...candidate("mac", "playing", "Idol"), songId: "1" };
+  playing.music = { ...playing.music, artist: "YOASOBI, Ayase" };
+  const snapshot = { mac: null, homePod: null, player: playing, macReceivedAt: NOW };
+  const trace: ListeningTrace = { since: NOW - 60_000, t: NOW - 50_000, title: "Idol", artist: "YOASOBI & Ayase", album: null, itemId: "1", durationMs: 200_000, songId: "1", artworkUrl: null };
+  const withTrace = pickNowListening({ ...snapshot, traces: [trace] }, online, NOW);
+  const bare = pickNowListening({ ...snapshot, player: { ...playing, songId: null }, traces: [trace] }, online, NOW);
+  assert.equal(withTrace.elsewhere, null);
+  assert.equal(bare.elsewhere?.title, "Idol", "without a catalog id the differently written artist does not match");
+});

@@ -9,29 +9,37 @@ export function listeningObservation(
     mac: LocalNowPlaying | null;
     macObserved: boolean;
     homePod: { music: LocalNowPlaying; receivedAt: number } | null;
+    player?: { music: LocalNowPlaying; receivedAt: number } | null;
   },
   live: Liveness,
   now: number,
 ): { facts: ListeningFacts; hold: ObservationHold } | null {
   const macVisible = input.macObserved && !offlineByLiveness(live, now);
   const mac = macVisible && input.mac?.title ? input.mac : null;
-  const homePod = input.homePod && input.homePod.music.title && homePodVisibleAt(input.homePod, now) ? input.homePod : null;
+  const visible = (stored: { music: LocalNowPlaying; receivedAt: number } | null | undefined) =>
+    stored && stored.music.title && homePodVisibleAt(stored, now) ? stored : null;
+  const homePod = visible(input.homePod);
+  const player = visible(input.player);
   const macHold: ObservationHold = { until: now + PULSE_STATE_HOLD_MS };
-  const homePodHold = (stored: { music: LocalNowPlaying; receivedAt: number }): ObservationHold =>
+  const reportedHold = (stored: { music: LocalNowPlaying; receivedAt: number }): ObservationHold =>
     ({ until: homePodVisibleUntil(stored), endsBy: homePodTrackEnd(stored) });
-  if (mac?.state === "playing") return { facts: playingFacts(mac), hold: macHold };
-  if (homePod?.music.state === "playing") return { facts: playingFacts(homePod.music), hold: homePodHold(homePod) };
-  if (mac?.state === "paused") return { facts: playingFacts(mac), hold: macHold };
-  if (homePod?.music.state === "paused") return { facts: playingFacts(homePod.music), hold: homePodHold(homePod) };
-  if (!macVisible && !homePod) return null;
+  // 先后与 shared/now-listening.ts#pickNowListening 一致：Music.app、播放器、HomePod。
+  const reported = [player, homePod];
+  for (const state of ["playing", "paused"] as const) {
+    if (mac?.state === state) return { facts: playingFacts(mac), hold: macHold };
+    const stored = reported.find((entry) => entry?.music.state === state);
+    if (stored) return { facts: playingFacts(stored.music), hold: reportedHold(stored) };
+  }
+  const fallback = player ?? homePod;
+  if (!macVisible && !fallback) return null;
   const idle: ListeningFacts = { state: "idle", source: null, title: null, artist: null, album: null, trackId: null };
-  return { facts: idle, hold: macVisible || !homePod ? macHold : homePodHold(homePod) };
+  return { facts: idle, hold: macVisible || !fallback ? macHold : reportedHold(fallback) };
 }
 
 function playingFacts(music: LocalNowPlaying): ListeningFacts {
   return {
     state: music.state === "playing" ? "playing" : "paused",
-    source: music.source === "homepod" ? "homepod" : "mac",
+    source: music.source === "homepod" || music.source === "omarchy" ? music.source : "mac",
     title: pulseText(music.title),
     artist: pulseText(music.artist),
     album: pulseText(music.album),

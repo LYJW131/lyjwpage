@@ -150,7 +150,7 @@ export function mergeEnrichment(
   return { ...catalog, motion, upcomingSongIds };
 }
 
-export type EnrichmentTarget = "mac" | "homepod";
+export type EnrichmentTarget = "mac" | "homepod" | "player";
 // upcomingKey 是 enrichment.upcomingSongIds 所查的那份队列（upcomingKeyOf），写回时与已存的队列比对。
 export type EnrichmentPatch = { target: EnrichmentTarget; enrichment: TrackEnrichment; upcomingKey: string };
 

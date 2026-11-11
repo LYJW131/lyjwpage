@@ -169,3 +169,16 @@ test("inferred plays: short songs after a skip-through keep a non-negative start
     assert.ok(play.to >= play.from);
   }
 });
+
+test("listening observation: the player that reports its own events sits between Music.app and HomePod, and keeps the device it plays on", () => {
+  const homePod = { music: { ...macMusic("playing", "Satisfied"), source: "homepod" as const }, receivedAt: T };
+  const player = { music: { ...macMusic("playing", "Wait for It"), source: "omarchy" as const }, receivedAt: T };
+  assert.equal(listeningObservation({ mac: macMusic("playing"), macObserved: true, homePod, player }, online, T)?.facts.title, "Helpless");
+  assert.deepEqual(listeningObservation({ mac: null, macObserved: true, homePod, player }, online, T)?.facts,
+    { state: "playing", source: "omarchy", title: "Wait for It", artist: "Hamilton", album: "Hamilton", trackId: "t1" });
+  const onMac = { music: { ...player.music, source: "mac" as const }, receivedAt: T };
+  assert.equal(listeningObservation({ mac: null, macObserved: false, homePod: null, player: onMac }, online, T)?.facts.source, "mac");
+  const paused = { music: { ...player.music, state: "paused" as const }, receivedAt: T };
+  assert.equal(listeningObservation({ mac: null, macObserved: true, homePod, player: paused }, online, T)?.facts.title, "Satisfied",
+    "a playing HomePod beats a paused player");
+});

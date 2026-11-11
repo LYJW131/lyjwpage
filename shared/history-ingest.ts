@@ -1,4 +1,6 @@
 import type { ActivityReport } from "@shared/activity";
+import type { PlayerEvent } from "@shared/ingest/player";
+import type { PlayerDevice } from "@shared/player-store";
 import type { ParsedAgentLimits } from "@shared/agent-limits-parse";
 import type { ReportedWorkouts, ServerStatus } from "@shared/types";
 
@@ -190,6 +192,31 @@ export function serverHourStatements(db: HistoryDb, status: ServerStatus): Histo
     Math.round(status.uptimeSeconds),
     status.observedAt,
   )];
+}
+
+// 主键按来源与事件自身的时刻、名称、曲目：exporter 遇到 503 会整批重发，重发的行原样忽略。
+const INSERT_LISTENING_EVENT = `INSERT OR IGNORE INTO listening_events(source, time_unix_nano, event, track_id, occurred_at,
+    track_name, artist_name, album_name, duration_ms, position_ms, heard_ms, service_name, service_version, attributes, received_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+export function playerEventStatements(db: HistoryDb, device: PlayerDevice, events: PlayerEvent[], receivedAt: number): HistoryStatement[] {
+  return events.map((event) => db.prepare(INSERT_LISTENING_EVENT).bind(
+    device,
+    event.timeUnixNano,
+    event.event,
+    event.trackId,
+    event.occurredAt,
+    event.trackName,
+    event.artistName,
+    event.albumName,
+    event.durationMs,
+    event.positionMs,
+    event.heardMs,
+    event.serviceName,
+    event.serviceVersion,
+    JSON.stringify(event.attributes),
+    receivedAt,
+  ));
 }
 
 export async function runHistory(db: HistoryDb, statements: HistoryStatement[]): Promise<void> {

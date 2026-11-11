@@ -1,6 +1,7 @@
 import {
   getHomePodSnapshot
 } from "@shared/homepod-store";
+import { getPlayerSnapshot } from "@shared/player-store";
 import { pickNowListening, type NowListeningSnapshot } from "@shared/now-listening";
 import { readLiveness, type Liveness } from "@shared/reporter-liveness";
 import type {
@@ -33,13 +34,14 @@ export async function readRecentListeningTraces(): Promise<ListeningTrace[]> {
 }
 
 export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
-  const [, homePod, traces, playing] = await Promise.all([
+  const [, homePod, player, traces, playing] = await Promise.all([
     syncTelemetryState(),
     getHomePodSnapshot(),
+    getPlayerSnapshot(),
     readRecentListeningTraces(),
     playingContainer.get(),
   ]);
-  return { ...snapshotFrom(homePod), traces, container: playing?.container ?? null };
+  return { ...snapshotFrom(homePod, undefined, undefined, player), traces, container: playing?.container ?? null };
 }
 
 export async function getNowListening(): Promise<NowListeningPayload> {

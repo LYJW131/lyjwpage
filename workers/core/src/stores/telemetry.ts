@@ -10,6 +10,7 @@ import {
   playableHomePod,
   type StoredHomePod,
 } from "@shared/homepod-store";
+import { getPlayerSnapshot, playablePlayer, type StoredPlayer } from "@shared/player-store";
 import { chargerActive, liveTrack, powerBankActive } from "@shared/home-layout";
 import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@shared/live-events";
 import type { PlayingQueueTrack } from "@shared/playing-queue";
@@ -98,7 +99,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     ? { charger: askSettlingAt("charger"), powerbank: askSettlingAt("powerbank") }
     : null;
   const powerBank = hasChargingDevices ? readPowerBankState() : null;
-  const homePod = getHomePodSnapshot();
+  const slots = readReportedSlots();
   const storedCodingActivity = modules.codingActivity
     ? null
     : readCodingActivities().then((activities) => activities.mac ?? null, () => null);
@@ -274,7 +275,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
       accepted += 1;
       // 推送只能使用本次提交快照，重读当前曲目可能串到下一封上报。
       telemetryListening.push(
-        listeningEffect(liveness, playableHomePod(await homePod), {
+        listeningEffect(liveness, playableSlots(await slots), {
           music,
           receivedAt,
           enrichment,
@@ -314,7 +315,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     }
 
     // 模块缺席表示未变化；纯心跳也须续观测，否则稳定播放或 coding 会出现假断流。
-    writes.push(recordListeningPulse(receivedAt, liveness, homePod));
+    writes.push(recordListeningPulse(receivedAt, liveness, slots));
     writes.push(recordCodingPulse(receivedAt, codingActivity ?? storedCodingActivity, presence === "online"));
 
     // 仅 patch 本封字段；整包 SET 会让并发心跳把新曲目覆盖成旧快照。
@@ -329,9 +330,24 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
   return { accepted, heartbeat: true, desktopIconAvailable, chargerCoverIconAvailable };
 }
 
+// HomePod 与播放器这两格各自报事件、各管各的存活；读不到时按没在放处理。
+export type ReportedSlots = { homePod: StoredHomePod | null; player: StoredPlayer | null };
+
+// 刚提交的那一格用传进来的原样快照（含已停下的），另一格读存储里还能放的那份。
+function readReportedSlots(fresh: Partial<ReportedSlots> = {}): Promise<ReportedSlots> {
+  return Promise.all([
+    "homePod" in fresh ? (fresh.homePod ?? null) : getHomePodSnapshot(),
+    "player" in fresh ? (fresh.player ?? null) : getPlayerSnapshot(),
+  ]).then(([homePod, player]) => ({ homePod, player }));
+}
+
+function playableSlots(slots: ReportedSlots): ReportedSlots {
+  return { homePod: playableHomePod(slots.homePod), player: playablePlayer(slots.player) };
+}
+
 function listeningEffect(
   liveness: Liveness,
-  homePod: StoredHomePod | null,
+  slots: ReportedSlots,
   mac?: {
     music: LocalNowPlaying | null;
     receivedAt: number;
@@ -347,7 +363,8 @@ function listeningEffect(
     kind: "listening",
     liveness,
     activeModules: [...telemetryState.activeModules],
-    homePod,
+    homePod: slots.homePod,
+    player: slots.player,
     mac: {
       music: source.music,
       receivedAt: source.receivedAt,
@@ -359,13 +376,15 @@ function listeningEffect(
 async function recordListeningPulse(
   receivedAt: number,
   liveness: Liveness,
-  homePod: Promise<StoredHomePod | null>,
+  slots: Promise<ReportedSlots>,
 ): Promise<void> {
   try {
+    const { homePod, player } = await slots;
     const observed = listeningObservation({
       mac: telemetryState.music,
       macObserved: telemetryState.activeModules.has("appleMusic"),
-      homePod: await homePod,
+      homePod,
+      player,
     }, liveness, receivedAt);
     await recordStateObservation("listening", receivedAt, observed?.facts ?? null, observed?.hold);
   } catch (error) {
@@ -414,32 +433,26 @@ export async function patchMacEnrichment(enrichment: TrackEnrichment, upcomingKe
   const merged = mergeEnrichment(stored.musicEnrichment, enrichment, upcomingKeyOf(stored.upcomingTracks ?? []) === upcomingKey);
   if (!merged) return false;
   await mirror.merge({ ...stored, musicEnrichment: merged }, ["musicEnrichment"]);
-  await fanout({ listening: [patchedListeningEffect(getHomePodSnapshot())] });
+  await fanout({ listening: [patchedListeningEffect()] });
   return true;
 }
 
 // 必须在补写落库之后调用：这里会从存储重新同步遥测工作副本。
-export async function patchedListeningEffect(homePod: Promise<StoredHomePod | null> | StoredHomePod | null): Promise<ListeningEffect> {
-  const [, liveness, pod] = await Promise.all([syncTelemetryState(), readLiveness(), homePod]);
-  return listeningEffect(liveness, playableHomePod(pod));
+export async function patchedListeningEffect(fresh: Partial<ReportedSlots> = {}): Promise<ListeningEffect> {
+  const [, liveness, slots] = await Promise.all([syncTelemetryState(), readLiveness(), readReportedSlots(fresh)]);
+  return listeningEffect(liveness, playableSlots(slots));
 }
 
-export function homePodListening(stored: StoredHomePod): {
+// HomePod 或播放器那一格收到新事件：推送与 pulse 用这一格刚收下的快照，Mac 与另一格读存储。
+export function slotListening(receivedAt: number, fresh: Partial<ReportedSlots>): {
   effect: Promise<ListeningEffect>;
   pulse: Promise<void>;
 } {
-  const ready = Promise.all([syncTelemetryState(), readLiveness()]);
+  const ready = Promise.all([syncTelemetryState(), readLiveness(), readReportedSlots(fresh)]);
   return {
-    effect: ready.then(([, liveness]) =>
-      listeningEffect(liveness, playableHomePod(stored)),
-    ),
+    effect: ready.then(([, liveness, slots]) => listeningEffect(liveness, playableSlots(slots))),
     pulse: ready.then(
-      ([, liveness]) =>
-        recordListeningPulse(
-          stored.receivedAt,
-          liveness,
-          Promise.resolve(stored),
-        ),
+      ([, liveness, slots]) => recordListeningPulse(receivedAt, liveness, Promise.resolve(slots)),
       (error) => {
         console.error("[pulse]", error instanceof Error ? error.message : String(error));
       },

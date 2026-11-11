@@ -5,6 +5,7 @@ import { prepareAgentsOtlpUsage, type PreparedAgentsOtlpUsage } from "./agents-o
 import { prepareEmbyReport, type PreparedEmbyReport } from "./emby";
 import { prepareHomePodEvent, type PreparedHomePodEvent } from "./homepod";
 import { preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone";
+import type { PreparedPlayerEvents } from "./player";
 import { preparePlaystationReport, type PreparedPlaystationReport } from "./playstation";
 import type { ImageBucket } from "./r2-assets";
 import { prepareServerReport, type PreparedServerReport } from "./server";
@@ -19,6 +20,7 @@ export type PreparedIngest = WithReporter<
   | PreparedTelemetryEnvelope
   | PreparedPhoneEnvelope
   | PreparedHomePodEvent
+  | PreparedPlayerEvents
   | PreparedEmbyReport
   | PreparedPlaystationReport
   | PreparedServerReport

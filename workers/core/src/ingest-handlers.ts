@@ -1,6 +1,7 @@
 import { commitPreparedAgentsReport } from "./stores/agents";
 import { recordPreparedAgentsOtlpUsage } from "./stores/agents-otlp";
 import { commitPreparedHomePodEvent } from "./homepod-ingest";
+import { commitPreparedPlayerEvents } from "./player-ingest";
 import { commitPreparedPhoneEnvelope } from "./phone-telemetry";
 import { commitPreparedEmbyReport } from "./stores/emby";
 import { commitPreparedPlaystationReport } from "./stores/playstation";
@@ -14,6 +15,7 @@ export async function commitPreparedIngest(command: CoreCommand): Promise<unknow
     case "mac": return commitPreparedTelemetryEnvelope(command);
     case "iphone": return commitPreparedPhoneEnvelope(command);
     case "homepod": return commitPreparedHomePodEvent(command);
+    case "player": return commitPreparedPlayerEvents(command);
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
     case "quest": return commitPreparedQuestReport(command);

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { createServer as httpServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -24,11 +24,15 @@ const cloudClient = 'cloud-only.access';
 const agentsClient = 'agents-only.access';
 const macClient = 'mac-only.access';
 const questClient = 'quest-only.access';
+const macPlayerClient = 'mac-otlp-only.access';
+const omarchyPlayerClient = 'omarchy-otlp-only.access';
 Object.assign(access.vars.ACCESS_CLIENTS, {
   [cloudClient]: ['ingest:agents-otlp'],
   [agentsClient]: ['ingest:agents'],
   [macClient]: ['ingest:mac'],
   [questClient]: ['ingest:quest'],
+  [macPlayerClient]: ['ingest:mac-otlp'],
+  [omarchyPlayerClient]: ['ingest:omarchy-otlp'],
 });
 const verifyBuild = process.argv.includes('--build');
 const verifyMcpClient = process.argv.includes('--mcp-client');
@@ -405,6 +409,45 @@ export default { fetch(request, env) {
   assert.equal(JSON.parse(nowListeningSection.slice(nowListeningSection.indexOf('\n') + 1)).data.music.title, 'isolated-second');
   assert.equal(/musicUserToken|developerToken/.test(statusText), false);
   console.log('PASS: MCP → AI → PublicStatus RPC reads the latest ingest from StateHub using the public status model');
+  async function playerOtlp(device, client, body, type = 'application/json') {
+    return fetch(`${worker}/api/ingest/${device}/otlp`, {
+      method: 'POST', headers: { ...await access.headers(client), 'content-type': type }, body,
+    });
+  }
+  const playerEvent = (eventName, extra = []) => JSON.stringify({ resourceLogs: [{
+    resource: { attributes: [{ key: 'service.name', value: { stringValue: 'ringo' } }] },
+    scopeLogs: [{ logRecords: [{
+      timeUnixNano: `${BigInt(Date.now()) * 1000000n}`, eventName,
+      attributes: [
+        { key: 'music.track.id', value: { stringValue: 'isolated-player' } },
+        { key: 'music.track.name', value: { stringValue: 'isolated-player' } },
+        { key: 'music.track.duration_ms', value: { intValue: '200000' } },
+        { key: 'music.position_ms', value: { intValue: '0' } },
+        ...extra,
+      ],
+    }] }],
+  }] });
+  assert.equal((await playerOtlp('mac', macClient, playerEvent('ringo.play.start'))).status, 403, 'ingest:mac alone cannot write the player route');
+  assert.equal((await playerOtlp('omarchy', macPlayerClient, playerEvent('ringo.play.start'))).status, 403);
+  const started = await playerOtlp('mac', macPlayerClient, playerEvent('ringo.play.start'));
+  assert.equal(started.status, 200);
+  assert.deepEqual(await started.json(), {});
+  await eventually(async () => {
+    const now = await listeningNow();
+    assert.equal(now.music?.title, 'isolated-player');
+    assert.equal(now.music?.source, 'mac');
+    assert.equal(now.alternate?.music.title, 'isolated-second', 'the HomePod still playing rides along');
+  });
+  await eventually(async () => assert.ok(events.some(e => e.type === 'listening-now' && e.payload.music?.title === 'isolated-player')));
+  const ringoSample = await readFile(join(root, 'shared/testing/ringo-plays.pb'));
+  const fromOmarchy = await playerOtlp('omarchy', omarchyPlayerClient, ringoSample, 'application/x-protobuf');
+  assert.equal(fromOmarchy.status, 200);
+  assert.equal(fromOmarchy.headers.get('content-type'), 'application/x-protobuf');
+  assert.equal((await fromOmarchy.arrayBuffer()).byteLength, 0);
+  assert.equal(await nowPlaying(), 'isolated-player', "Omarchy's stop does not displace the Mac still playing");
+  assert.equal((await playerOtlp('mac', macPlayerClient, playerEvent('ringo.play.end', [{ key: 'music.stop.reason', value: { stringValue: 'ended' } }]))).status, 200);
+  await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
+  console.log('PASS: the player on the Mac and Omarchy reports OTLP logs (JSON and the real protobuf) → StateCore player slot → listening/now and listening-now; per-machine permissions, no cross-machine clobber');
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));
   const deployed = await post(worker, '/api/internal/site-deployed', {});
   assert.equal(deployed.status, 200);

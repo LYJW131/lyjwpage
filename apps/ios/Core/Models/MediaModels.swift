@@ -20,13 +20,16 @@ enum PlaybackState: String, LenientStringEnum, Equatable {
 enum MusicSource: String, LenientStringEnum, Equatable {
     case appleMusic = "apple-music"
     case homepod
+    case mac
+    case omarchy
     case unknown
     static let unknownCase = MusicSource.unknown
 
     var label: String {
         switch self {
-        case .appleMusic: "Mac"
+        case .appleMusic, .mac: "Mac"
         case .homepod: "HomePod"
+        case .omarchy: "Omarchy"
         case .unknown: "Elsewhere"
         }
     }

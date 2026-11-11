@@ -39,7 +39,8 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `limit_snapshots` | 各厂商限额每日快照（Asia/Shanghai 日） | 状态核心 | `(date, agent, limit_key)`，取当天最后一次读数 |
 | `limit_hours` | 各厂商限额每小时快照（UTC 整点） | 状态核心 | `(agent, limit_key, hour_at)`，取该小时最后一次读数 |
 | `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存、速率峰值、周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；只收观测时刻晚于该小时最后观测时刻的样本，重放和乱序晚到的旧样本都不累加 |
-| `listening_plays` | 实测在放的每一段（mac / homepod）与「最近播放的歌」里每首新播所在的刷新窗口（`certain = 0`） | 状态核心 | `(source, started_at)` |
+| `listening_plays` | 实测在放的每一段（mac / homepod / omarchy，播放器在哪台机器上放记哪台）与「最近播放的歌」里每首新播所在的刷新窗口（`certain = 0`） | 状态核心 | `(source, started_at)` |
+| `listening_events` | Mac 或 Omarchy 上音乐播放器（Ringo）发来的每条播放事件（开始、暂停或结束、跳转），全部属性存 JSON | 上报入口 | `(source, time_unix_nano, event, track_id)`，重发的忽略 |
 | `watching_sessions` | 同一条目首尾相接的播放 + 暂停，含实际在播秒数 | 状态核心 | `(item_id, started_at)`，延续时改写同一行 |
 | `game_sessions` | 在游戏里的时段 | 状态核心 | `(title_id, started_at)` |
 | `charging_samples` | 过了写入闸门的实测瓦数 | 状态核心 | `t` |
@@ -52,7 +53,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `coding_token_buckets` / `agent_usage_days` | 单来源（Mac）时代的桶与每日汇总，冻结不再写（`0008` 把桶和活跃秒数复制进新表） | — | — |
 | `pulse_samples` | 档位时代（Pulse 改成事实时间线之前）的旧数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
 
-上报入口的三张表（训练、圆环日读数、服务器小时汇总）由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。限额两张表上报入口不写：限额读数先按整点记进 StateHub，再由状态核心走下面的 pulse 归档（`limits` 一路，语句同样在 `shared/history-ingest.ts`）。迁移 `0005_history_ingest.sql` 建前四张，`0010_limit_hours.sql` 建 `limit_hours`，部署写这些表的版本之前先应用。
+上报入口的三张表（训练、圆环日读数、服务器小时汇总）由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。限额两张表上报入口不写：限额读数先按整点记进 StateHub，再由状态核心走下面的 pulse 归档（`limits` 一路，语句同样在 `shared/history-ingest.ts`）。迁移 `0005_history_ingest.sql` 建前四张，`0010_limit_hours.sql` 建 `limit_hours`，部署写这些表的版本之前先应用。`listening_events` 同样由上报入口在状态核心收下之后归档（`workers/ingress/README.md#播放事件`），迁移是 `0012_listening_events.sql`；播放器的实测段落另由状态核心走 pulse 归档进 `listening_plays`。
 
 - Pulse 事实表由状态核心写：cron 每 5 分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 按自然键拼成 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写；活动桶另有受版本保护的范围删除）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`（coding 用量与桶两路是修订号，其余是时刻），确认按 max 单调前进；失败留待下一轮重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/core/README.md#长期归档d1)，迁移 `0007_history_pulse.sql` 与 coding 用量的 `0008_coding_usage.sql`（`0006` 留给采集 Worker）。
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是实时层的唯一权威，只留 `PULSE_TTL_MS` 那么久，归档保留全部历史。
