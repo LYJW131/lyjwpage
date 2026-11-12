@@ -23,8 +23,19 @@ async function call(action: string, jobId: string) {
   const response = await fetch(`${options.origin}${path}?jobId=${jobId}`, {
     method, headers: { "x-probe-signature": signature }, signal: AbortSignal.timeout(40_000),
   });
-  if (!response.ok) throw new Error(`probe ${action}: HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`probe ${action}: HTTP ${response.status}; ${(await response.text()).slice(0, 120)}`);
   return await response.json() as { caller: unknown; state?: string; result?: Record<string, unknown> };
+}
+
+const readinessDeadline = Date.now() + 60_000;
+for (;;) {
+  try {
+    await call("result", randomUUID());
+    break;
+  } catch (error) {
+    if (Date.now() >= readinessDeadline) throw error;
+    await setTimeout(1_000);
+  }
 }
 
 for (let index = 0; index < Number(options.runs); index++) {
