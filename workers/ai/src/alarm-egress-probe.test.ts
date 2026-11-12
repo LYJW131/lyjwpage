@@ -26,7 +26,11 @@ test("task submission never calls the model; a fresh alarm instance runs once wi
     modelCalls++;
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer probe-key");
     assert.equal(new Headers(init?.headers).has("cf-ipcountry"), false);
-    return Response.json({ content: [{ type: "text", text: "OK" }], usage: { output_tokens: 1 } });
+    return new Response([
+      { type: "message_start", message: { id: "test-message" } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "OK" } },
+      { type: "message_delta", usage: { output_tokens: 1 } },
+    ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
   });
   const state = { storage } as unknown as DurableObjectState;
   await new AlarmEgressProbe(state, { ALARM_PROBE_API_KEY: "probe-key" }).schedule();

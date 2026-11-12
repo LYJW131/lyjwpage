@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - workers/ai/src/alarm-egress-probe.ts
+      - workers/ai/scripts/alarm-egress-benchmark.ts
       - .github/workflows/alarm-egress-probe.yml
 
 permissions:
@@ -44,3 +45,24 @@ jobs:
         run: |
           test -n "$PROBE_API_KEY"
           printf '%s' "$PROBE_API_KEY" | pnpm --dir workers/core exec wrangler preview secret put ALARM_PROBE_API_KEY -c wrangler.toml --name codex-anthropic-alarm-probe --worker-name core
+      - name: Generate a temporary runner signing key
+        run: |
+          node --input-type=module - <<'JS'
+          import { generateKeyPairSync } from 'node:crypto';
+          import { writeFileSync } from 'node:fs';
+          const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+          writeFileSync(process.env.RUNNER_TEMP + '/probe.pem', privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+          writeFileSync(process.env.RUNNER_TEMP + '/probe-public.txt', publicKey.export({ type: 'spki', format: 'der' }).toString('base64'));
+          JS
+      - name: Register the runner public key
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm --dir workers/core exec wrangler preview secret put ALARM_PROBE_RUNNER_PUBLIC_KEY -c wrangler.toml --name codex-anthropic-alarm-probe --worker-name core < "$RUNNER_TEMP/probe-public.txt"
+      - name: Compare ten pairs from a supported country
+        run: node workers/ai/scripts/alarm-egress-benchmark.ts --origin https://codex-anthropic-alarm-probe-core.lyjw.workers.dev --key "$RUNNER_TEMP/probe.pem" --out "$RUNNER_TEMP/alarm-latency-us.json" --runs 10
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: alarm-latency-us
+          path: ${{ runner.temp }}/alarm-latency-us.json

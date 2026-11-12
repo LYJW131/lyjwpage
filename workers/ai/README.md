@@ -4,7 +4,7 @@
 
 ## 入口与权限
 
-分支预览的 `alarm-egress-probe.ts` 实验比较同一个 DO 的同步出站与 alarm 出站；固定短提示词，只接受 Ed25519 签名请求，不存访客信息或凭据。入口位于 core 的组合 Preview，不接生产路由；实验凭据由 `alarm-egress-probe.yml` 仅向实验分支 Preview 注入。该实验不属于生产聊天链路。
+分支预览的 `alarm-egress-probe.ts` 实验比较同一个 DO 的同步出站与 alarm 出站；固定短提示词，只接受 Ed25519 签名请求，不存访客信息或凭据。入口位于 core 的组合 Preview，不接生产路由；实验凭据由 `alarm-egress-probe.yml` 仅向实验分支 Preview 注入。`scripts/alarm-egress-benchmark.ts` 交替执行两种路径，记录流式首个文本 delta、完成耗时和 alarm 调度耗时；轮询仅取回结果，不计入首字测量。该实验不属于生产聊天链路。
 
 生产配置 `wrangler.toml` 设 `workers_dev=false`、`preview_urls=false`，不绑定独立公开域名，也没有 workers.dev 地址。生产 HTTP 只经站点域名进来：site Worker 按 `src/lib/site-policy.ts#classifyGatewayRequest` 分出，经 `AI_SERVICE.fetch(request)` 原样转发请求与响应流。core 没有公开地址，它按 `shared/ai-paths.ts#AI_HTTP_PATHS` 认出并转发的那条路只在分支 Preview 与本地用到。来源校验、预检、限流和协议处理由本 Worker 执行。
 

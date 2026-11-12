@@ -10,7 +10,7 @@ import type { Env as ApiEnv } from "./runtime";
 
 export { AlarmEgressProbe, AnthropicEgress, BuildCoordinator, ChatQuota, LivePushRoom, StateHub };
 
-type PreviewEnv = ApiEnv & Omit<AiEnv, "PUBLIC_STATUS"> & { PREVIEW_COMMIT_SHA?: string; ALARM_PROBE_API_KEY?: string; ALARM_EGRESS_PROBE: DurableObjectNamespace<AlarmEgressProbe> };
+type PreviewEnv = ApiEnv & Omit<AiEnv, "PUBLIC_STATUS"> & { PREVIEW_COMMIT_SHA?: string; ALARM_PROBE_API_KEY?: string; ALARM_PROBE_RUNNER_PUBLIC_KEY?: string; ALARM_EGRESS_PROBE: DurableObjectNamespace<AlarmEgressProbe> };
 
 export default {
   async fetch(request: Request, env: PreviewEnv, ctx: ExecutionContext): Promise<Response> {
