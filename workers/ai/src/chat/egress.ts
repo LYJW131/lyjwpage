@@ -3,8 +3,9 @@ import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../runtime";
 
 const ANTHROPIC_HOST = "api.anthropic.com";
-// Anthropic 拒绝来自不支持地区（如香港）的请求，返回 403 "Request not allowed"；Worker 在离访客最近的机房执行，
-// 亚洲访客的请求会被拒。出站改由固定在日本的对象发出。locationHint 只在首次创建时生效、没有日本档：
+// Anthropic 拒绝来自不支持地区（如香港）的请求，返回 403 "Request not allowed"。出站固定由日本的对象发出，
+// 但 Anthropic 按原始访客的 IP 判地区：香港、大陆访客经这个对象（日本或北美）同样被拒，美国访客从香港机房也能过，
+// 见 docs/ops-facts.md。locationHint 只在首次创建时生效、没有日本档：
 // "apac" 实测会随机落到 HKG / SIN / KIX，所以按名字依次试，取第一个真落在日本机房的；都不在日本就退回北美。
 const JAPAN_COLOS = new Set(["NRT", "HND", "KIX", "ITM", "FUK", "OKA"]);
 const JAPAN_CANDIDATES = 8;
@@ -74,16 +75,9 @@ export function anthropicFetch(env: Env): typeof fetch | undefined {
   const namespace = env.ANTHROPIC_EGRESS;
   if (!namespace) return undefined;
   let name: Promise<string> | undefined;
-  const via = (picked: string, input: Parameters<typeof fetch>[0], init?: RequestInit) =>
-    namespace.get(namespace.idFromName(picked), { locationHint: picked === FALLBACK_NAME ? "wnam" : "apac" }).fetch(new Request(input, init));
   return async (input, init) => {
     const picked = await (name ??= egressName(namespace));
-    const response = await via(picked, input, init);
-    // 日本机房发出的 /v1/messages 会被 Anthropic 入口时不时打回 403（十几毫秒内，没到模型服务），同一 key 的其他接口照常 200：
-    // 这一请求改走北美重试一次。SDK 的请求体是字符串，可以再发一遍。
-    if (response.status !== 403 || picked === FALLBACK_NAME) return response;
-    await response.body?.cancel();
-    console.warn(`[anthropic-egress] 403 via ${picked}, retrying via ${FALLBACK_NAME}`);
-    return via(FALLBACK_NAME, input, init);
+    const stub = namespace.get(namespace.idFromName(picked), { locationHint: picked === FALLBACK_NAME ? "wnam" : "apac" });
+    return stub.fetch(new Request(input, init));
   };
 }

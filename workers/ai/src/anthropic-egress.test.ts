@@ -12,7 +12,7 @@ registerHooks({
 });
 const { anthropicFetch } = await import("./chat/egress.ts");
 
-function namespace(colo: (name: string) => Promise<string>, respond: (name: string) => Response = () => new Response("ok")) {
+function namespace(colo: (name: string) => Promise<string>) {
   const probes: string[] = [];
   const used: string[] = [];
   const binding = {
@@ -24,7 +24,7 @@ function namespace(colo: (name: string) => Promise<string>, respond: (name: stri
       },
       fetch: async () => {
         used.push(name);
-        return respond(name);
+        return new Response("ok");
       },
     }),
   };
@@ -52,21 +52,4 @@ test("选中的日本对象跨请求复用，不再探测", async () => {
   await anthropicFetch(env)!("https://api.anthropic.com/v1/messages");
   assert.deepEqual(probes, ["anthropic-jp-0", "anthropic-jp-1"]);
   assert.deepEqual(used, ["anthropic-jp-1", "anthropic-jp-1", "anthropic-jp-1"]);
-});
-
-test("日本出站在入口被 403 时，同一请求改走北美重试一次", async () => {
-  const { env, used } = namespace(
-    async () => "KIX",
-    (name) => (name === "anthropic-wnam" ? new Response("ok") : new Response("Request not allowed", { status: 403 })),
-  );
-  const response = await anthropicFetch(env)!("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
-  assert.equal(response.status, 200);
-  assert.deepEqual(used, ["anthropic-jp-0", "anthropic-wnam"]);
-});
-
-test("北美出站也 403 时原样交回，不再重试", async () => {
-  const { env, used } = namespace(async () => "KIX", () => new Response("forbidden", { status: 403 }));
-  const response = await anthropicFetch(env)!("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
-  assert.equal(response.status, 403);
-  assert.deepEqual(used, ["anthropic-jp-0", "anthropic-wnam"]);
 });
