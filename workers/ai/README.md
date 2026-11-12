@@ -25,7 +25,7 @@
 
 ## 代码职责
 
-- `src/index.ts`：HTTP 入口，导出 `ChatQuota`、`BuildCoordinator`、`ChatLog` 与具名入口 `Digest`。
+- `src/index.ts`：HTTP 入口，导出 `ChatQuota`、`BuildCoordinator`、停用的空类 `AnthropicEgress`、`ChatLog` 与具名入口 `Digest`。
 - `src/chat/`：Turnstile 与通行证、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
@@ -89,7 +89,7 @@
 
 绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`、`TURNSTILE_SECRET_KEY`，联网搜索使用 `EXA_API_KEY` 与可选的 `WEB_SEARCH_PROVIDER`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、构建工作流与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
-生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管旧 `api` Worker 的 `ChatQuota` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。同批接管的 `AnthropicEgress` 已由 `v4-drop-anthropic-egress` 删除。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
+生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管旧 `api` Worker 的 `ChatQuota` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。同批接管的 `AnthropicEgress` 已不用，命名空间还在，只留空类导出（`src/retired.ts` 写了为什么还没用 `deleted_classes` 删）。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
 Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在 core 的同一隔离 Preview 内运行 core 与 AI，不连接生产 Service Binding；ai 自己不发布分支 Preview。Secret 配在 core parent 的具体 Preview 上；创建、解析和配置步骤只在构建文档维护。
 

@@ -66,10 +66,6 @@ new_sqlite_classes = ["BuildCoordinator"]
 tag = "v3-chat-log"
 new_sqlite_classes = ["ChatLog"]
 
-[[migrations]]
-tag = "v4-drop-anthropic-egress"
-deleted_classes = ["AnthropicEgress"]
-
 [[ratelimits]]
 name = "CHAT_USAGE_LIMIT"
 namespace_id = "13101"
