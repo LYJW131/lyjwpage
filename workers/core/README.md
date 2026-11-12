@@ -493,7 +493,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## Durable Object 迁移
 
-迁移只追加新 tag、不改旧的，`wrangler.toml` 的既有迁移链必须保留；`v1-transfer-from-api` 从旧 `api` Worker 接管 `StateHub`、`LivePushRoom` 的命名空间，保留对象 ID 与数据，不能通过删除类或创建空命名空间代替。AI 的 `ChatQuota`、`AnthropicEgress` 归 AI Worker。
+迁移只追加新 tag、不改旧的，`wrangler.toml` 的既有迁移链必须保留；`v1-transfer-from-api` 从旧 `api` Worker 接管 `StateHub`、`LivePushRoom` 的命名空间，保留对象 ID 与数据，不能通过删除类或创建空命名空间代替。AI 的 `ChatQuota` 归 AI Worker。
 
 ## 外部数据卡片（可滞后层）
 

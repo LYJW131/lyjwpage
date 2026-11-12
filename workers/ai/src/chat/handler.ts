@@ -15,7 +15,6 @@ import { GOD_CHAT_DEFAULT_LINEUP, GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGo
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
 import type { ToolIO } from "../tools/registry";
-import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { issuePass, passExpiresAt, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
@@ -136,7 +135,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   const effort = GOD_CHAT_TIER_INFO[tier].effort;
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const deepseek = new Anthropic({ apiKey: env.DEEPSEEK_API_KEY, baseURL: DEEPSEEK_BASE_URL });
   const api = designApi(client, env);
   // 设计会话的首回合推迟到访客同意之后：同意由客户端扣下 resume 请求来表达，Worker 见空会话即补开场，不重放校验。
@@ -196,7 +195,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
           // 只记状态码、Anthropic 回的错误正文与 request id，不记请求：Observability 对 Error 只留调用栈，看不出是哪种拒绝。
           const detail = error instanceof Anthropic.APIError ? { status: error.status, requestId: error.requestID, message: error.message.slice(0, 500) } : undefined;
           console.error(`[god-chat] stream failed (${tier})`, ...(detail ? [JSON.stringify(detail)] : []), error);
-          emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
+          emit({ type: "text", text: regionBlocked(error) ? REGION_BLOCKED_TEXT : "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
         await record({ route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, scores: decision.scores, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
@@ -209,6 +208,13 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
     },
   });
   return new Response(body, { headers });
+}
+
+// Anthropic 按访客自己的 IP 判地区，不支持地区（如香港、大陆）回 403 forbidden "Request not allowed"，换出站位置绕不开。
+const REGION_BLOCKED_TEXT = "\n\n[Anthropic doesn't serve Claude in your region. The DeepSeek lineup still works.]";
+
+function regionBlocked(error: unknown): boolean {
+  return error instanceof Anthropic.APIError && error.status === 403 && String(error.type) === "forbidden";
 }
 
 async function openedTurn(api: DesignApi, sessionId: string, signal: AbortSignal): Promise<SessionEvent[]> {

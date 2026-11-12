@@ -15,7 +15,6 @@ import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, jsonResponse } from "
 import { MCP_PATH } from "@shared/mcp";
 
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
-import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { webSearchServices } from "./chat/web-search";
 import { handleBuild, handleBuildIssue, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
@@ -98,7 +97,7 @@ const worker = {
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
     if (!env.ANTHROPIC_API_KEY) return;
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const deleted = await deleteExpiredDesignSessions(client.beta.sessions, env);
     if (deleted) console.info("[design] deleted expired sessions", JSON.stringify({ deleted }));
   },

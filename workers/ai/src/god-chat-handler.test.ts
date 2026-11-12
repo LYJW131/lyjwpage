@@ -6,9 +6,8 @@ import { GOD_CHAT_ANTHROPIC_CONSENT, GOD_CHAT_PASS_TTL_MS, GOD_CHAT_TURNSTILE_AC
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 import type { Env } from "./runtime.ts";
 import type { ChatQuota } from "./chat/quota.ts";
-import type { AnthropicEgress } from "./chat/egress.ts";
 import type { ChatLog, Transcript } from "./chat/transcripts.ts";
-import { binding, deepseekFetch, handleChat, issuePass, modelStream, PASS, unexpected } from "./chat/testing/handler-fixture.ts";
+import { binding, deepseekFetch, handleChat, modelFetch, issuePass, modelStream, PASS, unexpected } from "./chat/testing/handler-fixture.ts";
 
 test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度并在签名 trace 中记录；DeepSeek 两档去掉它不支持的字段", async (t) => {
   const original = globalThis.fetch;
@@ -25,7 +24,7 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
         requests.push({ body, headers: request.headers, url: request.url });
         return modelStream(body.model, requests.length === 1);
       };
-      globalThis.fetch = deepseekFetch(respond);
+      globalThis.fetch = modelFetch(respond);
       const transcripts: Transcript[] = [];
       const env: Env = {
         PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
@@ -41,7 +40,6 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
           admitVisitor: async () => "ok" as const,
           admitTier: async () => tier,
         }),
-        ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
         CHAT_LOG: binding<ChatLog>({ record: async (entry) => { transcripts.push(entry); } }),
       };
       const response = await handleChat(new Request("https://api.test/api/chat", {
@@ -265,4 +263,29 @@ test("没有有效通行证就要 Turnstile：验过后下发通行证，通行�
   assert.equal(stale.status, 403);
   assert.equal(stale.body?.code, "human_pass_expired");
   assert.equal((await ask({ humanPass: (await issuePass("other-secret")).pass })).status, 403);
+});
+
+test("Anthropic 按地区回 403 forbidden 时，告诉访客 Claude 在这里不可用，而不是说连接丢了", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = modelFetch(async () => Response.json({ error: { type: "forbidden", message: "Request not allowed" } }, { status: 403 }));
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "haiku",
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CHAT_QUOTA: binding<ChatQuota>({ admitVisitor: async () => "ok" as const, admitTier: async () => "haiku" as const }),
+  };
+  t.mock.method(console, "error", () => {});
+  const response = await handleChat(new Request("https://api.test/api/chat", {
+    method: "POST", body: JSON.stringify({ humanPass: PASS, anthropic: "allow", messages: [{ role: "user", content: "hello" }] }),
+  }), env, { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") });
+  const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
+  const text = events.flatMap((event) => (event.type === "text" ? [event.text] : [])).join("");
+  assert.match(text, /doesn't serve Claude in your region/);
+  assert.doesNotMatch(text, /connection to the heavens was lost/);
 });
