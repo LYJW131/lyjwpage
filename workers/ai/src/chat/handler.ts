@@ -193,7 +193,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
         }
       } catch (error) {
         if (!abort.signal.aborted) {
-          console.error(`[god-chat] stream failed (${tier})`, error);
+          // 只记状态码、Anthropic 回的错误正文与 request id，不记请求：Observability 对 Error 只留调用栈，看不出是哪种拒绝。
+          const detail = error instanceof Anthropic.APIError ? { status: error.status, requestId: error.requestID, message: error.message.slice(0, 500) } : undefined;
+          console.error(`[god-chat] stream failed (${tier})`, ...(detail ? [JSON.stringify(detail)] : []), error);
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {

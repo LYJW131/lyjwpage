@@ -74,9 +74,16 @@ export function anthropicFetch(env: Env): typeof fetch | undefined {
   const namespace = env.ANTHROPIC_EGRESS;
   if (!namespace) return undefined;
   let name: Promise<string> | undefined;
+  const via = (picked: string, input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+    namespace.get(namespace.idFromName(picked), { locationHint: picked === FALLBACK_NAME ? "wnam" : "apac" }).fetch(new Request(input, init));
   return async (input, init) => {
     const picked = await (name ??= egressName(namespace));
-    const stub = namespace.get(namespace.idFromName(picked), { locationHint: picked === FALLBACK_NAME ? "wnam" : "apac" });
-    return stub.fetch(new Request(input, init));
+    const response = await via(picked, input, init);
+    // 日本机房发出的 /v1/messages 会被 Anthropic 入口时不时打回 403（十几毫秒内，没到模型服务），同一 key 的其他接口照常 200：
+    // 这一请求改走北美重试一次。SDK 的请求体是字符串，可以再发一遍。
+    if (response.status !== 403 || picked === FALLBACK_NAME) return response;
+    await response.body?.cancel();
+    console.warn(`[anthropic-egress] 403 via ${picked}, retrying via ${FALLBACK_NAME}`);
+    return via(FALLBACK_NAME, input, init);
   };
 }
