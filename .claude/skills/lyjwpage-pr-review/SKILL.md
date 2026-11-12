@@ -7,8 +7,6 @@ description: lyjwpage 里开 PR 前（或开了之后）让自家评审员（`ag
 
 评审员在线程自己的云端容器里跑，不进 GitHub Actions：`agents/pr-review/run.ts` 从本地 git 取 head 的源码树和 merge-base 起的 diff 做快照，Devin CLI 的 swe-2-max 只有读文件、grep、按名找文件三个能用的工具，照快照里的 `REVIEW.md` 判，交回一组发现（`agents/pr-review/README.md`）。目的是开 PR 前多一双不同模型的眼睛。什么时候跑和叫不叫 Opus 判定员是同一个判断：线程判为大改动就跑，小改动、文档与 skill 不跑。它不发 PR 评论，不替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
 
-为了让评审员满意只做最小的改动。防范范围蔓延，该驳回就驳回。
-
 ## 1. 备好
 
 - 送审的是已提交的 head，没提交的改动它看不到：先提交（WIP 也行）。`git fetch origin main`，base 默认取 `origin/main` 的 merge-base；PR 的 base 不是 main 时用 `--base` 指定。
@@ -27,6 +25,8 @@ cd agents/pr-review && npx tsx run.ts --title '<PR 标题>' --intent <意图文�
 - 结果：标准输出按 F1、F2……列出每条发现，`<out>/findings.json` 是同一份 JSON，`<out>/export.json` 是 Devin 的完整过程，要看它读了哪些文件时翻这里。
 
 ## 3. 答复发现
+
+只做让每条发现成立的最小改动；超范围的一行驳回，列进后续。
 
 每条自己核实，级别也自己定：按这次改动的用意正常使用就会出错的才修；罕见输入、假设的时序、外部服务异常、防御性加固，不管它标什么都算「边缘情况，不改」。
 
