@@ -1,0 +1,46 @@
+name: Prepare alarm egress experiment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - workers/ai/src/alarm-egress-probe.ts
+      - .github/workflows/alarm-egress-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.head_ref == 'codex/anthropic-alarm-probe' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Wait for the exact preview revision
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          for attempt in $(seq 1 90); do
+            if curl -fsS --max-time 10 https://codex-anthropic-alarm-probe-core.lyjw.workers.dev/api/preview/revision | jq -e --arg sha "$EXPECTED_SHA" '.commitSha == $sha' >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+      - name: Load existing test credential into the isolated preview
+        env:
+          PROBE_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$PROBE_API_KEY"
+          printf '%s' "$PROBE_API_KEY" | pnpm --dir workers/core exec wrangler preview secret put ALARM_PROBE_API_KEY -c wrangler.toml --name codex-anthropic-alarm-probe --worker-name core

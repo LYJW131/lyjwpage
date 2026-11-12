@@ -96,6 +96,10 @@ class_name = "BuildCoordinator"
 [previews.ai]
 binding = "AI"
 
+[[previews.durable_objects.bindings]]
+name = "ALARM_EGRESS_PROBE"
+class_name = "AlarmEgressProbe"
+
 # Preview 与生产同服务名，Issues 摘要只能按服务数，分不出 Preview；Preview 只留日志与 traces，不进 Issues。
 [previews.observability]
 enabled = true
