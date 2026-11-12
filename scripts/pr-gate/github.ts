@@ -1,4 +1,4 @@
-import { TRUSTED_AUTHOR_IDS } from "../verify-receipt.ts";
+import { isTrustedUser } from "../verify-receipt.ts";
 
 export const REPO = "LYJW131/lyjwpage";
 const API = "https://api.github.com";
@@ -66,7 +66,7 @@ export function client(fetchImpl: FetchLike) {
 }
 export type Client = ReturnType<typeof client>;
 
-export const isTrustedAuthor = (pull: Pull) => TRUSTED_AUTHOR_IDS.has(pull.user?.id ?? 0);
+export const isTrustedAuthor = (pull: Pull) => isTrustedUser(pull.user);
 
 export function changedPaths(files: PrFile[]) {
   return files.flatMap((file) => (file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]));
