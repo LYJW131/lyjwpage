@@ -374,6 +374,10 @@
   - 是什么：Go 实现的原生 TypeScript 编译器，以及迁移办法。
   - 取了什么：`tsc` 换成 TypeScript 7；typescript-eslint 还要旧的 JS API，所以按指南两版并装；Worker 的 tsconfig 去掉 7 不再支持的 `baseUrl`。
   - 状态：采用。落在 [`.claude/rules/typescript.md`](../.claude/rules/typescript.md) 的 `typescript` 别名说明与根 `package.json`。
+- **[Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance)**（Chrome、Edge、Firefox 与 MDN 团队，[文档](https://developer.chrome.com/docs/modern-web-guidance)，[源码仓库](https://github.com/GoogleChrome/modern-web-guidance-src)）
+  - 是什么：给 coding agent 的 Web 平台指引插件。写前端时先用 `npx modern-web-guidance search` 找指引、`retrieve` 取全文，指引按 Baseline 写清回退；另有 `legacy-scan` 扫旧写法。CLI 离线检索，不要密钥。
+  - 取了什么：整个插件照用，由 `.claude/settings.json` 的 `enabledPlugins` 启用。站点的设计规矩仍以 [DESIGN.md](../DESIGN.md) 为准，插件只补平台 API 的用法与坑。云端讨论串不加载仓库声明的插件，那里直接用 `npx -y modern-web-guidance@latest` 跑同一个 CLI。
+  - 状态：采用。
 - **[React Compiler](https://react.dev/learn/react-compiler)**（React 文档）
   - 是什么：编译期自动记忆化。
   - 取了什么：站点构建经 `@vitejs/plugin-react` 的 `reactCompilerPreset` 接入。
