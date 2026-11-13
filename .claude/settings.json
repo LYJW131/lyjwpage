@@ -31,9 +31,6 @@
       }
     ]
   },
-  "env": {
-    "DISABLE_TELEMETRY": "1"
-  },
   "extraKnownMarketplaces": {
     "claude-community": {
       "source": {
