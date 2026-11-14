@@ -26,6 +26,7 @@ import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
+import { MAINTENANCE, maintenanceResponse } from "@/lib/maintenance";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { inlineChargerIcon } from "@/lib/charger-icon-inline";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
@@ -101,6 +102,7 @@ const READS = {
 } as const;
 
 export async function loader({ context }: Route.LoaderArgs) {
+  if (MAINTENANCE) throw maintenanceResponse();
   const site = context.get(siteContext);
   let degraded = false;
   const status = <K extends StatusViewKey>(key: K): Promise<FirstScreen<K>> =>

@@ -16,6 +16,7 @@ import {
 import { ExternalLinkGuard } from "@/components/external-link-guard";
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
+import Maintenance from "@/app/maintenance";
 import NotFound from "@/app/not-found";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { RestReady } from "@/components/rest-ready";
@@ -34,6 +35,7 @@ import { commitSha } from "@/lib/build-info";
 import { reportError } from "@/lib/error-report";
 import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
+import { MAINTENANCE, maintenanceResponse } from "@/lib/maintenance";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { offscreenRestoreScript, syncOffscreenToDocument } from "@/lib/offscreen-boot";
 import { ogImage, site } from "@shared/site";
@@ -53,8 +55,14 @@ function bootScript(): string {
 
 function errorTitle(error: unknown): string {
   if (!error) return site.name;
+  if (MAINTENANCE) return `Maintenance — ${site.name}`;
   if (isRouteErrorResponse(error) && error.status === 404) return `404 — ${site.name}`;
   return `Something went wrong — ${site.name}`;
+}
+
+export function loader() {
+  if (MAINTENANCE) throw maintenanceResponse();
+  return null;
 }
 
 export function meta({ error }: MetaArgs): MetaDescriptor[] {
@@ -108,7 +116,7 @@ function BootAttributes() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
-  const earlyLiveSocket = pathname === "/" ? liveSocketUrl() : null;
+  const earlyLiveSocket = pathname === "/" && !MAINTENANCE ? liveSocketUrl() : null;
 
   return (
     <html lang="en" suppressHydrationWarning className="h-full">
@@ -202,6 +210,7 @@ function PageError({ error }: { error: unknown }) {
 
 export function ErrorBoundary() {
   const error = useRouteError();
+  if (MAINTENANCE) return <Maintenance />;
   if (isRouteErrorResponse(error) && error.status === 404) return <NotFound />;
   return <PageError error={error} />;
 }
