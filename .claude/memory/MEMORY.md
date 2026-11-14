@@ -54,6 +54,7 @@
 - Routine prompts change only from the routine's own session (/mnt/project-files/routine-prompts/). [[agent-automation-practices]], [[token-efficiency-review]].
 
 ## Decisions and state
+- Chat Claude tiers 403 "Request not allowed" = Anthropic region block by visitor IP (HK/CN), not key; egress DO can't avoid it (2026-11-12): [[anthropic-region-block-visitor-ip]].
 - Aoko summon easter egg live (dark, wide desktop, Konami code); code `src/components/space-backdrop/aoko*`; art production in private repo LYJW131/character-art (#738), sync `characters/aoko/coords.json` when shader lights change.
 - PS5 in-game card live (#743).
 - `/mcp` public-only (#778); private data only via lyjwhub plugin → core `PrivateHistory`: [[private-data-inventory]].
@@ -65,5 +66,6 @@
 - New model/source/Worker: update every sibling place incl. chat consent copy. iOS app paused.
 - [[file-size-rule]], [[readme-diagrams]], [[sentry-exit-done]], [[api-rename-to-core]], [[same-origin-api-traps]], [[first-screen-perf]], [[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]], [[build-actions-migration]], [[avatar-watch-restored]], [[codeql-policy]], [[pulse-tokens-lane-coverage]].
 - Not adopting: [[not-adopting]], [[reporter-otel-decision]]. [[webmcp-evals-baseline]], [[jev-comment-check]], [[idea-jev-context-prefetch]], [[chat-web-search]].
+- Modern Web Guidance CLI: always `DISABLE_TELEMETRY=1` (posts queries to Google by default); install PR #813: [[modern-web-guidance]].
 - No new `scripts/*.mjs`: [[mjs-to-ts-migration]]. Baselines shrink-only; only lyjw adds `baseline-exception`.
 - HiTw93 rules adopted (#762): diagnose stops after 3 failed fixes; 「回滚：」line when revert can't undo; `chat:probe` regression mode.

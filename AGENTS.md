@@ -59,7 +59,7 @@
 
 # 界面设计
 
-改站点 UI 前先读 `DESIGN.md`，自查与量尺用 `lyjwpage-ui-design`，图片规则见 `.claude/rules/images.md`。有 UI / UX 变化的改动先给 lyjw 看图、点头再合（lyjw 明确要求的小改动除外）。lyjw 要在分支预览上亲手点时，生产还没有的数据只在本分支给预览注入（`docs/workers-builds.md`「分支预览」），不为让预览看得见先把一部分合进 main。
+改站点 UI 前先读 `DESIGN.md`，自查与量尺用 `lyjwpage-ui-design`，图片规则见 `.claude/rules/images.md`。有 UI / UX 变化的改动先给 lyjw 看图、点头再合（lyjw 明确要求的小改动除外）。lyjw 要在分支预览上亲手点时，生产还没有的数据只在本分支给预览注入（`docs/workers-builds.md`「分支预览」），不为让预览看得见先把一部分合进 main。跑 Modern Web Guidance 的 CLI 时命令前加 `DISABLE_TELEMETRY=1`：它默认把检索词发给 Google；这个变量不写进 `.claude/settings.json` 的 `env`，那样会连带关掉 Claude Code 的 feature flag（`docs/references.md`「Modern Web Guidance」）。
 
 # 文档与注释
 
