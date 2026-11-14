@@ -6,9 +6,8 @@ import type { GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 import type { Env } from "./runtime.ts";
 import type { ChatQuota } from "./chat/quota.ts";
-import type { AnthropicEgress } from "./chat/egress.ts";
 import { sealExchange } from "./chat/seal.ts";
-import { binding, chatRequest, deepseekFetch, handleChat, modelStream, parseEvents, toolIO, unexpected } from "./chat/testing/handler-fixture.ts";
+import { anthropicApiFetch, binding, chatRequest, deepseekFetch, handleChat, modelFetch, modelStream, parseEvents, toolIO, unexpected } from "./chat/testing/handler-fixture.ts";
 
 function upgradeEnv(thinkFree: boolean) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
@@ -63,7 +62,6 @@ test("Small Fry 调 request_upgrade 后整轮对话交给 Prophet：扣 think �
 test("Claude 阵容里 Haiku 升档交给 Sonnet：扣 sonnet 名额，追加 Sonnet 的强度", async (t) => {
   const original = globalThis.fetch;
   t.after(() => { globalThis.fetch = original; });
-  globalThis.fetch = async () => unexpected();
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
   const admitted: string[] = [];
   const respond = async (request: Request) => {
@@ -71,6 +69,7 @@ test("Claude 阵容里 Haiku 升档交给 Sonnet：扣 sonnet 名额，追加 So
     requests.push(body);
     return requests.length === 1 ? modelStream(body.model, { name: "request_upgrade", input: {} }) : modelStream(body.model, false);
   };
+  globalThis.fetch = anthropicApiFetch(respond);
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     AI_DEV: "true",
@@ -84,7 +83,6 @@ test("Claude 阵容里 Haiku 升档交给 Sonnet：扣 sonnet 名额，追加 So
       admitVisitor: async () => "ok" as const,
       admitTier: async (_ip, wanted) => { admitted.push(wanted); return wanted; },
     }),
-    ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
   };
   const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
   assert.deepEqual(admitted, ["haiku", "sonnet"]);
@@ -121,7 +119,7 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
       requests.push(body);
       return modelStream(body.model, false);
     };
-    globalThis.fetch = deepseekFetch(respond, exa);
+    globalThis.fetch = modelFetch(respond, exa);
     const env: Env = {
       PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
       ANTHROPIC_API_KEY: "test-key",
@@ -135,7 +133,6 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
         admitVisitor: async () => "ok" as const,
         admitTier: async (_ip, tier) => { wanted.push(tier); return tier; },
       }),
-      ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
     };
     const events = await parseEvents(await handleChat(chatRequest(undefined, [...history, { role: "user", content }]), env, toolIO));
     return { events, requests, wanted, clef };
