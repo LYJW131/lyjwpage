@@ -18,6 +18,6 @@ function imports(file: string) {
 test("会载入上下文的规则文件都在漂移检查范围里", () => {
   const entries = tracked.filter((file) => /(^|\/)(CLAUDE|AGENTS)\.md$/.test(file));
   const loaded = [...entries.flatMap(imports), ...tracked.filter((file) => file.startsWith(".claude/rules/") && file.endsWith(".md"))];
-  assert.ok(loaded.includes("REVIEW.md"));
+  assert.ok(loaded.includes("AGENTS.md"));
   assert.deepEqual(loaded.filter((file) => !isRulePath(file)), []);
 });

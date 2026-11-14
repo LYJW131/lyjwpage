@@ -1,6 +1,6 @@
 ---
 name: lyjwpage-collector-superfan
-description: lyjwpage 的「collector 盯防」定时任务按它跑：一个专盯采集 Worker 的 Claude，读站点公开状态端点与 Workers Observability 日志，找告警漏掉的细微异常（部分成功沿用旧值、数据冻住、某个任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、复现后归成批并开修复草稿 PR，写进共享目录供晨报读取，新出现的要紧异常在本线程说一声；lyjw 问「collector 最近怎么样」时也用；线上报错的排查不归它，照根 `AGENTS.md`「排查线上错误」走。
+description: lyjwpage 的「collector 盯防」定时任务按它跑：读站点公开状态端点与 Workers Observability 日志，找告警漏掉的细微异常，把其他 Worker 的新错误分诊并开修复草稿 PR，结果供晨报读取；lyjw 问「collector 最近怎么样」时也用。不用于线上报错的排查，那个照根 `AGENTS.md`「排查线上错误」走。
 ---
 
 # collector 盯防（superfan）
