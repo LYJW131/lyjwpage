@@ -11,6 +11,8 @@ lyjw then realized (05:21 SGT) the Console balance is the Max plan's monthly API
 
 lyjw 05:53 SGT: switch back to subscription and remove the API integration; lyjw revoked the Console side 05:54 SGT (federation rule fdrl_012epwhUyPaCQHHAtzx535yA, service account svac_01URxacmVs5jj36HUpnnAZN2). #637 removes the launcher, federation inputs, verify jobs' `id-token: write` and `anthropic-wif-test.yml`. The 4 repo vars ANTHROPIC_FEDERATION_RULE_ID / _ORGANIZATION_ID / _SERVICE_ACCOUNT_ID / _WORKSPACE_ID were deleted by lyjw 05:58 SGT (gh on the Mac; cloud proxy 403s on the Actions variables API).
 
-**How to apply:** don't re-propose marker stripping or using Max plan API credit for Claude Actions. API billing for Actions is only legitimate with purchased Console credit (then no wrapper needed). Static API key secret was also rejected by lyjw. lyjw posted the explanation on #1901 themselves (2026-10-24 06:26 SGT).
+**How to apply:** don't re-propose marker stripping or using Max plan API credit for Claude Actions. API billing for Actions is only legitimate with purchased Console credit (no wrapper/marker stripping). lyjw posted the explanation on #1901 themselves (2026-10-24 06:26 SGT).
 
-Related: [[verify-in-actions-plan]].
+**Update (2026-11-25 SGT):** `CLAUDE_CODE_OAUTH_TOKEN` (subscription setup token) stopped working in GitHub Actions. lyjw chose「123按推荐处理 访客构建先关入口」: `.github/workflows/verify.yml` migrated `verify` (Haiku) and `judge` (Opus) to single-track `.github/actions/verify-agent` (`scripts/verify-agent.ts`, pi SDK + `ANTHROPIC_API_KEY`), keeping trusted default-branch checkout, temp key-file delete-on-read, child env scrubbing, and bwrap isolation; `.github/workflows/claude-code-review.yml` and `.github/workflows/claude.yml` were removed (Devin + Codex remain for PR review). Secret `CLAUDE_CODE_OAUTH_TOKEN` is left untouched until lyjw confirms removal after stabilization. The billing red-line above still stands: never misuse Max credit or strip entrypoint markers.
+
+Related: [[verify-in-actions-plan]], [[verify-pi-ab-watch]].

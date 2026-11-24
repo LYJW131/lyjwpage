@@ -177,8 +177,17 @@ test("工作流里拿钥匙的 verify-agent action 只从先清空、再检出�
   const dir = path.join(import.meta.dirname, "..", ".github", "workflows");
   const files = fs.readdirSync(dir).filter((name) => name.endsWith(".yml"));
   const uses = files.flatMap((name) => [...fs.readFileSync(path.join(dir, name), "utf8").matchAll(/uses: (\S*verify-agent\S*)/g)].map((match) => match[1]));
-  assert.deepEqual([...new Set(uses)], ["./.verify-agent-main/.github/actions/verify-agent"]);
+  assert.deepEqual(uses, ["./.verify-agent-main/.github/actions/verify-agent", "./.verify-agent-main/.github/actions/verify-agent"]);
   const workflow = fs.readFileSync(path.join(dir, "verify.yml"), "utf8");
-  assert.match(workflow, /run: rm -rf \.verify-agent-main\n\s+- uses: actions\/checkout@v5\n\s+id: trusted\n\s+if: steps\.clean\.outcome == 'success'\n[\s\S]*?ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n\s+path: \.verify-agent-main\n/);
-  assert.match(workflow, /uses: \.\/\.verify-agent-main\/\.github\/actions\/verify-agent\n\s+id: pi\n\s+if: steps\.trusted\.outcome == 'success'\n/);
+  const trustedCheckouts = [
+    ...workflow.matchAll(
+      /run: rm -rf \.verify-agent-main\n\s+- uses: actions\/checkout@v5\n\s+id: trusted\n\s+if: steps\.clean\.outcome == 'success'\n[\s\S]*?ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n\s+path: \.verify-agent-main\n/g,
+    ),
+  ];
+  const piSteps = [...workflow.matchAll(/uses: \.\/\.verify-agent-main\/\.github\/actions\/verify-agent\n\s+id: pi\n\s+if: steps\.trusted\.outcome == 'success'\n/g)];
+  assert.equal(trustedCheckouts.length, 2);
+  assert.equal(piSteps.length, 2);
+  assert.doesNotMatch(workflow, /claude-code-action|CLAUDE_CODE_OAUTH_TOKEN/);
+  assert.equal(fs.existsSync(path.join(dir, "claude-code-review.yml")), false);
+  assert.equal(fs.existsSync(path.join(dir, "claude.yml")), false);
 });

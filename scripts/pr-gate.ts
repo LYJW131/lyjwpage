@@ -2,7 +2,7 @@
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { BUILD_WATCH_PATHS, workersFor } from "./build-watch-paths.ts";
-import { advisoryNotes, buildCoverage, commentAdvice, summarizeChecks } from "./pr-gate/checks.ts";
+import { buildCoverage, commentAdvice, summarizeChecks } from "./pr-gate/checks.ts";
 import { decide } from "./pr-gate/decide.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
@@ -14,7 +14,6 @@ import { prTier, type gitCommentOnlyFiles } from "./verify-receipt/notes-only.ts
 
 export { buildCoverage } from "./pr-gate/checks.ts";
 export { REQUIRED_CHECKS } from "./pr-gate/decide.ts";
-export { ADVISORY_CHECKS } from "./pr-gate/checks.ts";
 export type { CheckRun } from "./pr-gate/github.ts";
 export { CODEX_MAX_ROUNDS, reviewerSummary, type Reviewer } from "./pr-gate/reviewers.ts";
 export { buildThreads, severityOf, type Level } from "./pr-gate/threads.ts";
@@ -32,15 +31,13 @@ JSON 里有：
                 docs/ 下的脚本与依赖清单，public/ 下的 js、html、svg、xml、_headers）、ui+logic；
                 决定默认的 --need 与 --judge，hint 写这一档的合并门槛
   checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列；
-                ADVISORY_CHECKS 里的实验任务只列在 items 里，不进 pending 与 failing，没跑成或还在跑记进 notes；
                 REQUIRED_CHECKS 里的检查 head 上还没出现时不算 ready
   workersBuilds expected 是按 PR 改动与分支 Preview 的监视路径（scripts/build-watch-paths.ts）算出该有的构建，结论要是 success；
                 head 上没有、但更早的提交上构建成功且之后的改动没碰到它的路径，记 carried；afterMerge 是合进 main 后会重建的 Worker
   threads       没解决的行内评审线程：发起人、严重度标记与归类、最后一条是不是 lyjw 的账号回的、链接；
                 解决状态依次试 GraphQL、Claude Code 会话的 review_threads 路由，都不通时 resolvedKnown 为 false
   reviewers     每个评审机器人最后审的提交；Codex 另给已用轮数与上限（每次推送自动审一轮）。
-                Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，没盖住 head 不算缺；
-                要判定时两家都得审过一次
+                Devin 每个 PR 只审一次，没盖住 head 不算缺；要判定时要审过一次
   receipt       scripts/verify-receipt.ts check 的结果（--need、--judge 见下）
   ruleDrift     分支起点（PR 第一个提交的父提交）以来 main 上改过的规则文件（AGENTS.md、DESIGN.md、HUMAN.md、REVIEW.md、.claude/skills/ 与 .claude/rules/ 下的 md）；
                 不为空时 notes 提示对一遍新规则，不影响 ready
@@ -97,7 +94,6 @@ export async function gate(
   const verdict = decide({ pull, tier, checks, builds, threads, reviewers, receipt, judge: wantJudge });
   const advice = commentAdvice(runs.check_runs ?? [], paths);
   if (advice) verdict.notes.push(advice);
-  verdict.notes.push(...advisoryNotes(runs.check_runs ?? []));
   const changedVerifier = verifierFiles(paths);
   if (changedVerifier.length > 0) verdict.notes.push(`这个 PR 改了验证员本身（${changedVerifier.join("、")}）：pull_request 触发的 Verify Action 里验证与判定跑的是分支上的这份（签发的 publish 只跑 main 上的脚本），结论出自被改过的验证员，合并前交 lyjw 看一眼`);
   if (rules.files.length > 0) verdict.notes.push(`分支开工后 main 上改了规则文件（${rules.files.join("、")}）：重读改动的部分，拿 PR 的改动对一遍新规则`);

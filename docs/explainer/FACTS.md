@@ -452,7 +452,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `.github/workflows/deploy-pages.yml`：只在它自己改动或手动触发时，把 GitHub Pages 发成跳到 README 架构图的转址页，和站点无关。
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
-- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
+- `.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
 - `.github/workflows/verify-cache.yml`：每天和 `.github/actions/verify-tools` 改动合进 main 时，在默认分支上存一份 Playwright 浏览器和沙箱 bubblewrap、socat 的 .deb 缓存；Verify 只在 PR 上跑，PR 自己存的缓存别的 PR 读不到，不参与发布。
 - `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
 - `.github/workflows/collapse-worker-previews.yml`：Cloudflare 在 PR 上为各 Worker 发的预览评论里，不是 `site` 的（按正文日志链接 `services/view/<worker>/` 认）由 `lyjw131[bot]` 标为已解决折叠，只留 site 的预览链接；不参与发布。
@@ -480,7 +480,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 机器评审
 
-- 在 PR 上发言的评审机器人有三个：Claude review（`claude[bot]`，`.github/workflows/claude-code-review.yml#claude-review`，只在逻辑档 PR 打开和转为待审时跑，分档同 `scripts/pr-gate/tier.ts#tierOf` 的 `judge`）、Codex（`chatgpt-codex-connector[bot]`，推送后也自动再审一轮）、Devin Review（`devin-ai-integration[bot]`）。Cursor Bugbot 已被 lyjw 关掉；`cloudflare-workers-and-pages[bot]` 只贴分支预览链接，不算评审（`HUMAN.md`「5. PR 与合并」、`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（验证员汇总，主线程判断）」）。
+- 在 PR 上发言的评审机器人有两个：Codex（`chatgpt-codex-connector[bot]`，推送后自动再审一轮）、Devin Review（`devin-ai-integration[bot]`）。Cursor Bugbot 已被 lyjw 关掉；`cloudflare-workers-and-pages[bot]` 只贴分支预览链接，不算评审（`HUMAN.md`「5. PR 与合并」、`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）」）。
 - 机器人不分改动类型都会来审，但只有大改代码逻辑的 PR 才等它们：每条意见要么改，要么回复为什么不改，最后一次推送后再核一遍；机器说的不一定对，Claude 自己判断，安全类等 lyjw 拍板；Codex 每个 PR 最多三轮（`HUMAN.md`「5. PR 与合并」）。main 的分支保护要求行内评审线程全部解决才能合（`docs/ops-facts.md`「GitHub」）。
 
 ### 验证与回执

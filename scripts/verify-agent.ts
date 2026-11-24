@@ -11,7 +11,7 @@ import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
-用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员（Verify Action 里是和 claude-code-action 对照的 B 组）。模型走 Anthropic API，
+用 pi（@earendil-works/pi-coding-agent 的 SDK）跑 Verify Action 的验证员 / 判定员。模型走 Anthropic API，
 钥匙经 --api-key-file 传（本地可用 ANTHROPIC_API_KEY）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
 用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
 
@@ -220,9 +220,7 @@ const SYSTEM = `你在 pi 里运行，工具和 Claude Code 不同：
 - pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
 - 你的模型 ID 是 ${modelId}，结果里的 model 字段照写。
 - 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。
-- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。
-
-${PLAYBOOK}`;
+- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。${role === "verifier" ? `\n\n${PLAYBOOK}` : ""}`;
 
 const resourceLoader = new DefaultResourceLoader({
   cwd,
@@ -310,7 +308,13 @@ const bounded = async (text: string, ms: number) => {
 let error: unknown = null;
 try {
   await bounded(prompt, timeoutMin * 60_000);
-  if (!report && !timedOut) await bounded("你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。", FOLLOW_UP_MS);
+  if (!report && !timedOut)
+    await bounded(
+      role === "verifier"
+        ? "你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。"
+        : "你还没调用 submit_report。现在按 schema 调用它交结果。",
+      FOLLOW_UP_MS,
+    );
 } catch (caught) {
   error = caught;
 }

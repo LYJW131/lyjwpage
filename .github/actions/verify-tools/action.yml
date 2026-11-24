@@ -37,7 +37,7 @@ runs:
       env:
         HIT: ${{ steps.browsers.outputs.cache-hit }}
         PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
-    # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程、socat 给沙盒转发网络，缺了 claude 装不起来或 Bash 起不来。
+    # scripts/verify-agent.ts 的 bash 沙箱要 bubblewrap 隔离子进程（socat 留给沙盒转发网络），缺了 CI 里的验证员会拒绝启动。
     # 缓存的 .deb 按 runner 镜像版本存，同一镜像上直接 dpkg 装，省掉 apt-get update。
     # runner 默认的 azure 镜像时常卡住不报错：timeout 要放在 sudo 里面才杀得掉 apt-get、放开 dpkg 锁；重试前从镜像表删掉 azure
     - shell: bash

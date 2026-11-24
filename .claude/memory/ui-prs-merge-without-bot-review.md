@@ -7,7 +7,7 @@ metadata:
 
 lyjw (2026-10-13, exit node card thread, PR #229): "改个ui天天等他审核干嘛 记住了".
 
-Rule: for a PR that only changes site UI (classes, layout, copy, styling in components), merge as soon as CI (`check`, `Workers Builds: site`) is green. Do not wait for Codex / Devin / Claude review / Bugbot to post on the latest head. If a bot finding has already landed by merge time, still glance at it; a real red-circle bug still blocks.
+Rule: for a PR that only changes site UI (classes, layout, copy, styling in components), merge as soon as CI (`check`, `Workers Builds: site`) is green. Do not wait for Codex / Devin (active bots; Claude review removed 2026-11-25, Bugbot off) to post on the latest head. If a bot finding has already landed by merge time, still glance at it; a real red-circle bug still blocks.
 
 **Why:** waiting several minutes per round for bots on small UI tweaks slows lyjw's live iteration loop for little value.
 
