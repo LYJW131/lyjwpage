@@ -1,25 +1,27 @@
 ---
 name: routine-bindings
-description: Which scheduled task fires into which thread/session and dev branch; all six moved to new threads 2026-10-28 06:33 SGT after the old signing key was revoked
+description: Active T3 Code scheduled tasks for lyjwpage (since 2026-11-25) and archived historical Claude Projects routine bindings
 metadata:
   type: project
 ---
 
-On 2026-10-28 06:33 SGT lyjw said the git signing key in the old routine threads was revoked, so commits from them can't be signed (「要全部换新讨论串」, then「一起搬」for the read-only ones too). All six routines got new threads in env `<internal id>` (new key; a probe commit showed GitHub `verified`). New scheduled tasks were created bound to the new sessions; the old ones are disabled and renamed「（旧会话，已停用）」, not deleted, so their run history stays.
+## Current bindings (T3 Code `schedule_task`, since 2026-11-25)
 
-| Task | New trigger | Session | Dev branch |
+All active routines run on lyjw's local desktop T3 Code instance in the `lyjwpage` project with `freshSession: true` (each routine shares one dedicated thread while starting every run with a clean provider session — no context bloat). State lives outside the git repo under `~/.local/state/lyjwpage-routines/`.
+
+| Task | Schedule (UTC+8) | State directory | Notes |
 | --- | --- | --- | --- |
-| 03:15 记忆镜像 | trig_01EZP65L8QzjaUStW6LiBNqg | <internal id> | claude/project-thread-5na815 |
-| 04:00 每日代码审查 | trig_01Y63zeevgM9WrbfPiiMJjME | <internal id> | claude/project-thread-ad7fko |
-| 04:53 提炼 skill | trig_018sXEhV49fp6Dx7pGmZv7tj | <internal id> | claude/project-thread-7qd9r1 |
-| 08:41 Anthropic 动态 | trig_01Gcggmwjp47CkUAjJ1ZxvrV | <internal id> | claude/project-thread-rv1hl8 |
-| 08:56 晨报 | trig_01ST7To5uAf2VeYQxbPUdEif | <internal id> | claude/project-thread-ekg06b |
-| 01/07/13/19:53 collector 盯防 | trig_016btcofbs6YSrdCEkAEevoV | <internal id> | claude/project-thread-f4fz9c |
+| `lyjwpage · collector 盯防` | Every 12h (2x/day) | `~/.local/state/lyjwpage-routines/superfan-collector/` | Uses local `cf` OAuth telemetry runner; 1-line fast exit when all green; at most 1 draft fix PR per run in an isolated temp worktree |
+| `lyjwpage · 提炼 skill 与偏差复盘` | Mon & Thu 04:53 | `~/.local/state/lyjwpage-routines/skill-mining/` | Scans T3 threads (`t3_thread_list/read`) + `scripts/review-sieve.ts`; fast exit when no new activity; warm-up opens PRs for lyjw review |
 
-Thread titles are「<任务> · 定时任务」. Prompt texts (with the new branch names) are in /mnt/project-files/routine-prompts/.
+- **Not currently enabled**: `Anthropic 官方动态`, `每日代码审查`, `晨报` (enable only when lyjw asks).
+- **Permanently retired**: `03:15 记忆镜像同步` (`.claude/memory/` is now single source of truth).
+- Exact local T3 task IDs and environment handles are kept out-of-repo in `~/.agents/projects/lyjwpage.md`.
 
-**How to move a routine again:** update_trigger cannot change the bound session. Ask the coordinator for a new thread, read its session id and designated branch (get_session → outcomes.branches), create_trigger with persistent_session_id and the same prompt (swap branch names), read back with list_triggers, then disable and rename the old trigger. Anthropic 动态 needs the LYJW MCP Portal connector in the new session ([[x-mcp-portal]]).
+Related: [[collector-superfan-routine]], [[skill-mining-routine]], [[lyjwpage-daily-review-routine]], [[anthropic-updates-routine]], [[morning-report-routine]], [[repo-memory-mirror]].
 
-Related: [[commit-identity-signing]], [[lyjwpage-daily-review-routine]], [[skill-mining-routine]], [[anthropic-updates-routine]], [[morning-report-routine]], [[collector-superfan-routine]], [[repo-memory-mirror]].
+---
 
-**Paused 2026-11-11 02:44 SGT at lyjw's request:** all except 08:41 Anthropic 动态 set enabled=false (read back). Re-enable with update_trigger enabled=true when lyjw asks. Note: with 晨报 off, nobody relays the Anthropic digest; its file is still written to anthropic-updates/<date>.md.
+## Historical archive (Claude Projects era, 2026-10-12 – 2026-11-13, all disabled)
+
+On 2026-10-28 06:33 SGT all six Claude Projects routines moved to fresh signing-key sessions; on 2026-11-11 02:44 SGT lyjw paused all except `08:41 Anthropic 动态`; all cloud triggers ended when the Anthropic org was disabled on 2026-11-13.

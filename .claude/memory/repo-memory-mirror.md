@@ -1,16 +1,19 @@
 ---
 name: repo-memory-mirror
-description: Project memory is mirrored into the repo at .claude/memory/ (PR #231); every memory change gets synced there in the same turn via a small docs PR
+description: Retired 2026-11-25 after migrating from Claude Projects to T3 Code — .claude/memory/ is now the single source of truth for public project memory; local private notes live out-of-repo at ~/.agents/projects/lyjwpage.md
 metadata:
-  type: feedback
+  type: project
 ---
 
-lyjw (2026-10-13): "你的项目记忆 除了在claude code projects里维护 同时也在仓库里维护一个记忆目录吧". PR #231 added `.claude/memory/` (MEMORY.md index + one file per topic, same names), a README with sync and redaction rules, and pointers in AGENTS.md and HUMAN.md. `scripts/docs-check.ts#MEMORY_MIRROR_DIR` skips the directory (memory lines carry dates).
+**Current state (since 2026-11-25, T3 Code migration):**
+- `.claude/memory/` is now the **single source of truth** for public project memory — edit it directly in feature PRs or small `docs(memory):` PRs (merge once local `pnpm docs:check` passes, no CI/bot-review wait).
+- The daily 03:15 `记忆镜像同步` routine and `/tmp/claude/memory/team/silo` dual-copy workflow are **permanently retired**.
+- Local/private notes that must never enter the public repo (local machine handles, scheduled task IDs, local state paths, personal env notes) live out-of-repo at `~/.agents/projects/lyjwpage.md`.
+- `scripts/memory-mirror.ts#findSecrets` remains useful as a secret-leak reference check before committing public memory changes.
 
-**Why:** lyjw wants memory visible in the repo with git history.
+---
 
-**How to apply:** whenever you add, edit or delete a project memory file, copy the change into `.claude/memory/` in the same turn (drop the `modified:` line, private claude.ai links, cloud env / session IDs, any secret value), and open a small docs PR or ride an open PR; merge it as soon as it is open (after local `pnpm docs:check` and the mirror test), without waiting for CI or bot review. lyjw 2026-10-20 11:34 SGT in this thread: 「记忆镜像 PR 不等 CI 直接合」 (see [[merge-ci-wait-tiers]]).
-
-**Tooling (merged #231 as 8eb385c):** sync only with `pnpm memory:mirror /tmp/claude/memory/team/silo` (auto-redacts, aborts on secret-like text; never hand-copy). Daily routine `trig_01FZFVexAhcFPCXrEXf6tn1y` "lyjwpage 记忆镜像同步" at `CRON_TZ=Asia/Shanghai 15 3 * * *` fires into the thread "项目记忆仓库镜像"; that session delegates to a Sonnet 5.5 medium-effort Agent worker (lyjw asked for that model/effort) that runs the script, opens a `docs(memory):` PR and merges it right away without waiting for CI.
-
-**Secret check vs memory:** memory never holds usable secrets and IDs aren't confidential; when the mirror's secret check flags memory, fix the check, don't reword memory (lyjw 2026-10-24 03:43 SGT; loosened in #629).
+**Historical context (Claude Projects era, 2026-10-13 – 2026-11-13):**
+- Originally created in PR #231 so local Mac sessions, Codex and Devin could read Claude Projects' private cloud memory.
+- Synced via `pnpm memory:mirror /tmp/claude/memory/team/silo` and daily 03:15 Sonnet routine (last mirror sync before migration: #806 on 2026-11-11 06:23 UTC+8).
+- Secret-check principle still applies: never store usable secrets in memory; if a leak check false-positives on harmless variable names, fix the check rather than distorting memory wording (#629, #688).
