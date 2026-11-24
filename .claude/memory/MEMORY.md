@@ -23,6 +23,7 @@
 - Fixtures internally consistent: `pnpm dev:scene <name>`.
 - Bot review only for real logic changes; fix real bugs, reply「边缘情况，不改」to edge cases; one fix push then merge; Codex ≤3 rounds: [[merge-requires-bot-review-pass]].
 - Verify: Haiku/lightweight worker (skill `lyjwpage-verify`), keep 1–2 meaningful shots in `<details>`: [[verification-haiku-worker]], [[first-screen-reload-check]], [[workers-builds-parallel-race]]. Actions verify warns, never blocks: [[verify-action-state]]. Verify A/B (#665): no switch, pi verifier advisory only: [[verify-pi-ab-watch]].
+- **T3 transition check-skip (2026-11-25)**: skip checks / agent reviews that can't run due to unconfigured T3 local env or retired cloud-only setup, note the gap in 「没验到」, never stall; working local gates still run: [[t3-transition-check-skip]].
 - Post-merge: check /api/version only, unless cache/SSR/fonts/prod bindings.
 - Bulk record reading → cheap parallel workers: [[batch-reading-goes-to-haiku]]. Big PRs: run skill `lyjwpage-pr-review` unasked: [[pr-review-auto]], [[pr-review-devin-reviewer]].
 - Claude Actions on subscription setup token: [[claude-actions-billing-wif]]. Throwaway PRs get `do-not-merge` label.
@@ -36,6 +37,7 @@
 
 ## Tools, memory and environment
 - **Workflow host (since 2026-11-25)**: migrated from Claude Projects to **T3 Code** on lyjw's Linux desktop (`lyjwpage-coordinator` pinned thread dispatches isolated `origin/main` worktree top-level threads).
+- **Devin CLI (since 2026-11-25)**: logged in by lyjw on the local T3 machine and available for `lyjwpage-pr-review` (`agents/pr-review`); if unable to run, skip and note the gap: [[t3-transition-check-skip]].
 - **Memory governance (single source + out-of-repo private notes)**: `.claude/memory/` is the single source of truth for public project memory (edit directly; 03:15 mirror sync retired). Local private notes live out-of-repo at `~/.agents/projects/lyjwpage.md`: [[repo-memory-mirror]].
 - Previews only `<branch>.preview.lyjw.dev`: [[preview-access-removed]].
 - Collector manual run: Actions "Run Collector Jobs". [[cf-cli-migration]], [[openrouter-egress]], [[apple-music-user-api]], [[cloud-otlp-telemetry-audit]].
