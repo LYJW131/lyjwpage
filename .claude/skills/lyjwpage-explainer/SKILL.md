@@ -33,16 +33,16 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 
 ### 2. 分镜
 
-章节表和每小节画面、中英旁白在 `docs/explainer/SCRIPT.md`；每章小节数以 `docs/explainer/v2/plan.js` 的 `PLAN` 为准，各章自己写的 `bars` 和 `music/ch<NN>.js` 的 `harm` 长度要和它相等，不等时页面控制台报错、`check.mjs` 不过。改了小节数或乐谱，配乐的对象键跟着变，合进 main 后由工作流重渲。
+章节表和每小节画面、中英旁白在 `docs/explainer/SCRIPT.md`；每章小节数、各章 `bars` 与乐谱 `harm` 三处长度一致，以及改了之后配乐怎么重渲，见 `docs/explainer/AGENTS.md`「须成对修改」。
 
 做完：SCRIPT 章节表、`PLAN`、各章 `bars` 三处一致。
 
 ### 3. 写章
 
 - 一位作者一章（或相邻两章），简报照 CHAPTER-BRIEF 填。作者用 Opus、effort 用 xhigh：lyjw 定的强度。
-- 互不依赖的章同时派（后台）。云端作者在同一个工作树里写，各只写自己那章的 `ch<NN>.js` 与 `music/ch<NN>.js`，不提交、不切分支、不用 `git stash`；要动共用文件（`kit.js`、`engine.js`、`i18n.js` 等）写进汇报，由主线程改。Mac 上各开工作树，见 CHAPTER-BRIEF「在哪做」。
+- 互不依赖的章同时派（后台）。云端和 Mac 各在哪做、作者能碰哪些文件，照 CHAPTER-BRIEF「在哪做」「不能碰」；要动共用文件（`kit.js`、`engine.js`、`i18n.js` 等）写进汇报，由主线程改。
 - 复用各章画法的回顾章放最后。
-- 看图交给 Haiku：作者不看图（CHAPTER-BRIEF「怎么自检」），交回联系表路径。主线程每份联系表派一个 Haiku（`model: "haiku"`、`effort: "high"`、后台），提示词：第一句禁止调用 `mcp__hearthbot__` 工具；读 [frame-qa.md](frame-qa.md) 的问题类型和报告格式；说明这是按文件名排的静帧，相邻两格不连续，不报 `glitch`；列出要看的图。主线程只读报告文字，把要改的条目用 SendMessage 转给作者，改完再派 Haiku 只看改过的那几张。
+- 看图交给 Haiku：作者不看图（CHAPTER-BRIEF「怎么自检」），交回联系表路径。主线程每份联系表派一个 Haiku（`model: "haiku"`、`effort: "high"`、后台），提示词：第一句禁止调用 `mcp__hearthbot__` 工具（子代理拿得到线程工具，不写明会去改线程的状态行或发消息）；读 [frame-qa.md](frame-qa.md) 的问题类型和报告格式；说明这是按文件名排的静帧，相邻两格不连续，不报 `glitch`；列出要看的图。主线程只读报告文字，把要改的条目用 SendMessage 转给作者，改完再派 Haiku 只看改过的那几张。
 
 做完：每位作者交回 `check.mjs` 通过的结果、含交界帧的抽帧和汇报，Haiku 看过联系表、清单都处理过。
 
@@ -102,5 +102,4 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 - 页面载入后渲的第一帧会和之后再渲同一时刻差几个色阶，`frames.mjs` 头一帧先空渲一次；自己写渲染脚本时照做。
 - 每张拼 2 帧时每格仍是原尺寸，持续多帧的问题抓得和 1 帧一张一样多，花费约六成；拼 4 帧以上格子被缩小，细小问题开始漏。实测见 `docs/explainer/frame-qa-calibration.md`。
 - `flicker.py` 在镜头连续运动的段落会标出大量正常帧，按能量从高往低看。
-- 派单提示词第一句禁止调用 `mcp__hearthbot__` 工具：子代理拿得到线程工具，不写明会去改线程的状态行或发消息。
 - 帧、拼图、`docs/explainer/v2/score.mp3`、录像都不进仓库，放 scratchpad 或 `/mnt/project-files/`。

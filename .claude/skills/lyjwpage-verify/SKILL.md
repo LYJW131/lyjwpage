@@ -5,8 +5,6 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 # lyjwpage 验证
 
-用在 lyjwpage 仓库里任何「验证」步骤：改完代码后的本地检查、UI 的浏览器端到端与截图、PR 合并前的门槛核对、合并后的部署与生产核对。
-
 分工：**主线程决定验什么、判断结果；Haiku 验证员只执行检查、交回证据。** 验证员跑命令、开浏览器、轮询部署、读 PR 评审，这些输出很长但不需要判断力，交给它能省下主线程的上下文和费用。PR 上的验证与判定在 GitHub Action 里跑（见「PR 上的验证：Verify Action」），回执只认 Action 发的；下面的「派法」用在还没开 PR 的检查、给 lyjw 看的过程截图和合并后的核对。
 
 ## 什么时候派验证员，什么时候自己跑
@@ -22,7 +20,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 - `plan`：按 `pr-gate` 的分档（`scripts/verify-receipt/notes-only.ts#prTier`）定回执至少的等级；只改文档与 skill 的不验。PR 贴着 `skip-verify` 标签时整个不跑，验证员和判定员都不派，摘掉标签就照常验一次；lyjw 定给改立绘这类和站点 UI 关系不大的 PR 用，合并前由线程自己手动验，这时没有回执，`pr-gate` 的回执提醒照常出、不挡合并。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。原始结果另存一份小产物 `verify-ab-cc`，留给下一条的 A/B 对照。
-- `verify-pi`：A/B 对照的 B 组，同样的准备步骤和提示词交给 pi 验证员，结果只进产物：`verify-ab-pi` 是读数用的 result.json、usage.json 与结论，`verify-out-pi` 是含 transcript 的全量，不发回执，`publish` 不等它；自身出错只标出来：pr-gate 不把它算进 pending 与 failing（`scripts/pr-gate/checks.ts#ADVISORY_CHECKS`），没跑成或还在跑记进 notes 提醒；步骤都 `continue-on-error` 好让产物照样上传，最后一步在 pi 没交结果时让 job 红。读数：下载两组的 `verify-ab-*`，同一 head 上两组按 `scripts/verify-action/report.ts#reconcile` 各算一次等级，逐项比结论，分歧的人工裁定。pi 验证员仍是 Haiku（thinking high），用 pi 的 SDK 自搭的 runner（`scripts/verify-agent.ts`，装在 `.github/actions/verify-agent`）走 Anthropic API（Secret `ANTHROPIC_API_KEY`）：工具是只读的 read / grep / find / ls（只许读工作区、产物目录、临时目录、pi 的 SDK 目录与 runner 自带的 skill 目录）、bash、只许写产物目录的 write，加上 `pr_diff`、`run_tests`、`pr_view`，以及 `claims`（声明台账）、`compare_base`（同一命令在目标分支与 HEAD 上对照）、`docs_sync`（改了的说法在文档与 `.claude/` 里有没有跟着改），结果经 `submit_report` 按 schema 交、交上来不再复核（等级由回执按行重算）；判定做法写在 `scripts/verify-agent/playbook.ts#PLAYBOOK`，探针写法是按需加载的 skill `scripts/verify-agent/skills/verify-probes`；装 runner 的 action 由 verify-pi 在用之前从默认分支另检出到 `.verify-agent-main/`，runner 再由它从工作区的 `origin/<默认分支>` 取（同一 job 里先跑过的 PR 代码仍能改这个引用和预先下好的 action，单个 job 内堵不死），钥匙经文件传、读完即删，bash 子进程和 runner 自己调的 git（bash 能写 `.git/config`）都去掉令牌与密钥、Linux 上进 bwrap 的 PID 命名空间；读写守卫按解开符号链接后的真实路径判。
+- `verify-pi`：A/B 对照的 B 组，结果只进产物、不发回执。它怎么搭、怎么读数在 [references/verify-action-internals.md](references/verify-action-internals.md)，改 `verify-pi` 或读 A/B 结果时读。
 - `verify` 里脚本能跑的不交给 Haiku：Haiku 之前先跑撤回证明（上面「1. 本地门禁」那段），之后读 head 上 CI `check` 的结论（最多等 5 分钟，不等 CI 才启动），两项写进回执的「脚本：」一行（`scripts/verify-action/machine.ts#machineLine`），不影响回执等级。
 - `judge`：PR 贴了 `needs-judge` 标签（或作者不是 lyjw 的账号）时同时派 Opus（effort high）当判定员，和验证员并行，见「3b」。
 - `publish`：截图推到孤立分支 `verify-shots`、折叠进评论的「截图」（至多 `MAX_SHOTS` 张，验证员只把能看出改动对不对的放进 shots/）；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`；漏项、SKIPPED、没有检查行、PASS 没写证据、`live-ui-verified` 没有截图都记 `verifier-blocked`）；判定按明细收口（`judgeVerdict`：没列要求、有没做到或没写依据的要求、有回归或待修项，都签 FAIL）。再以 lyjw131[bot] 发回执与判定两条评论（publish job 拿 App 令牌，只跑默认分支上的脚本，PR 改的 publish 逻辑合进 main 后才生效）。PR 的 head 已经变了就什么都不发；验证员或判定员读过之后描述或目标分支又改了，或 job 成功却没交回读到的版本，那一条不发（`scripts/verify-action.ts#staleRead`；改描述或目标分支触发的新运行会重做）。
@@ -86,13 +84,13 @@ Agent(
 | --- | --- |
 | 纯文档 | `pnpm docs:check` |
 | 只改注释 | `pnpm docs:comment-only`，输出里不能有「除注释外有改动」「指令性注释有改动」 |
-| 逻辑 | 相关单测：`node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs <文件>`；全量 `pnpm test` |
+| 逻辑 | 相关单测：`node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs <文件>`；全量是 `scripts/ci-checks.sh` 的 `workspace_tests` 加 `script_tests` |
 | 类型或接口 | `pnpm typecheck`（全仓 `pnpm -r --include-workspace-root typecheck`） |
 | 任何代码 | `pnpm exec eslint <改动文件>` |
 | 构建、路由、缓存 | `pnpm build` |
 | 站点类名（`src/`） | `pnpm design:scale` |
 | `workers/*`、`reporters/*` | 该目录 `AGENTS.md` / `README.md` 里写的验证命令 |
-| 脚本 | `node --test scripts/<名>.test.mjs`；已迁到 TS 的脚本换成 `scripts/<名>.test.ts` |
+| 脚本 | `node --test --import ./src/lib/testing/register-alias.mjs scripts/<名>.test.mjs`；已迁到 TS 的脚本换成 `scripts/<名>.test.ts` |
 
 修 bug 并补了回归测试的改动，要另做一次「撤回证明」。PR 上由 Verify Action 在验证员之前用脚本跑（改了 `scripts/`、`src/`、`shared/`、`workers/*/` 下的测试又改了别的文件时，`scripts/verify-action/machine.ts#proofPlan`），验证员不重跑、只引用；没开 PR 时验证员自己跑：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时克隆（`git clone --shared`，不写 .git，只读的检出里也能跑）里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
 
