@@ -1,7 +1,8 @@
-# 项目记忆镜像
+# 项目公开记忆
 
-Claude Projects 里 lyjwpage 项目记忆的仓库副本：`MEMORY.md` 是索引，其余每个文件一个主题，文件名与项目记忆里的同名。项目记忆是源，这里是镜像；两边不一致时以项目记忆为准，并当轮把这里改齐。
+本目录是 `lyjwpage` 项目公开记忆的**唯一真相源**（原为 Claude Projects 云端项目记忆的镜像，2026-11-25 迁至 T3 Code 后改为单源直管）：`MEMORY.md` 是索引，其余每个文件一个主题。
 
-- 谁改了项目记忆（新增、修改、删除），同一轮把改动同步到这里，开一个只改 `.claude/memory/` 的小 docs PR；手上已有 PR 时可以顺带进那个 PR。每天 03:15（Asia/Shanghai）还有一个定时任务「lyjwpage 记忆镜像同步」兜底：由 Sonnet 5.5（中等思考强度）子代理跑下面的脚本，有差异就开 `docs(memory):` PR，本地 `pnpm docs:check` 过了自己合。这类 PR 不改代码逻辑，不必等 CI 与机器评审。
-- 同步用 `pnpm memory:mirror <项目记忆目录>`（`scripts/memory-mirror.ts`），不手抄：原样照抄，删掉源里已没有的主题，自动脱敏，去掉 frontmatter 的 `modified:` 行（历史在 git log），私有 claude.ai Artifact 与分享链接换成 `<private claude.ai link>`，云端环境与会话 ID 换成 `<internal id>`，`scripts/memory-mirror.ts#CLOUD_ENV_NAMES` 里的云端环境名换成 `<cloud env>`，Mac 用户目录写成 `~/`。脱敏后仍像凭据的内容（私钥、各家 token、`*_SECRET=值` 之类，见 `scripts/memory-mirror.ts#findSecrets`）会让脚本报错退出、一个文件都不写：真凭据先在项目记忆里删掉再同步；误报改检查、不改记忆，记忆里当作值写出的凭据变量名加进 `scripts/memory-mirror.ts#KNOWN_CREDENTIAL_VARIABLE`。文件名按同样规则检查；源目录里的 `.md` 符号链接跳过并报告（镜像里的同名链接被换成普通文件，不会写穿），含 NUL 或不是 UTF-8 的文件直接拒绝。
+- **直接维护，不再镜像同步**：新增、修改或删除公开项目记忆（架构事实、关键取舍、踩坑教训、`not-adopting` 清单）时，直接改本目录文件，随当前功能 PR 或单独开 `docs(memory):` 小 PR 合入。本地跑过 `pnpm docs:check` 即可合并，这类纯文档 PR 不必等 CI 与机器评审。旧的 03:15「记忆镜像同步」定时任务已永久下线。
+- **公私边界**：本仓库公开，**严禁**在本目录写入任何凭据、私钥、个人隐私、机器专属 ID 或私有链接。仅本机/个人可见的环境备注放在仓库外的 `~/.agents/projects/lyjwpage.md`，不入 git。提交前可用 `scripts/memory-mirror.ts#findSecrets` 做防泄漏自查。
+- **流程类约束的生效方式**：10-26 的知识评测（`agent-knowledge-eval-plan.md`）证实，只写在文档或记忆里的流程步骤容易被跳过；高频易忘的流程约束应由主协调员直接写入任务简报，能机械判定的尽量升级为 ESLint / `scripts/rules-check.ts`。
 - 这里的条目记的是写入时的事实，带日期、可能指向后来改名的路径，`pnpm docs:check` 不检查本目录（`scripts/docs-check.ts#MEMORY_MIRROR_DIR`）。
