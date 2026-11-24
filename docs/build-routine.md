@@ -2,7 +2,7 @@
 
 > 类型：runbook
 
-首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记，经 site 或 core 的 Service Binding 转发。写代码的是 GitHub Actions 工作流 `.github/workflows/build.yml`：提示词与 Claude Code 设置在 `.github/build/`，各 job 调用的脚本是 `scripts/build-actions.ts`。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
+首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议、开关（`VISITOR_BUILD_ENABLED`）与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记，经 site 或 core 的 Service Binding 转发。`VISITOR_BUILD_ENABLED` 关闭时，计划卡收起 Start build 只保留 Open issue，`POST /api/build` 返回 503、`GET /api/build/status` 不再补派发未启动的 run（既有构建的状态查询、对账、webhook 与 `GET /api/build/issue` 照常），规划者与对话提示词同步说明构建暂停；恢复时改回 `true` 即可。写代码的是 GitHub Actions 工作流 `.github/workflows/build.yml`：提示词与 Claude Code 设置在 `.github/build/`，各 job 调用的脚本是 `scripts/build-actions.ts`。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
 
 ## 设计与确认
 

@@ -1,3 +1,4 @@
+import { VISITOR_BUILD_ENABLED } from "@shared/build-routine";
 import type { PublicStatusRpc } from "@shared/public-status";
 
 import type { BuildCoordinator } from "./build/coordinator";
@@ -33,6 +34,7 @@ export interface Env {
   MCP_LIMIT?: RateLimit;
   AI_DEV?: string;
   PREVIEW_WORKER?: string;
+  BUILD_ENABLED?: string;
   CHAT_RATE_LIMIT?: string;
   CHAT_FORCE_TIER?: string;
 }
@@ -43,4 +45,11 @@ export function previewWorkerEnabled(env: Env): boolean {
 
 export function aiDevEnabled(env: Env): boolean {
   return env.AI_DEV?.trim() === "true" || previewWorkerEnabled(env);
+}
+
+export function visitorBuildEnabled(env: Pick<Env, "BUILD_ENABLED">): boolean {
+  const override = env.BUILD_ENABLED?.trim();
+  if (override === "true") return true;
+  if (override === "false") return false;
+  return VISITOR_BUILD_ENABLED;
 }

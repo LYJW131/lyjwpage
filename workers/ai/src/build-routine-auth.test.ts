@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BUILD_REPO, branchForRun } from "@shared/build-routine";
+import { BUILD_REPO, BUILD_STATUS_TTL_MS, VISITOR_BUILD_ENABLED, branchForRun } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
-import { uploadTokenForRun } from "./build/token.ts";
+import { signBuildToken, uploadTokenForRun } from "./build/token.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
 import { FIXTURE_PLAN_SHA } from "./build/testing/github-fixture.ts";
 import { buildWorkflowAudience } from "./build/actions-oidc.ts";
 import { createActionsOidcFixture } from "./build/testing/actions-oidc.ts";
 import { issuePlan } from "./build/plan.ts";
-import { buildSecret, callbackOrigin, coordinator, dispatched, githubFixture, handleBuild, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook, headSha, imageBucket, json, oidc, plan, png, post, runId, sha, signIn, stored, upload } from "./build/testing/routine-fixture.ts";
+import { buildSecret, callbackOrigin, coordinator, dispatched, githubFixture, handleBuild, handleBuildIssue, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook, headSha, imageBucket, json, oidc, plan, png, post, runId, sha, signIn, stored, upload } from "./build/testing/routine-fixture.ts";
 
 test("webhooks verify exact bytes, reject invalid signatures and deduplicate deliveries", async () => {
   const { env, instance } = coordinator();
@@ -158,4 +158,34 @@ test("runs without a callback origin refuse workflow tokens and an unavailable k
   const unavailable = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await keys.token(buildWorkflowAudience(callbackOrigin, runId))), current.env, keys.serve());
   assert.equal(unavailable.status, 503);
   assert.equal(current.instance.readRun(runId)?.uploadUsed, false);
+});
+
+test("paused visitor builds reject POST /api/build and skip status-triggered dispatch while keeping status reads and issue lookups working", async () => {
+  assert.equal(VISITOR_BUILD_ENABLED, false);
+  const { env: enabledEnv, instance } = coordinator();
+  const pausedEnv: Env = { ...enabledEnv, BUILD_ENABLED: undefined };
+  const proposal = await issuePlan(pausedEnv, plan);
+  const denied: typeof fetch = async () => assert.fail("Paused build entry must not call GitHub");
+
+  const rejected = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), pausedEnv, denied);
+  assert.equal(rejected.status, 503);
+  assert.equal(rejected.headers.get("Cache-Control"), "no-store");
+  assert.match((await rejected.json() as { error: string }).error, /paused/i);
+  assert.equal(instance.isPlanUsed(proposal.issueRef!), false);
+
+  const explicitOff = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), { ...enabledEnv, BUILD_ENABLED: "false" }, denied);
+  assert.equal(explicitOff.status, 503);
+
+  const pending = { ...(await stored()), callbackOrigin };
+  instance.reserveRun(pending, "paused-status-plan", Date.now() + 60_000);
+  const statusToken = await signBuildToken({ kind: "status", runId, expiresAt: Date.now() + BUILD_STATUS_TTL_MS }, buildSecret);
+  const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${runId}`, { headers: { Authorization: `Bearer ${statusToken}` } }), pausedEnv, denied);
+  assert.equal(status.status, 200);
+  assert.equal((await status.json() as { phase: string }).phase, "triggered");
+  assert.equal(instance.readRun(runId)?.dispatchAttempted, undefined);
+
+  const issueFixture = githubFixture((path) => path.includes("/issues") ? json([]) : undefined);
+  const issueLookup = await handleBuildIssue(new Request("https://api.test/api/build/issue", { headers: { Authorization: `Bearer ${proposal.token}` } }), pausedEnv, issueFixture.fetcher);
+  assert.equal(issueLookup.status, 200);
+  assert.deepEqual(await issueLookup.json(), { issue: null });
 });

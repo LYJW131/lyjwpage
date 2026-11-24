@@ -10,7 +10,7 @@ import { proposalBuildOpen, proposalChoiceOpen, type ChatProposal } from "@/lib/
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_ISSUE_PATH, BUILD_ISSUE_POLL_MS, BUILD_PATH, BUILD_STATUS_PATH, buildIssueUrl, visitorLanguage, type BuildFireResult, type BuildIssueLookup, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_ISSUE_PATH, BUILD_ISSUE_POLL_MS, BUILD_PATH, BUILD_STATUS_PATH, VISITOR_BUILD_ENABLED, buildIssueUrl, visitorLanguage, type BuildFireResult, type BuildIssueLookup, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 import type { GithubIssueResult } from "@shared/github-issue";
 
 const BUILD_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_PATH);
@@ -99,7 +99,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   }, [proposal.expiresAt]);
 
   async function startBuild() {
-    if (disabled || startingRef.current) return;
+    if (!VISITOR_BUILD_ENABLED || disabled || startingRef.current) return;
     startingRef.current = true;
     setWorking("signing_in");
     setError(null);
@@ -168,18 +168,38 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
                 if (!proposal.issueOpened) onChange({ ...proposal, issueOpened: true });
               }}
               className={cn(
-                "rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover",
+                "rounded-md px-3 py-2 text-xs",
+                VISITOR_BUILD_ENABLED
+                  ? "border border-line-strong transition-colors hover:bg-surface-hover"
+                  : "bg-foreground text-background transition-opacity hover:opacity-90",
                 issueDisabled && "pointer-events-none opacity-40",
               )}
             >
               Open issue
             </a>
-            <button type="button" onClick={() => { setError(null); setBuildOpen(true); checkIssueRef.current?.(); }} disabled={disabled || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
+            {VISITOR_BUILD_ENABLED && (
+              <button type="button" onClick={() => { setError(null); setBuildOpen(true); checkIssueRef.current?.(); }} disabled={disabled || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
+            )}
           </div>
-          {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. {awaitingIssue ? "Once you submit it there, this card links to the issue. You can still start a build instead." : proposal.issueRef ? "Submit it there to file this plan, or start a build instead." : "Submit it there to file this plan."}</p>}
-          <p className="text-2xs text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
+          {proposal.issueOpened && !expired && (
+            <p className="text-xs">
+              Opened GitHub&apos;s new issue form.{" "}
+              {awaitingIssue
+                ? VISITOR_BUILD_ENABLED
+                  ? "Once you submit it there, this card links to the issue. You can still start a build instead."
+                  : "Once you submit it there, this card links to the issue."
+                : proposal.issueRef && VISITOR_BUILD_ENABLED
+                  ? "Submit it there to file this plan, or start a build instead."
+                  : "Submit it there to file this plan."}
+            </p>
+          )}
+          <p className="text-2xs text-muted-foreground">
+            {VISITOR_BUILD_ENABLED
+              ? "Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author."
+              : "Opens a pre-filled GitHub issue form for this plan. Automated builds are paused right now."}
+          </p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
-          {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} cancellable={working !== "preparing"} onCancel={leaveBuild} />}
+          {VISITOR_BUILD_ENABLED && buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} cancellable={working !== "preparing"} onCancel={leaveBuild} />}
         </>
       )}
       {error && !buildOpen && <p role="alert" className="text-xs text-signal-red">{error}</p>}

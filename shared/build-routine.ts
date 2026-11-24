@@ -3,6 +3,8 @@ import type { GithubIssueResult } from "./github-issue";
 export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_ISSUE_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
 
 export const BUILD_REPO = "LYJW131/lyjwpage";
+// 访客构建开关：关闭时计划卡收起 Start build、后端 POST /api/build 拒绝新派发且状态查询不补派发，设计与 Open issue 照常；workers/ai 的 Env.BUILD_ENABLED 可覆盖。
+export const VISITOR_BUILD_ENABLED = false;
 
 // A short, bounded planning session limits paid Opus work independently of ordinary chat quotas.
 export const BUILD_DESIGN_LIMITS = { ttlMs: 30 * 60_000, maxTurns: 12, windowMs: 60 * 60_000, everyone: 20 } as const;

@@ -73,7 +73,7 @@
 
 ## 访客也能改站点
 
-首页「与神对话」里，任何访客都能描述想要的改动：Opus 规划者在只读沙盒里读代码、提问、写出计划，访客确认并授权 GitHub 后，`.github/workflows/build.yml` 让 Claude Code 先审计划、再在隔离环境里实现，产出 PR 交 lyjw 合并。安全边界与完整流程见 [访客协作构建](./build-routine.md)。
+首页「与神对话」里，任何访客都能描述想要的改动：Opus 规划者在只读沙盒里读代码、提问、写出计划，访客可打开预填的 GitHub issue 表单，或在 `shared/build-routine.ts#VISITOR_BUILD_ENABLED` 开启时授权 GitHub，由 `.github/workflows/build.yml` 让 Claude Code 先审计划、再在隔离环境里实现，产出 PR 交 lyjw 合并。安全边界、开关与完整流程见 [访客协作构建](./build-routine.md)。
 
 ## 外部做法从哪来
 
