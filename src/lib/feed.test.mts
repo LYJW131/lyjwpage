@@ -120,6 +120,18 @@ const FIXTURE_SNAPSHOT: FeedSnapshot = {
         service: null,
         preOrder: false,
       },
+      {
+        titleId: "PPSA99999_00",
+        name: "Upcoming Preorder",
+        category: "ps5_native_game",
+        playCount: 0,
+        firstPlayedAt: null,
+        lastPlayedAt: null,
+        playDurationMs: null,
+        imageUrl: null,
+        service: "none(purchased)",
+        preOrder: true,
+      },
     ],
   },
   workouts: {
@@ -153,6 +165,18 @@ const FIXTURE_SNAPSHOT: FeedSnapshot = {
         link: "https://emby.lyjw131.com/web/index.html#!/item?id=22114",
         playedAt: null,
       },
+      {
+        id: "22113",
+        title: "我推的孩子",
+        subtitle: "S2:E8 · 触发",
+        progress: 0,
+        poster: null,
+        backdrop: null,
+        type: "Episode",
+        year: 2023,
+        link: "https://emby.lyjw131.com/web/index.html#!/item?id=22113",
+        playedAt: null,
+      },
     ],
   },
   pulse: {
@@ -167,11 +191,11 @@ const FIXTURE_SNAPSHOT: FeedSnapshot = {
       listening: {
         kind: "state",
         segments: {
-          startSec: [80_000, 80_010],
-          endSec: [80_200, 80_210],
-          state: [1, 1],
-          title: ["晴天", "稻香"],
-          subtitle: ["周杰伦", "周杰伦"],
+          startSec: [80_000, 80_010, 80_210],
+          endSec: [80_200, 80_210, 80_810],
+          state: [2, 2, 1],
+          title: ["晴天", "稻香", "暂停曲"],
+          subtitle: ["周杰伦", "周杰伦", "周杰伦"],
         },
         uncertain: {
           startSec: [70_000],
@@ -187,7 +211,7 @@ const FIXTURE_SNAPSHOT: FeedSnapshot = {
         segments: {
           startSec: [75_000],
           endSec: [76_500],
-          state: [1],
+          state: [2],
           title: ["我推的孩子"],
           subtitle: ["S2:E9 · 梦"],
         },
@@ -288,6 +312,14 @@ test("parseFeedQuery 解析默认值、合法筛选与非法参数策略", () =>
   const badFormat = parseFeedQuery(new URLSearchParams("format=json"), "rss");
   assert.equal(badFormat.ok, false);
   assert.match(badFormat.error, /Invalid format "json"/);
+
+  const lockedFormat = parseFeedQuery(new URLSearchParams("format=atom"), "rss", false);
+  assert.equal(lockedFormat.ok, false);
+  assert.match(lockedFormat.error, /only serves rss/);
+
+  const sameFormat = parseFeedQuery(new URLSearchParams("format=rss"), "rss", false);
+  assert.equal(sameFormat.ok, true);
+  assert.equal(sameFormat.query.format, "rss");
 });
 
 test("requiredViewsForTypes 只请求被选中的最小视图集合并去重", () => {
@@ -303,6 +335,7 @@ test("buildFeedItems 过滤媒体应用、补齐 watching 时间、支持 tag �
 
   assert.deepEqual(items.map((item) => item.type), ["digest", "commits", "gaming", "trophies", "workouts"]);
   assert.equal(items.some((item) => item.title.includes("Netflix")), false, "过滤 ps5_native_media_app");
+  assert.equal(items.some((item) => item.title.includes("Upcoming Preorder")), false, "过滤未游玩预购游戏");
   assert.equal(items[0].title, "Digest: 奖杯有进账 · 3+ trophies, 6.5h gaming");
   assert.equal(items[1].title, "feat(site): 关掉维护页，页面恢复正常渲染 (#815)");
 
@@ -320,8 +353,9 @@ test("buildFeedItems 过滤媒体应用、补齐 watching 时间、支持 tag �
     tags: [],
     limit: 10,
   });
-  assert.equal(watching.length, 1);
-  assert.notEqual(watching[0].publishedAt, null, "Emby playedAt 为 null 时从 pulse 补齐时间");
+  assert.equal(watching.length, 2);
+  assert.notEqual(watching[0].publishedAt, null, "同集在 pulse 中匹配时补齐时间");
+  assert.equal(watching[1].publishedAt, null, "同剧其他集不跨集借用时间");
 
   const listening = buildFeedItems(FIXTURE_SNAPSHOT, {
     format: "atom",
@@ -330,7 +364,60 @@ test("buildFeedItems 过滤媒体应用、补齐 watching 时间、支持 tag �
     limit: 10,
   });
   assert.equal(listening.length, 3);
+  assert.equal(listening.some((item) => item.title.includes("暂停曲")), false, "paused 片段不生成收听条目");
   assert.equal(new Set(listening.map((item) => item.id)).size, 3, "同分钟内不同中文歌名 guid 不碰撞");
+});
+
+test("Atom 部署条目从 BUILDING 变为 READY 时保持 ID 与 published，推进 updated", () => {
+  const createdAt = Date.parse("2026-11-24T20:00:00Z");
+  const building: FeedSnapshot = {
+    siteDeployments: {
+      fetchedAt: createdAt + 10_000,
+      production: null,
+      activeVersions: [],
+      recent: [{
+        id: "cloudflare-build:2",
+        state: "BUILDING",
+        createdAt,
+        buildDurationMs: null,
+        target: "production",
+        commit: { sha: "abcdef1234567", branch: "main", message: "feat(feed): build test" },
+      }],
+    },
+  };
+  const ready: FeedSnapshot = {
+    siteDeployments: {
+      fetchedAt: createdAt + 180_000,
+      production: null,
+      activeVersions: [],
+      recent: [{
+        id: "cloudflare-build:2",
+        state: "READY",
+        createdAt,
+        buildDurationMs: 180_000,
+        target: "production",
+        commit: { sha: "abcdef1234567", branch: "main", message: "feat(feed): build test" },
+      }],
+    },
+  };
+  const query = { format: "atom" as const, types: ["deployments" as const], tags: [], limit: 10 };
+  const [bItem] = buildFeedItems(building, query);
+  const [rItem] = buildFeedItems(ready, query);
+  assert.equal(bItem.id, rItem.id);
+  assert.equal(bItem.publishedAt, rItem.publishedAt);
+  assert.equal(bItem.updatedAt, createdAt);
+  assert.equal(rItem.updatedAt, createdAt + 180_000);
+  assert.equal(feedUpdatedAt([rItem], ready), createdAt + 180_000);
+
+  const atom = renderAtom({
+    title: "LYJW's Homepage",
+    description: "Test",
+    selfUrl: "https://lyjw.me/atom.xml?type=deployments",
+    updatedAt: feedUpdatedAt([rItem], ready),
+    items: [rItem],
+  });
+  assert.match(atom, /<published>2026-11-24T20:00:00\.000Z<\/published>/);
+  assert.match(atom, /<updated>2026-11-24T20:03:00\.000Z<\/updated>/);
 });
 
 test("XML 序列化转义特殊字符并剥离非法控制字符，兼容 Atom 友链解析器", () => {

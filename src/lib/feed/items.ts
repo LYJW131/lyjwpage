@@ -1,6 +1,7 @@
 import type { AgentStatusPayload } from "@shared/agent-status-types";
 import type { DigestHighlight, DigestPayload } from "@shared/digest";
 import type { WatchingPayload } from "@shared/emby";
+import { LISTENING_STATES, WATCHING_STATES } from "@shared/pulse-timeline";
 import { site } from "@shared/site";
 import type { SiteDeploymentsPayload } from "@shared/site-deployments-types";
 import type {
@@ -33,11 +34,14 @@ export type FeedItem = {
   summary: string;
   link: string;
   publishedAt: number | null;
+  updatedAt?: number | null;
   categories: string[];
 };
 
 const SITE_HOME_URL = `${site.url}/`;
 const MINUTE_MS = 60_000;
+const LISTENING_PLAYING_STATE = LISTENING_STATES.indexOf("playing");
+const WATCHING_PLAYING_STATE = WATCHING_STATES.indexOf("playing");
 
 function safeHttpUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -187,13 +191,18 @@ function deploymentItems(data: SiteDeploymentsPayload | undefined): FeedItem[] {
     if (dep.buildDurationMs != null) parts.push(`Build: ${formatDurationSec(dep.buildDurationMs / 1000)}`);
     if (dep.commit?.branch) parts.push(`Branch: ${dep.commit.branch}`);
     if (dep.commit?.sha) parts.push(`Commit: ${dep.commit.sha.slice(0, 7)}`);
+    const publishedAt = parseTimestamp(dep.createdAt);
+    const updatedAt = publishedAt != null && dep.buildDurationMs != null && dep.buildDurationMs > 0
+      ? publishedAt + dep.buildDurationMs
+      : publishedAt;
     return {
       id: `tag:lyjw.me,2026:deployment:${dep.id}`,
       type: "deployments",
       title: `Deploy ${dep.state}: ${message}`,
       summary: parts.join(" · "),
       link: dep.commit?.sha ? `${site.repo}/commit/${dep.commit.sha}` : SITE_HOME_URL,
-      publishedAt: parseTimestamp(dep.createdAt),
+      publishedAt,
+      updatedAt,
       categories: uniqueTags(["deployments", dep.target, dep.state]),
     };
   });
@@ -212,10 +221,17 @@ function trophyItems(data: TrophiesSummaryPayload | TrophiesPayload | undefined)
   }));
 }
 
+function isPlaystationMediaApp(category: string | null): boolean {
+  return category?.endsWith("_media_app") === true;
+}
+
+function isUnplayedPreorder(item: PlaystationPlayingPayload["items"][number]): boolean {
+  return item.preOrder && item.playCount === 0 && item.playDurationMs == null;
+}
+
 function gamingItems(data: PlaystationPlayingPayload | undefined): FeedItem[] {
   if (!data?.items?.length) return [];
-  // 排除 PlayStation 媒体应用（如 Netflix），只保留游戏条目。
-  const games = data.items.filter((item) => item.category?.endsWith("_media_app") !== true);
+  const games = data.items.filter((item) => !isPlaystationMediaApp(item.category) && !isUnplayedPreorder(item));
   return games.map((game) => {
     const platform = playstationPlatform(game.category);
     const parts = [platform ? `PlayStation (${platform})` : "PlayStation"];
@@ -261,27 +277,36 @@ function workoutItems(data: WorkoutsPayload | undefined): FeedItem[] {
   });
 }
 
-function pulseWatchingLookup(pulse: PulsePayload | undefined): Map<string, number> {
-  const latest = new Map<string, number>();
-  if (!pulse) return latest;
-  const { startSec, endSec, title, subtitle } = pulse.lanes.watching.segments;
+function pulseWatchingLookup(pulse: PulsePayload | undefined): { byFull: Map<string, number>; byTitle: Map<string, number> } {
+  const byFull = new Map<string, number>();
+  const byTitle = new Map<string, number>();
+  if (!pulse) return { byFull, byTitle };
+  const { startSec, endSec, state, title, subtitle } = pulse.lanes.watching.segments;
   for (let i = 0; i < startSec.length; i++) {
+    if (state[i] !== WATCHING_PLAYING_STATE) continue;
     const name = title[i]?.trim();
     if (!name) continue;
     const endMs = Math.round((pulse.window.from + (endSec[i] ?? startSec[i]) * 1000) / MINUTE_MS) * MINUTE_MS;
-    const fullKey = `${name}\0${subtitle[i]?.trim() ?? ""}`;
-    latest.set(fullKey, Math.max(latest.get(fullKey) ?? 0, endMs));
-    latest.set(name, Math.max(latest.get(name) ?? 0, endMs));
+    const sub = subtitle[i]?.trim() ?? "";
+    if (sub) {
+      const fullKey = `${name}\0${sub}`;
+      byFull.set(fullKey, Math.max(byFull.get(fullKey) ?? 0, endMs));
+    } else {
+      byTitle.set(name, Math.max(byTitle.get(name) ?? 0, endMs));
+    }
   }
-  return latest;
+  return { byFull, byTitle };
 }
 
 function watchingItems(data: WatchingPayload | undefined, pulse: PulsePayload | undefined): FeedItem[] {
   if (!data?.items?.length) return [];
-  const pulseTimes = pulseWatchingLookup(pulse);
+  const { byFull, byTitle } = pulseWatchingLookup(pulse);
   return data.items.map((item) => {
-    const title = item.subtitle ? `Watched ${item.title} · ${item.subtitle}` : `Watched ${item.title}`;
-    const pulseTime = pulseTimes.get(`${item.title}\0${item.subtitle}`) ?? pulseTimes.get(item.title) ?? null;
+    const sub = item.subtitle.trim();
+    const title = sub ? `Watched ${item.title} · ${sub}` : `Watched ${item.title}`;
+    const pulseTime = sub
+      ? (byFull.get(`${item.title.trim()}\0${sub}`) ?? null)
+      : (byTitle.get(item.title.trim()) ?? null);
     const parts = [`Emby · ${item.type}`];
     if (item.year != null) parts.push(String(item.year));
     if (item.progress > 0) parts.push(`${Math.round(item.progress)}% watched`);
@@ -304,6 +329,7 @@ function listeningItems(pulse: PulsePayload | undefined): FeedItem[] {
   const lane = pulse.lanes.listening;
 
   for (let i = 0; i < lane.segments.startSec.length; i++) {
+    if (lane.segments.state[i] !== LISTENING_PLAYING_STATE) continue;
     const title = lane.segments.title[i]?.trim();
     if (!title) continue;
     const startSec = lane.segments.startSec[i];
@@ -436,7 +462,8 @@ export function buildFeedItems(snapshot: FeedSnapshot, query: FeedQuery): FeedIt
 export function feedUpdatedAt(items: readonly FeedItem[], snapshot: FeedSnapshot): number {
   let latest = 0;
   for (const item of items) {
-    if (item.publishedAt != null && item.publishedAt > latest) latest = item.publishedAt;
+    const stamp = item.updatedAt ?? item.publishedAt;
+    if (stamp != null && stamp > latest) latest = stamp;
   }
   if (latest > 0) return latest;
   const candidates = [

@@ -65,9 +65,10 @@ export async function serveFeed(
   request: Request,
   services: Pick<SiteServices, "status">,
   defaultFormat: FeedFormat,
+  allowFormatOverride = true,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const parsed = parseFeedQuery(url.searchParams, defaultFormat);
+  const parsed = parseFeedQuery(url.searchParams, defaultFormat, allowFormatOverride);
   if (!parsed.ok) {
     return new Response(parsed.error, {
       status: 400,

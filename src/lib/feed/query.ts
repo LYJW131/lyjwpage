@@ -63,12 +63,23 @@ function parseLimit(raw: string | null): number {
   return Math.min(MAX_FEED_LIMIT, Math.max(MIN_FEED_LIMIT, parsed));
 }
 
-export function parseFeedQuery(searchParams: URLSearchParams, defaultFormat: FeedFormat): FeedQueryResult {
+export function parseFeedQuery(
+  searchParams: URLSearchParams,
+  defaultFormat: FeedFormat,
+  allowFormatOverride = true,
+): FeedQueryResult {
   const rawFormat = searchParams.get("format")?.trim().toLowerCase() ?? "";
   let format: FeedFormat = defaultFormat;
   if (rawFormat) {
     if (rawFormat !== "rss" && rawFormat !== "atom") {
       return { ok: false, error: `Invalid format "${rawFormat}". Valid values: rss, atom.` };
+    }
+    if (!allowFormatOverride && rawFormat !== defaultFormat) {
+      const target = rawFormat === "atom" ? "/atom.xml" : "/rss.xml";
+      return {
+        ok: false,
+        error: `This endpoint only serves ${defaultFormat}; use /feed?format=${rawFormat} or ${target}.`,
+      };
     }
     format = rawFormat;
   }

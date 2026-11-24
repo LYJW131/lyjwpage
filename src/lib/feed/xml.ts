@@ -83,7 +83,7 @@ export function renderAtom(feed: FeedDocument): string {
   ];
 
   for (const item of feed.items) {
-    const entryUpdated = item.publishedAt ?? feed.updatedAt;
+    const entryUpdated = item.updatedAt ?? item.publishedAt ?? feed.updatedAt;
     lines.push("  <entry>");
     lines.push(`    <id>${escapeXml(item.id)}</id>`);
     lines.push(`    <title>${escapeXml(item.title)}</title>`);
