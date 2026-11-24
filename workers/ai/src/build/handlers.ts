@@ -1,7 +1,7 @@
 import { object } from "@shared/json";
 import { BUILD_CLOSED_PHASES, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_PLAN_TTL_MS, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, branchForRun, newRunId, type BuildFireResult, type BuildIssueLookup } from "@shared/build-routine";
 import { readJsonBody } from "../chat/guard";
-import type { Env } from "../runtime";
+import { visitorBuildEnabled, type Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 
 import { BuildBlockedError, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, findPlanIssue, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
@@ -89,6 +89,7 @@ async function prepareBuild(runId: string, env: Env, fetcher: typeof fetch, ctx?
 
 export async function handleBuild(request: Request, env: Env, fetcher: typeof fetch = fetch, ctx?: BuildContext): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!visitorBuildEnabled(env)) return fail(503, "Visitor builds are paused right now.");
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.GITHUB_APP_PRIVATE_KEY || !env.GITHUB_APP_CLIENT_SECRET) return fail(503, "Builds are unavailable right now.");
   const data = object(await readJsonBody(request, BUILD_TOKEN_MAX_CHARS + 5000));
   if (!data || typeof data.planToken !== "string" || typeof data.code !== "string" || !/^[\w.-]{1,512}$/.test(data.code) || typeof data.codeVerifier !== "string" || !/^[A-Za-z0-9._~-]{43,128}$/.test(data.codeVerifier)) return fail(400, "A signed plan and GitHub sign-in are required.");
@@ -166,7 +167,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   const coordinator = buildCoordinator(env);
   let run = await coordinator.readRun(runId);
   if (!run) return fail(404, "Build not found.");
-  if (!run.dispatchAttempted && run.callbackOrigin && run.state.phase === "triggered" && env.GITHUB_APP_PRIVATE_KEY) {
+  if (visitorBuildEnabled(env) && !run.dispatchAttempted && run.callbackOrigin && run.state.phase === "triggered" && env.GITHUB_APP_PRIVATE_KEY) {
     await prepareBuild(runId, env, fetcher, ctx);
     run = (await coordinator.readRun(runId))!;
   }
