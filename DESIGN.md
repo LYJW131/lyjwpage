@@ -43,7 +43,7 @@
 
 ## Typography
 
-字体族：全站 `font-mono`（Geist Mono，数字默认等宽 + 斜杠零）。中文落到系统字体（苹方等）。
+字体族：全站 `font-mono`（Geist Mono，数字默认等宽 + 斜杠零）。`--font-mono` 在跨平台等宽字体后明确列出中文无衬线系统字体（苹方、鸿蒙黑体、微软雅黑、Noto/思源黑体，取值以 `src/app/styles/theme.css` 为准），避免中文落到通用 `monospace` 映射出的衬线字体。
 
 - 中文标题（如摘要卡的中文标语）用 `font-sans` 粗体，短句、可带句号，参照 Apple 中文宣传语。
 - 不用书法、手写、装饰性字体；不新增网络字体，确有需要先问 lyjw。
