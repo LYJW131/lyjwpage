@@ -208,15 +208,23 @@ test("读体按真实字节数限流，不限于 Content-Length", async () => {
 
 test("an image the upstream no longer has is a 404, only upstream failures are a 502", () => {
   const status = (code: number, host: string | null = null) => imageUpstreamFailureStatus(new ImageUpstreamError(code, host));
+  assert.equal(status(400, "store-035.blobstore.apple.com"), 404);
+  assert.equal(status(401, "store-035.blobstore.apple.com"), 404);
   assert.equal(status(403, "is1-ssl.blobstore.apple.com"), 404);
+  assert.equal(status(400, "avatars.githubusercontent.com"), 502);
+  assert.equal(status(401, "avatars.githubusercontent.com"), 502);
   assert.equal(status(403, "avatars.githubusercontent.com"), 502);
+  assert.equal(status(400), 502);
+  assert.equal(status(401), 502);
   assert.equal(status(403), 502);
   assert.equal(status(404), 404);
   assert.equal(status(413), 413);
   assert.equal(status(408), 502);
   assert.equal(status(425), 502);
   assert.equal(status(429), 502);
+  assert.equal(status(429, "store-035.blobstore.apple.com"), 502);
   assert.equal(status(410), 404);
   assert.equal(status(500), 502);
+  assert.equal(status(500, "store-035.blobstore.apple.com"), 502);
   assert.equal(status(504), 502);
 });
