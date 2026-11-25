@@ -5,7 +5,7 @@ import type { buildThreads } from "./threads.ts";
 import type { tierOf } from "./tier.ts";
 
 export const REQUIRED_CHECKS = ["check"];
-const ONCE_PER_PR_REVIEWERS = ["claude", "devin"];
+const ONCE_PER_PR_REVIEWERS = ["devin"];
 
 export function decide({
   pull,

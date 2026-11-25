@@ -10,7 +10,7 @@ lyjw (2026-10-13): "以后也注意一下 不只是ci 还要看pr讨论区的机
 **Scope (lyjw 2026-10-13 12:24Z):** only PRs that substantially change code logic wait for bot reviews. UI, docs, skills and small changes merge as soon as CI is green ("别这么死板"). Encoded in HUMAN.md and the lyjwpage-verify skill (#230).
 
 Rule for every PR in scope:
-- Read all of `get_comments`, `get_reviews` and `get_review_comments`. The bots are claude-review, Devin, Codex (chatgpt-codex-connector) and Cursor Bugbot.
+- Read all of `get_comments`, `get_reviews` and `get_review_comments`. The active bots are Devin and Codex (`chatgpt-codex-connector`); `claude-code-review.yml` was removed on 2026-11-25 SGT after `CLAUDE_CODE_OAUTH_TOKEN` broke (Cursor Bugbot was turned off earlier).
 - Each finding needs one of two outcomes: a pushed fix, or a reply on that thread saying why it stays. Resolve the threads that were fixed.
 - A blocking finding that is a real bug (🟥 / P0–P1 / security) blocks the merge until fixed or lyjw agrees on a decision card; an edge case stays non-blocking whatever its label.
 - After the last push, wait until the bots have reviewed the current head, then re-check everything. Exception (lyjw 2026-10-20, after #500 sat ~80 min): a follow-up push that only touches docs/comments/skills needs no Codex re-review; a code push waits at most 15 min, then merge and note "Codex didn't re-review".
@@ -19,7 +19,7 @@ Rule for every PR in scope:
 - Bot findings are claims to judge, not orders (lyjw: "它说的不一定是完全必要的 你得自己判断"). Trace a real path to the failure and weigh the fix's cost. Fix only what is worth it, and reply with the reason on the rest.
 - Codex budget is tight (lyjw: "最多跑三轮 再多就不管了"). Allow at most 3 Codex rounds per PR. Codex also reviews automatically on every new push (trigger "New commits"; seen on PR #211, 2026-10-13), so each push spends a round. Batch fixes into one push, and don't add "@codex review" on top. After round 3, stop waiting for it and ignore later automatic runs, and note the last commit Codex reviewed.
 
-**One command (#437):** `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr N [--no-judge]` reads every machine-checkable gate as JSON (required `check` present, failing/pending checks, expected Workers Builds = success, unresolved threads, Codex rounds, Claude review + Devin reviewed once when judging, receipt). Run it on every PR wake instead of paging comments; `ready` excludes lyjw's UI OK.
+**One command (#437):** `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr N [--no-judge]` reads every machine-checkable gate as JSON (required `check` present, failing/pending checks, expected Workers Builds = success, unresolved threads, Codex rounds, Devin reviewed once when judging, receipt; `claude` removed from `ONCE_PER_PR_REVIEWERS` on 2026-11-25). Run it on every PR wake instead of paging comments; `ready` excludes lyjw's UI OK.
 
 **Why:** lyjw wants bot review feedback treated as a merge gate, not just CI checks.
 

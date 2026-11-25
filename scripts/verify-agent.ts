@@ -11,7 +11,7 @@ import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
-用 pi（@earendil-works/pi-coding-agent 的 SDK）跑验证员 / 判定员（Verify Action 里是和 claude-code-action 对照的 B 组）。模型走 Anthropic API，
+用 pi（@earendil-works/pi-coding-agent 的 SDK）跑 Verify Action 的验证员 / 判定员。模型走 Anthropic API，
 钥匙经 --api-key-file 传（本地可用 ANTHROPIC_API_KEY）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
 用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
 
@@ -186,7 +186,7 @@ const customTools = [
   ...(outDir ? [guardedWrite] : []),
   prDiffTool(toolContext),
   runTestsTool(toolContext),
-  ...(values.pr && githubToken
+  ...(role === "verifier" && values.pr && githubToken
     ? [
         {
           name: "pr_view",
@@ -217,12 +217,10 @@ const customTools = [
 
 const SYSTEM = `你在 pi 里运行，工具和 Claude Code 不同：
 - read / grep / find / ls：读文件与搜索（只读），只许读工作区、产物目录、临时目录与 pi 的 SDK 目录，以及 skill 目录 ${SKILL_DIR}；别处的文件用 bash 读。bash：跑命令，环境里没有任何令牌与密钥，GitHub CLI 用不了；${bwrap ? "已在 bubblewrap 沙箱里，只许写工作目录、$TMPDIR 与产物目录，" : ""}没有 WebFetch，读公开网页用 curl。
-- pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
+- pr_diff：看这次改动，先 stat=true 看全貌再按文件看。run_tests：跑单测当证据，别自己拼 node --test 命令。${role === "verifier" && values.pr && githubToken ? "pr_view：读 PR 描述与标签。" : ""}${outDir ? `write：只能写进 ${outDir}。` : ""}
 - 你的模型 ID 是 ${modelId}，结果里的 model 字段照写。
 - 互不依赖的读与搜索在同一轮里并行调用。提示词里说「按给定的 JSON schema 交结果」，就是调用 submit_report 工具；不调它这一轮就算没交。
-- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。
-
-${PLAYBOOK}`;
+- claims：登记要核对的声明。compare_base：同一条命令在 HEAD 与目标分支上各跑一次对照。docs_sync：查改了的说法在文档里有没有跟着改。${role === "verifier" ? `\n\n${PLAYBOOK}` : ""}`;
 
 const resourceLoader = new DefaultResourceLoader({
   cwd,
@@ -269,7 +267,7 @@ const { session } = await createAgentSession({
   thinkingLevel: values.thinking,
   modelRuntime,
   resourceLoader,
-  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", "pr_view", "docs_sync", "compare_base", "claims", "submit_report"],
+  tools: ["read", "grep", "find", "ls", "bash", ...(outDir ? ["write"] : []), "pr_diff", "run_tests", ...(role === "verifier" ? ["pr_view"] : []), "docs_sync", "compare_base", "claims", "submit_report"],
   customTools,
   sessionManager: SessionManager.inMemory(cwd),
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 3 } }),
@@ -280,16 +278,19 @@ const transcript = values.transcript ? fs.createWriteStream(values.transcript, {
 // 流式事件每次都带着整条消息，一轮能写出好几 GB；完整内容在 message_end 与工具事件里都有
 const STREAM_EVENTS = new Set(["message_update", "provider_stream_event", "tool_execution_update"]);
 const toolCounts = new Map<string, number>();
-session.subscribe((event: { type: string; toolName?: string; args?: unknown }) => {
+session.subscribe((event: { type: string; toolName?: string; args?: unknown; message?: { stopReason?: string; errorMessage?: string } }) => {
   if (!STREAM_EVENTS.has(event.type)) transcript?.write(`${JSON.stringify({ at: Date.now(), ...event })}\n`);
   if (event.type === "tool_execution_start" && event.toolName) {
     toolCounts.set(event.toolName, (toolCounts.get(event.toolName) ?? 0) + 1);
     console.error(`[tool] ${event.toolName} ${JSON.stringify(event.args).slice(0, 160)}`);
   }
+  if (event.type === "message_end" && event.message?.stopReason === "error" && event.message.errorMessage) {
+    console.error(`[error] ${event.message.errorMessage}`);
+  }
 });
 
-// 开跑前就把 PR 描述放进提示词：中档模型常常不去读，声明台账也要从描述里取
-if (!/\n描述：\n\s*\S/.test(prompt) && values.pr && githubToken) {
+// 开跑前就把 PR 描述放进提示词：中档模型常常不去读，声明台账也要从描述里取；judge 只看 bodyDigest 覆盖的提示词，不额外附全文
+if (role === "verifier" && !/\n描述：\n\s*\S/.test(prompt) && values.pr && githubToken) {
   const pull = await fetchPull();
   prompt += `\n\nPR 的标签与描述原文（开跑前读好的，不用再调 pr_view）：\n标签：${JSON.stringify(pull.labels.map((label) => label.name))}\n描述：\n${pull.body ?? ""}`;
 }
@@ -310,7 +311,13 @@ const bounded = async (text: string, ms: number) => {
 let error: unknown = null;
 try {
   await bounded(prompt, timeoutMin * 60_000);
-  if (!report && !timedOut) await bounded("你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。", FOLLOW_UP_MS);
+  if (!report && !timedOut)
+    await bounded(
+      role === "verifier"
+        ? "你还没调用 submit_report。现在按 schema 调用它交结果，没跑成的检查如实写成 SKIPPED 或 notVerified。"
+        : "你还没调用 submit_report。现在按 schema 调用它交结果。",
+      FOLLOW_UP_MS,
+    );
 } catch (caught) {
   error = caught;
 }

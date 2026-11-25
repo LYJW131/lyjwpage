@@ -13,3 +13,4 @@ Design and decisions: [[verify-in-actions-plan]]. Independent review (需先修)
 - A passing receipt is reused when later pushes only touch docs or code comments (`notes-only`, #659), only on PRs opened by lyjw's accounts (lyjw picked「限制作者」2026-10-26 05:00 SGT, #670).
 - Retro 2026-10-26 (keep it; upkeep is the cost; freeze proposal pending): [[verify-actions-retro]].
 - Incremental re-verify (reuse the prior receipt, recheck only failed or touched items): lyjw OK'd 2026-10-26, #677.
+- Single-track pi runner (2026-11-25 SGT): after `CLAUDE_CODE_OAUTH_TOKEN` broke, `verify` (Haiku) and `judge` (Opus 5.5) both switched to `.github/actions/verify-agent` (`scripts/verify-agent.ts`, pi SDK + `ANTHROPIC_API_KEY`); `verify-pi`, `ADVISORY_CHECKS`, `claude-code-review.yml`, and `claude.yml` were removed ([[claude-actions-billing-wif]], [[verify-pi-ab-watch]]).

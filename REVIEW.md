@@ -1,6 +1,6 @@
 # REVIEW.md
 
-给 PR 评审代理（Claude review、Codex、Devin Review）的评审指引。项目规矩本身在 [`AGENTS.md`](./AGENTS.md)，这里只写评审时报什么、不报什么、怎么报。
+给 PR 评审代理（Codex、Devin Review、自家 `agents/pr-review`）的评审指引。项目规矩本身在 [`AGENTS.md`](./AGENTS.md)，这里只写评审时报什么、不报什么、怎么报。
 
 ## 什么算出错
 
