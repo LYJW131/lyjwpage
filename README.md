@@ -178,7 +178,7 @@
 - **验证有回执**：PR 上由 GitHub Action 派 Haiku 验证员照 PR 里的清单验、Opus 判定员对照原话判，回执按提交 SHA 分级、由 bot 贴出，合并前脚本核对回执还盖得住当前提交。
 - **合并分档**：文档和小改动本地检查过了就合、不等 CI，大改逻辑的处理完机器评审，UI 变化等 lyjw 看图点头。
 - **自我改进**：定时任务把反复出现的流程写成 skill、把被采纳的评审意见做成检查，项目记忆镜像在 [`.claude/memory/`](./.claude/memory/MEMORY.md)。
-- **访客也能改站点**：在首页对话里描述改动，Claude 规划、审查、实现，产出 PR 交 lyjw 合并。
+- **访客也能改站点**：在首页对话里描述改动，Claude 规划后可提交 GitHub issue，或在访客构建开启时由构建工作流审查、实现并产出 PR 交 lyjw 合并（开关见 [`shared/build-routine.ts`](./shared/build-routine.ts)）。
 
 全貌见 [人与 agent 的开发工作流](./docs/workflow.md)。
 

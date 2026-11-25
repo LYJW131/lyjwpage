@@ -1,11 +1,11 @@
 ---
 name: lyjwpage-pr-review
-description: lyjwpage 里开 PR 前（或开了之后）让自家评审员（`agents/pr-review`，Devin CLI 的 swe-2-max，提示词经标注评测调过）在云端容器里只读审一遍改动时用：一次给出 high / medium / low 的发现，Claude 逐条核实、按最小改动修或带证据驳回。线程判为大改动（开 PR 后要贴 `needs-judge` 的那种）时开 PR 前自己跑，不等 lyjw 开口；lyjw 说「审一下」「跑评审员」「pr review」时也用。
+description: lyjwpage 里开 PR 前（或开了之后）让自家评审员（`agents/pr-review`，Devin CLI 的 swe-2-max，提示词经标注评测调过）在本机或容器环境里只读审一遍改动时用：一次给出 high / medium / low 的发现，Claude 逐条核实、按最小改动修或带证据驳回。线程判为大改动（开 PR 后要贴 `needs-judge` 的那种）时开 PR 前自己跑，不等 lyjw 开口；lyjw 说「审一下」「跑评审员」「pr review」时也用。
 ---
 
 # 开 PR 前的评审员
 
-评审员在线程自己的云端容器里跑，不进 GitHub Actions：`agents/pr-review/run.ts` 从本地 git 取 head 的源码树和 merge-base 起的 diff 做快照，Devin CLI 的 swe-2-max 只有读文件、grep、按名找文件三个能用的工具，照快照里的 `REVIEW.md` 判，交回一组发现（`agents/pr-review/README.md`）。目的是开 PR 前多一双不同模型的眼睛。什么时候跑和叫不叫 Opus 判定员是同一个判断：线程判为大改动就跑，小改动、文档与 skill 不跑。它不发 PR 评论，不替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
+评审员在线程当前环境（本机或容器）里跑，不进 GitHub Actions：`agents/pr-review/run.ts` 从本地 git 取 head 的源码树和 merge-base 起的 diff 做快照，Devin CLI 的 swe-2-max 只有读文件、grep、按名找文件三个能用的工具，照快照里的 `REVIEW.md` 判，交回一组发现（`agents/pr-review/README.md`）。目的是开 PR 前多一双不同模型的眼睛。什么时候跑和叫不叫 Opus 判定员是同一个判断：线程判为大改动就跑，小改动、文档与 skill 不跑。它不发 PR 评论，不替代 PR 上的机器评审和 Verify Action（`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」照旧）。
 
 为了让评审员满意只做最小的改动。防范范围蔓延，该驳回就驳回。
 
@@ -14,7 +14,7 @@ description: lyjwpage 里开 PR 前（或开了之后）让自家评审员（`ag
 - 送审的是已提交的 head，没提交的改动它看不到：先提交（WIP 也行）。`git fetch origin main`，base 默认取 `origin/main` 的 merge-base；PR 的 base 不是 main 时用 `--base` 指定。
 - 先跑改动波及的门禁（根 `AGENTS.md`「项目入口与验证」），不把自己都没过检查的代码送审。
 - 写一份意图文件，就是 PR 描述的草稿：要做什么、不审的范围、跑过的检查和结果（没跑或本来就红的也写上）。评审员把它当数据读，提交说明会自动附在后面。不把已知的 bug 写进去。
-- 容器里第一次用先 `npm ci --prefix agents/pr-review`。
+- 当前环境第一次用先 `npm ci --prefix agents/pr-review`。
 
 ## 2. 跑
 
@@ -23,7 +23,7 @@ cd agents/pr-review && npx tsx run.ts --title '<PR 标题>' --intent <意图文�
 ```
 
 - 放进 Bash `run_in_background`，`timeout` 给 6900000（115 分钟：单次评审上限 40 分钟，限流时先等至多 30 分钟再跑一次，最坏约 110 分钟）。一次约 5 到 15 分钟。跑的时候不改送审的分支，不轮询，不另起一个。
-- 免费档限流时脚本自己等一次（重置在 30 分钟内）。Devin 起不来、限流太久、超时、交不出能解析的结果，都不算通过：汇报里记一句「评审员没跑成」，照常开 PR，不挡合并。
+- 免费档限流时脚本自己等一次（重置在 30 分钟内）。本机已登录 Devin CLI 时照常跑；若环境未配齐、Devin 起不来、限流太久、超时或交不出能解析的结果，直接跳过、不硬等，都不算通过：汇报里记一句「评审员没跑成」及原因，照常开 PR，不挡合并。
 - 结果：标准输出按 F1、F2……列出每条发现，`<out>/findings.json` 是同一份 JSON，`<out>/export.json` 是 Devin 的完整过程，要看它读了哪些文件时翻这里。
 
 ## 3. 答复发现

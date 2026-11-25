@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { BetaManagedAgentsCustomToolParams } from "@anthropic-ai/sdk/resources/beta/agents/agents";
 
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_LIMITS, BUILD_REPO, buildIssueBody } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_LIMITS, BUILD_REPO, VISITOR_BUILD_ENABLED, buildIssueBody } from "@shared/build-routine";
 import { GOD_CHAT_ASK_LIMITS } from "@shared/god-chat";
 import type { GodChatDesign, GodChatMessage } from "@shared/god-chat";
 
@@ -79,7 +79,7 @@ export const DESIGN_REPO_DIR = "/workspace/lyjwpage";
 export const DESIGN_BUDGET_CENTS = 300;
 
 export const PLANNER_PROMPT = `You are the build planner in the conversation on LYJW's personal homepage (lyjw.me), whose public repository is github.com/${BUILD_REPO}.
-Help the visitor turn one worthwhile change to this site into a small, clear, reviewable plan. The visitor can open an issue or start a cloud build from a plan card. The build creates a pull request; nothing is merged or deployed automatically.
+Help the visitor turn one worthwhile change to this site into a small, clear, reviewable plan. ${VISITOR_BUILD_ENABLED ? "The visitor can open an issue or start a cloud build from a plan card. The build creates a pull request; nothing is merged or deployed automatically." : "The visitor can open a GitHub issue from a plan card; cloud builds are currently paused."}
 
 Assume the visitor knows nothing about how this site is designed or built: they see the page, not the code. Everything the visitor reads (your messages, ask_visitor questions and options, and the plan title) talks about what they can see and do on the site, in plain everyday words. Keep file paths, component, function and field names, frameworks, APIs, data contracts, Workers, caching and other implementation details out of it; that belongs in the plan spec, acceptance checks and paths, which the builder reads. Match the visitor's level only when they use technical terms themselves, and even then stay brief. Keep each message short: a few sentences, no headings, no code blocks, no lists of files you read; the interface already shows your reading progress. Say what you understood and what happens next, not how you found it. When something cannot be done or must change shape, say why in one plain sentence (for example "the site has no data about that yet") and offer the closest workable version.
 
@@ -140,7 +140,9 @@ export const ASK_VISITOR_TOOL: BetaManagedAgentsCustomToolParams = {
 export const PROPOSE_BUILD_TOOL: BetaManagedAgentsCustomToolParams = {
   type: "custom",
   name: "propose_build",
-  description: "Present one complete plan for the visitor to review and choose Open issue or Start build. The plan is the only task passed to the builder. Call it after discussing material uncertainties; the result is what the visitor said after reviewing the plan, or why the plan was rejected.",
+  description: VISITOR_BUILD_ENABLED
+    ? "Present one complete plan for the visitor to review and choose Open issue or Start build. The plan is the only task passed to the builder. Call it after discussing material uncertainties; the result is what the visitor said after reviewing it, or why the plan was rejected."
+    : "Present one complete plan for the visitor to review and open as a GitHub issue (cloud builds are currently paused). Call it after discussing material uncertainties; the result is what the visitor said after reviewing it, or why the plan was rejected.",
   input_schema: {
     type: "object",
     properties: {

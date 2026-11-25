@@ -80,6 +80,7 @@ try {
     name: 'isolated-build-verification', main: join(root, 'scripts/fixtures/build-worker.mjs'),
     compatibility_date: '2026-10-09', compatibility_flags: ['nodejs_compat', 'enable_request_signal'],
     vars: {
+      BUILD_ENABLED: 'true',
       BUILD_SESSION_SECRET: fixtureSecret, GITHUB_WEBHOOK_SECRET: fixtureSecret, GITHUB_APP_CLIENT_SECRET: fixtureSecret,
       GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }),
       FIXTURE_PUBLIC_JWK: JSON.stringify(publicKey.export({ format: 'jwk' })),

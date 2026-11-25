@@ -178,7 +178,7 @@ Most of the code in this repo is written by Claude; lyjw sets direction, makes t
 - **Verification leaves a receipt**: checks run on a Haiku verifier that signs a graded receipt per commit SHA; before merge a script confirms the receipt still covers the current head.
 - **Tiered merge gate**: docs and small changes merge once local checks pass without waiting for CI, large logic changes need green CI and clear bot reviews first, UI changes wait for lyjw to approve screenshots.
 - **Self-improving**: scheduled agents turn recurring procedures into skills and adopted review findings into checks; project memory is mirrored in [`.claude/memory/`](./.claude/memory/MEMORY.md).
-- **Visitors can change the site too**: describe a change in the homepage chat, and Claude plans, reviews and implements it as a PR for lyjw to merge.
+- **Visitors can change the site too**: describe a change in the homepage chat and Claude plans it so visitors can open a GitHub issue, or—when visitor builds are enabled in [`shared/build-routine.ts`](./shared/build-routine.ts)—trigger a workflow that reviews, implements and opens a PR for lyjw to merge.
 
 The full picture (in Chinese): [Development workflow](./docs/workflow.md).
 
