@@ -16,7 +16,7 @@ import {
   requiredViewsForTypes,
 } from "./feed/query.ts";
 import { etagMatches, serveFeed } from "./feed/response.ts";
-import { FIXTURE_SNAPSHOT } from "./feed/test-fixtures.ts";
+import { FIXTURE_SNAPSHOT } from "./feed/fixtures.test.ts";
 import { escapeXml, renderAtom, renderRss } from "./feed/xml.ts";
 
 function makeServices(
