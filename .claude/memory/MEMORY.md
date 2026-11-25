@@ -22,11 +22,11 @@
 - README live cards show the site faithfully, controls included; grow height, never drop elements: [[readme-cards-mirror-site]].
 - Fixtures internally consistent: `pnpm dev:scene <name>`.
 - Bot review only for real logic changes; fix real bugs, reply「边缘情况，不改」to edge cases; one fix push then merge; Codex ≤3 rounds: [[merge-requires-bot-review-pass]].
-- Verify: Haiku/lightweight worker (skill `lyjwpage-verify`), keep 1–2 meaningful shots in `<details>`: [[verification-haiku-worker]], [[first-screen-reload-check]], [[workers-builds-parallel-race]]. Actions verify warns, never blocks; single-track pi SDK (`verify-agent` + `ANTHROPIC_API_KEY`) for both Haiku verifier and Opus judge (2026-11-25): [[verify-action-state]], [[verify-pi-ab-watch]].
+- Verify: Haiku/lightweight worker (skill `lyjwpage-verify`), keep 1–2 meaningful shots in `<details>`: [[verification-haiku-worker]], [[first-screen-reload-check]], [[workers-builds-parallel-race]]. Actions verify warns, never blocks; single-track pi SDK (`verify-agent` + Claude OIDC WIF) for both Haiku verifier and Opus judge (2026-11-25): [[verify-action-state]], [[verify-pi-ab-watch]].
 - **T3 transition check-skip (2026-11-25)**: skip checks / agent reviews that can't run due to unconfigured T3 local env or retired cloud-only setup, note the gap in 「没验到」, never stall; working local gates still run: [[t3-transition-check-skip]].
 - Post-merge: check /api/version only, unless cache/SSR/fonts/prod bindings.
 - Bulk record reading → cheap parallel workers: [[batch-reading-goes-to-haiku]]. Big PRs: run skill `lyjwpage-pr-review` unasked: [[pr-review-auto]], [[pr-review-devin-reviewer]].
-- Claude Actions billing & red-line (never strip entrypoint markers or misuse Max credit); `verify.yml` uses `ANTHROPIC_API_KEY` via pi SDK, `claude-code-review.yml` & `claude.yml` removed (2026-11-25): [[claude-actions-billing-wif]]. Throwaway PRs get `do-not-merge` label.
+- Claude Actions billing & red-line (never strip entrypoint markers or misuse Max credit); `verify.yml` uses Claude OIDC WIF via pi SDK (`vars.ANTHROPIC_FEDERATION_RULE_ID` / `_ORGANIZATION_ID`), `claude-code-review.yml` & `claude.yml` removed (2026-11-25): [[claude-actions-billing-wif]]. Throwaway PRs get `do-not-merge` label.
 - Chat testing: never ask lyjw to send homepage chats (`workers/ai/README.md`).
 - Decisions for lyjw: present 4 parts (user-visible symptom → impact if unchanged → impact if changed → recommendation) and structured clickable choices for UI OKs. Check precedent first (`not-adopting` / `HUMAN.md`).
 - No task board. Hand-offs carry constraints, single-target routing, latest stance only: [[handoff-carry-user-constraints]].

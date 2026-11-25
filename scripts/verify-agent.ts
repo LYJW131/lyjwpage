@@ -7,26 +7,32 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { JUDGE_SCHEMA, VERIFIER_SCHEMA } from "./verify-action/report.ts";
 import { childEnv, filterGrepOutput, inside, prepareInside, quote, readAllowed, realInside, sandboxed, writeInside } from "./verify-agent/guard.ts";
+import { installOidcAnthropicProvider, loadAnthropicOidcSdk, resolveVerifyAuth } from "./verify-agent/oidc.ts";
 import { PLAYBOOK } from "./verify-agent/playbook.ts";
 import { claimsTool, compareBaseTool, docsSyncTool, prDiffTool, runTestsTool, type Claim } from "./verify-agent/tools.ts";
 
 const HELP = `用法：node scripts/verify-agent.ts --role verifier|judge --prompt-file FILE [选项]
-用 pi（@earendil-works/pi-coding-agent 的 SDK）跑 Verify Action 的验证员 / 判定员。模型走 Anthropic API，
-钥匙经 --api-key-file 传（本地可用 ANTHROPIC_API_KEY）。结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），
-用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
+用 pi（@earendil-works/pi-coding-agent 的 SDK）跑 Verify Action 的验证员 / 判定员。模型走 Anthropic API：
+CI 里走 GitHub OIDC 联合认证（--oidc-request-file + --federation-rule-id / --organization-id），本地可用 --api-key-file 或 ANTHROPIC_API_KEY。
+结构化结果写进 GITHUB_OUTPUT 的 structured_output（没有就打印），用量与耗时写进 usage 与 GITHUB_STEP_SUMMARY。退出码 0 交了结果、1 没交或出错、2 参数错。
 
-  --role verifier|judge     决定结果 schema 与可写目录
-  --prompt-file FILE        任务提示词（verify-action.ts prompt 的输出）；省略时读环境变量 PROMPT
-  --model PROVIDER/ID       默认 anthropic/claude-haiku-5-5；钥匙的环境变量按提供方取（ANTHROPIC_API_KEY、DEEPSEEK_API_KEY…）
-  --thinking LEVEL          off|minimal|low|medium|high|xhigh|max，默认 high
-  --out-dir DIR             验证员可写的产物目录（shots/、work/），judge 不写
-  --base REF                pr_diff 工具比对的目标分支，默认 origin/main
-  --pr N                    pr_view 工具读的 PR；读 GitHub 用 GITHUB_TOKEN（只留在本进程，不进 bash）
-  --timeout-min N           整轮上限，默认 20
-  --transcript FILE         把整轮事件写成 JSONL，复盘用
-  --api-key-file FILE       从文件读 Anthropic 钥匙并删掉文件（CI 里必须这样传）；本地可用 ANTHROPIC_API_KEY
-  --github-token-file FILE  同上，给 pr_view 的 GitHub 令牌；本地可用 GITHUB_TOKEN
-  --pi-sdk DIR              装了 pi SDK 的 node_modules 目录；默认依次试 PI_SDK_DIR（npm install --prefix 的目录）、npm 全局目录`;
+  --role verifier|judge      决定结果 schema 与可写目录
+  --prompt-file FILE         任务提示词（verify-action.ts prompt 的输出）；省略时读环境变量 PROMPT
+  --model PROVIDER/ID        默认 anthropic/claude-haiku-5-5；静态钥匙的环境变量按提供方取（ANTHROPIC_API_KEY、DEEPSEEK_API_KEY…）
+  --thinking LEVEL           off|minimal|low|medium|high|xhigh|max，默认 high
+  --out-dir DIR              验证员可写的产物目录（shots/、work/），judge 不写
+  --base REF                 pr_diff 工具比对的目标分支，默认 origin/main
+  --pr N                     pr_view 工具读的 PR；读 GitHub 用 GITHUB_TOKEN（只留在本进程，不进 bash）
+  --timeout-min N            整轮上限，默认 20
+  --transcript FILE          把整轮事件写成 JSONL，复盘用
+  --oidc-request-file FILE   从文件读 GitHub OIDC 请求凭据（{"url","token"}）并删掉文件（CI 走 OIDC 时必须这样传）
+  --federation-rule-id ID    Anthropic Workload Identity Federation 规则 ID（可由 ANTHROPIC_FEDERATION_RULE_ID 提供）
+  --organization-id ID       Anthropic 组织 ID（可由 ANTHROPIC_ORGANIZATION_ID 提供）
+  --service-account-id ID    Anthropic 服务账号 ID（可选，可由 ANTHROPIC_SERVICE_ACCOUNT_ID 提供）
+  --workspace-id ID          Anthropic 工作空间 ID（可选，可由 ANTHROPIC_WORKSPACE_ID 提供）
+  --api-key-file FILE        从文件读静态 API 钥匙并删掉文件；本地可用 ANTHROPIC_API_KEY（不走 OIDC 时）
+  --github-token-file FILE   同上，给 pr_view 的 GitHub 令牌；本地可用 GITHUB_TOKEN
+  --pi-sdk DIR               装了 pi SDK 的 node_modules 目录；默认依次试 PI_SDK_DIR（npm install --prefix 的目录）、npm 全局目录`;
 
 const OPTIONS = {
   role: { type: "string" },
@@ -39,6 +45,11 @@ const OPTIONS = {
   "timeout-min": { type: "string", default: "20" },
   transcript: { type: "string" },
   "pi-sdk": { type: "string" },
+  "oidc-request-file": { type: "string" },
+  "federation-rule-id": { type: "string" },
+  "organization-id": { type: "string" },
+  "service-account-id": { type: "string" },
+  "workspace-id": { type: "string" },
   "api-key-file": { type: "string" },
   "github-token-file": { type: "string" },
   help: { type: "boolean" },
@@ -79,29 +90,24 @@ if (!(timeoutMin > 0)) {
   process.exit(2);
 }
 
-// 环境变量删了 /proc/self/environ 里也还在：CI 里凭据只经文件进来，读完就删
-const fromFile = (file: string | undefined) => {
-  if (!file) return undefined;
-  const value = fs.readFileSync(file, "utf8").trim();
-  fs.rmSync(file, { force: true });
-  return value || undefined;
-};
 const [provider, modelId] = values.model.includes("/") ? [values.model.slice(0, values.model.indexOf("/")), values.model.slice(values.model.indexOf("/") + 1)] : ["anthropic", values.model];
-const keyEnv = `${provider.toUpperCase().replaceAll("-", "_")}_API_KEY`;
-const apiKey = fromFile(values["api-key-file"]) ?? process.env[keyEnv];
-const githubToken = fromFile(values["github-token-file"]) ?? process.env.GITHUB_TOKEN;
-delete process.env.ANTHROPIC_API_KEY;
-delete process.env[keyEnv];
-delete process.env.GITHUB_TOKEN;
-delete process.env.PROMPT;
-if (!apiKey) {
-  console.error(`没有 ${provider} 的钥匙：给 --api-key-file 或 ${keyEnv}`);
-  process.exit(2);
-}
-if (process.env.CI && !values["api-key-file"]) {
-  console.error("CI 里钥匙要经 --api-key-file 传，不走环境变量");
-  process.exit(2);
-}
+const { oidc: oidcConfig, apiKey, githubToken } = (() => {
+  try {
+    return resolveVerifyAuth({
+      provider,
+      oidcRequestFile: values["oidc-request-file"],
+      federationRuleId: values["federation-rule-id"],
+      organizationId: values["organization-id"],
+      serviceAccountId: values["service-account-id"],
+      workspaceId: values["workspace-id"],
+      apiKeyFile: values["api-key-file"],
+      githubTokenFile: values["github-token-file"],
+    });
+  } catch (caught) {
+    console.error(caught instanceof Error ? caught.message : String(caught));
+    process.exit(2);
+  }
+})();
 
 const cwd = process.cwd();
 const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-agent", "skills");
@@ -133,7 +139,12 @@ const piPaths: { resolveToCwd: (file: string, cwd: string) => string; resolveRea
 const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = sdk;
 
 const modelRuntime = await ModelRuntime.create({ authPath: path.join(piStateDir, "auth.json"), modelsPath: path.join(piStateDir, "models.json") });
-await modelRuntime.setRuntimeApiKey(provider, apiKey);
+if (oidcConfig) {
+  const oidcSdk = await loadAnthropicOidcSdk(sdkDir);
+  installOidcAnthropicProvider(modelRuntime, oidcConfig, oidcSdk);
+} else {
+  await modelRuntime.setRuntimeApiKey(provider, apiKey!);
+}
 const model = modelRuntime.getModel(provider, modelId);
 if (!model) throw new Error(`pi 的模型表里没有 ${provider}/${modelId}`);
 // DeepSeek 的强度走 reasoning_effort（low / high / max），pi 按 baseUrl 也会探测出来；写明，免得升级后探测规则变了悄悄不发
