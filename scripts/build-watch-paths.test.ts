@@ -30,7 +30,7 @@ test("只改文档、skill 与上报器不触发任何构建", () => {
 });
 
 test("分支上只有 core 与 site 构建，core 的 Preview 也盯 ai 与站点代码", () => {
-  assert.deepEqual(workersFor(["workers/ai/src/chat/egress.ts"], PREVIEW_WATCH_PATHS), ["core"]);
+  assert.deepEqual(workersFor(["workers/ai/src/chat/handler.ts"], PREVIEW_WATCH_PATHS), ["core"]);
   assert.deepEqual(workersFor(["src/components/card.tsx"], PREVIEW_WATCH_PATHS), ["core", "site"]);
   assert.deepEqual(workersFor(["workers/collector/src/index.ts", "workers/ingress/src/index.ts"], PREVIEW_WATCH_PATHS), []);
   assert.deepEqual(workersFor(["shared/ingest/prepare.ts"], PREVIEW_WATCH_PATHS), ["site"]);

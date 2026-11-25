@@ -99,10 +99,9 @@ try {
     services: [{ binding: 'PUBLIC_STATUS', service: 'isolated-core', entrypoint: 'PublicStatus' }],
     durable_objects: { bindings: [
       { name: 'CHAT_QUOTA', class_name: 'ChatQuota' },
-      { name: 'ANTHROPIC_EGRESS', class_name: 'AnthropicEgress' },
       { name: 'BUILD_COORDINATOR', class_name: 'BuildCoordinator' },
     ] },
-    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'AnthropicEgress', 'BuildCoordinator'] }],
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'BuildCoordinator'] }],
   };
   const streamGateway = {
     ...core,

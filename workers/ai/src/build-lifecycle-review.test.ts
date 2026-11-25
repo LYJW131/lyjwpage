@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BUILD_REPO, type BuildFireResult, type BuildRun } from "@shared/build-routine";
-import type { Env } from "./runtime.ts";
 import { BuildPullRequestRejectedError, GithubBuildApi, reconcileBuild } from "./build/github.ts";
 import { FIXTURE_PLAN_SHA } from "./build/testing/github-fixture.ts";
 import { buildWorkflowAudience } from "./build/actions-oidc.ts";
@@ -40,10 +39,10 @@ test("main lookup failure leaves the signed plan and build quota available for r
   assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, githubFixture().fetcher)).status, 202);
 });
 
-test("dispatch sends the contract payload to repository_dispatch with the write installation token and no Anthropic egress", async (t) => {
+test("dispatch sends the contract payload to repository_dispatch with the write installation token and no Anthropic call", async (t) => {
   const { env, instance, db } = coordinator();
   t.after(() => db.close());
-  env.ANTHROPIC_EGRESS = { idFromName: () => assert.fail("Builds must not use Anthropic egress"), get: () => assert.fail("Builds must not use Anthropic egress") } as unknown as Env["ANTHROPIC_EGRESS"];
+  t.mock.method(globalThis, "fetch", () => assert.fail("Builds must not call Anthropic"));
   const requests: Request[] = [];
   const github = githubFixture();
   const fetcher: typeof fetch = async (input, init) => {

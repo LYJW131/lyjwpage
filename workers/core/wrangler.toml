@@ -86,10 +86,6 @@ name = "CHAT_QUOTA"
 class_name = "ChatQuota"
 
 [[previews.durable_objects.bindings]]
-name = "ANTHROPIC_EGRESS"
-class_name = "AnthropicEgress"
-
-[[previews.durable_objects.bindings]]
 name = "BUILD_COORDINATOR"
 class_name = "BuildCoordinator"
 

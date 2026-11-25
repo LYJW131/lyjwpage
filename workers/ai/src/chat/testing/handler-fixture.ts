@@ -6,7 +6,6 @@ import type { GodChatEvent, GodChatMessage } from "@shared/god-chat";
 import { BUILD_DESIGN_LIMITS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "../../runtime";
 import type { ChatQuota } from "../quota";
-import type { AnthropicEgress } from "../egress";
 import type { BuildCoordinator } from "../../build/coordinator";
 import { signBuildToken } from "../../build/token";
 
@@ -24,12 +23,16 @@ export const PASS = (await issuePass("test-seal")).pass;
 export const unexpected = () => new Response("unexpected fetch", { status: 500 });
 
 // DeepSeek 两档不经 Anthropic 出口，直接走全局 fetch；测试把发往 DeepSeek 的请求交给 handle，其余照旧。
-export function deepseekFetch(handle: (request: Request) => Promise<Response>, rest: typeof fetch = async () => unexpected()): typeof fetch {
+function hostFetch(hosts: string[], handle: (request: Request) => Promise<Response>, rest: typeof fetch = async () => unexpected()): typeof fetch {
   return async (input, init) => {
     const request = new Request(input, init);
-    return new URL(request.url).hostname === "api.deepseek.com" ? handle(request) : rest(input, init);
+    return hosts.includes(new URL(request.url).hostname) ? handle(request) : rest(input, init);
   };
 }
+
+export const deepseekFetch = (handle: (request: Request) => Promise<Response>, rest?: typeof fetch) => hostFetch(["api.deepseek.com"], handle, rest);
+export const anthropicApiFetch = (handle: (request: Request) => Promise<Response>, rest?: typeof fetch) => hostFetch(["api.anthropic.com"], handle, rest);
+export const modelFetch = (handle: (request: Request) => Promise<Response>, rest?: typeof fetch) => hostFetch(["api.deepseek.com", "api.anthropic.com"], handle, rest);
 
 export type TestStub<T> = Partial<{ [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => R | Promise<Awaited<R>> : T[K] }>;
 
@@ -90,7 +93,7 @@ export const agent = {
 
 export const sse = (events: Scripted[]) => new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
 
-// 假的出站：DeepSeek 的 /v1/messages 给判断改站请求的 think 档，Anthropic 出口的 /v1/sessions* 扮演 Managed Agents；
+// 假的出站：DeepSeek 的 /v1/messages 给判断改站请求的 think 档，Anthropic 的 /v1/sessions* 扮演 Managed Agents；
 // 每开一次事件流按顺序吐下一段脚本。调用方先存好原来的 globalThis.fetch 并在测试结束时还原。
 export type DesignSetup = { reply?: (body: Anthropic.Beta.MessageCreateParamsStreaming, index: number) => Response; turns?: Scripted[][]; pending?: string[]; history?: Scripted[]; createFails?: boolean };
 export function designEnv({ reply = (body) => modelStream(body.model, false), turns = [], pending = [], history = [], createFails = false }: DesignSetup = {}) {
@@ -100,11 +103,34 @@ export function designEnv({ reply = (body) => modelStream(body.model, false), tu
   const counters = { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 0, streams: 0, peeked: 0 };
   const sessions = new Map<string, number>();
   const opened = new Set<string>();
+  const managedAgents = async (request: Request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/v1/sessions" && request.method === "POST") {
+      if (createFails) return Response.json({ type: "error", error: { type: "api_error", message: "down" } }, { status: 500 });
+      created.push(await request.json() as Record<string, unknown>);
+      return Response.json({ id: "sesn_test", type: "session", status: "idle" });
+    }
+    if (pathname === "/v1/sessions/sesn_test/events/stream") {
+      counters.streams++;
+      return sse(turns.shift() ?? []);
+    }
+    if (pathname === "/v1/sessions/sesn_test/events" && request.method === "POST") {
+      const body = await request.json() as { events: Scripted[] };
+      sent.push(...body.events);
+      return Response.json({ data: body.events });
+    }
+    if (pathname === "/v1/sessions/sesn_test/events") {
+      if (![...new URL(request.url).searchParams.keys()].some((key) => key.startsWith("types"))) return Response.json({ data: [...history, ...sent].reverse(), next_page: null });
+      return Response.json({ data: pending.length ? [agent.waiting(...pending)] : [], next_page: null });
+    }
+    if (pathname === "/v1/sessions/sesn_test") return Response.json({ id: "sesn_test", type: "session", status: "idle" });
+    throw new Error(`Unexpected request ${request.method} ${pathname}`);
+  };
   globalThis.fetch = deepseekFetch(async (request) => {
     const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
     requests.push(body);
     return reply(body, requests.length - 1);
-  }, globalThis.fetch);
+  }, anthropicApiFetch(managedAgents, globalThis.fetch));
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
@@ -141,32 +167,6 @@ export function designEnv({ reply = (body) => modelStream(body.model, false), tu
         return count === undefined ? { status: "expired", remaining: 0 } : { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - count };
       },
       claimDesignOpen: async (sessionId) => !opened.has(sessionId) && Boolean(opened.add(sessionId)),
-    }),
-    ANTHROPIC_EGRESS: binding<AnthropicEgress>({
-      colo: async () => "KIX",
-      fetch: async (request: Request) => {
-        const { pathname } = new URL(request.url);
-        if (pathname === "/v1/sessions" && request.method === "POST") {
-          if (createFails) return Response.json({ type: "error", error: { type: "api_error", message: "down" } }, { status: 500 });
-          created.push(await request.json() as Record<string, unknown>);
-          return Response.json({ id: "sesn_test", type: "session", status: "idle" });
-        }
-        if (pathname === "/v1/sessions/sesn_test/events/stream") {
-          counters.streams++;
-          return sse(turns.shift() ?? []);
-        }
-        if (pathname === "/v1/sessions/sesn_test/events" && request.method === "POST") {
-          const body = await request.json() as { events: Scripted[] };
-          sent.push(...body.events);
-          return Response.json({ data: body.events });
-        }
-        if (pathname === "/v1/sessions/sesn_test/events") {
-          if (![...new URL(request.url).searchParams.keys()].some((key) => key.startsWith("types"))) return Response.json({ data: [...history, ...sent].reverse(), next_page: null });
-          return Response.json({ data: pending.length ? [agent.waiting(...pending)] : [], next_page: null });
-        }
-        if (pathname === "/v1/sessions/sesn_test") return Response.json({ id: "sesn_test", type: "session", status: "idle" });
-        throw new Error(`Unexpected request ${request.method} ${pathname}`);
-      },
     }),
   };
   return { env, requests, created, sent, counters, sessions };

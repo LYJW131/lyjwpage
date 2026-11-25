@@ -2,7 +2,6 @@ import { VISITOR_BUILD_ENABLED } from "@shared/build-routine";
 import type { PublicStatusRpc } from "@shared/public-status";
 
 import type { BuildCoordinator } from "./build/coordinator";
-import type { AnthropicEgress } from "./chat/egress";
 import type { ChatQuota } from "./chat/quota";
 import type { ChatLog } from "./chat/transcripts";
 
@@ -19,7 +18,6 @@ export interface Env {
   CHAT_HISTORY_SECRET?: string;
   CHAT_QUOTA?: DurableObjectNamespace<ChatQuota>;
   CHAT_LOG?: DurableObjectNamespace<ChatLog>;
-  ANTHROPIC_EGRESS?: DurableObjectNamespace<AnthropicEgress>;
   CHAT_USAGE_LIMIT?: RateLimit;
   GITHUB_APP_CLIENT_SECRET?: string;
   BUILD_COORDINATOR?: DurableObjectNamespace<BuildCoordinator>;
