@@ -95,8 +95,6 @@ export function links(): LinkDescriptor[] {
   return [
     { rel: "canonical", href: site.url },
     { rel: "manifest", href: "/manifest.webmanifest" },
-    { rel: "alternate", type: "application/rss+xml", title: `${site.name} (RSS)`, href: "/rss.xml" },
-    { rel: "alternate", type: "application/atom+xml", title: `${site.name} (Atom)`, href: "/atom.xml" },
     { rel: "preload", href: geistMonoUrl, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
     { rel: "icon", href: "/icon", type: "image/png", sizes: "32x32" },
     { rel: "apple-touch-icon", href: "/apple-icon" },
