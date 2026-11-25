@@ -31,7 +31,7 @@
 | **站点自身** | 仓库与提交、30 天在线状态、性能分、各 Worker 与上报器指标 |
 | **与神对话** | 访客选 DeepSeek 或 Claude 阵容，按问题难度派档，可读各卡实时数据、联网搜索、在回答里画卡片、规划站点改动 |
 
-同一套数据也开放给 AI 与订阅阅读器：`https://lyjw.me/mcp` 是公开 MCP 端点（Streamable HTTP，无需鉴权）；`https://lyjw.me/feed`、`/rss.xml`、`/atom.xml` 提供公开 RSS / Atom 订阅，支持按 `type`、`tag`、`limit` 参数筛选。
+同一套数据也开放给 AI 与订阅阅读器：`https://lyjw.me/mcp` 是公开 MCP 端点（Streamable HTTP，无需鉴权）；`https://lyjw.me/feed`、`/rss.xml`、`/atom.xml` 提供公开 RSS / Atom 订阅，支持按 `type`、`tag`、`limit` 参数筛选，页面底部有 RSS 入口。
 
 ## 页面效果
 
