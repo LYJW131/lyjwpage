@@ -325,19 +325,116 @@ test("parseFeedQuery 解析默认值、合法筛选与非法参数策略", () =>
 test("requiredViewsForTypes 只请求被选中的最小视图集合并去重", () => {
   assert.deepEqual(requiredViewsForTypes(["commits"]), ["githubRepo"]);
   assert.deepEqual(requiredViewsForTypes(["watching", "listening"]), ["watching", "pulse"]);
-  assert.deepEqual(requiredViewsForTypes(DEFAULT_FEED_TYPES), ["digest", "githubRepo", "trophies", "playing", "workouts"]);
+  assert.deepEqual(requiredViewsForTypes(DEFAULT_FEED_TYPES), ["digest", "playing", "trophies", "workouts", "watching", "pulse"]);
 });
 
-test("buildFeedItems 过滤媒体应用、补齐 watching 时间、支持 tag 筛选并按时间倒序", () => {
+test("buildFeedItems 过滤媒体应用与合并提交、补齐 watching 时间、支持 tag 筛选并按多样性前置", () => {
   const defaultQuery = parseFeedQuery(new URLSearchParams(), "rss");
   assert.equal(defaultQuery.ok, true);
   const items = buildFeedItems(FIXTURE_SNAPSHOT, defaultQuery.query);
 
-  assert.deepEqual(items.map((item) => item.type), ["digest", "commits", "gaming", "trophies", "workouts"]);
+  assert.deepEqual(items.slice(0, 6).map((item) => item.type), ["digest", "listening", "watching", "gaming", "trophies", "workouts"]);
+  assert.equal(items.some((item) => item.type === "commits"), false, "默认流不包含 commits");
   assert.equal(items.some((item) => item.title.includes("Netflix")), false, "过滤 ps5_native_media_app");
   assert.equal(items.some((item) => item.title.includes("Upcoming Preorder")), false, "过滤未游玩预购游戏");
   assert.equal(items[0].title, "Digest: 奖杯有进账 · 3+ trophies, 6.5h gaming");
-  assert.equal(items[1].title, "feat(site): 关掉维护页，页面恢复正常渲染 (#815)");
+
+  const burstSnapshot: FeedSnapshot = {
+    ...FIXTURE_SNAPSHOT,
+    trophies: {
+      ...FIXTURE_SNAPSHOT.trophies!,
+      recent: [
+        {
+          npCommunicationId: "NPWR21008_00",
+          id: 70,
+          groupId: "002",
+          titleName: "《地平线 西之绝境™》",
+          trophyName: "完成所有任务",
+          type: "gold",
+          iconUrl: null,
+          earnedAt: Date.parse("2026-11-24T22:40:00Z"),
+        },
+        {
+          npCommunicationId: "NPWR21008_00",
+          id: 71,
+          groupId: "002",
+          titleName: "《地平线 西之绝境™》",
+          trophyName: "协助昆恩族",
+          type: "bronze",
+          iconUrl: null,
+          earnedAt: Date.parse("2026-11-24T22:39:00Z"),
+        },
+        {
+          npCommunicationId: "NPWR21008_00",
+          id: 72,
+          groupId: "002",
+          titleName: "《地平线 西之绝境™》",
+          trophyName: "升级幽魂护手",
+          type: "silver",
+          iconUrl: null,
+          earnedAt: Date.parse("2026-11-24T22:38:00Z"),
+        },
+      ],
+    },
+    pulse: {
+      ...FIXTURE_SNAPSHOT.pulse!,
+      lanes: {
+        ...FIXTURE_SNAPSHOT.pulse!.lanes,
+        listening: {
+          kind: "state",
+          segments: {
+            startSec: [81_000, 81_300, 81_600, 81_900, 82_200],
+            endSec: [81_200, 81_500, 81_800, 82_100, 82_400],
+            state: [2, 2, 2, 2, 2],
+            title: ["Song 1", "Song 2", "Song 3", "Song 4", "Song 5"],
+            subtitle: ["A", "A", "A", "A", "A"],
+          },
+          summary: { activeSeconds: 1000, titles: 5 },
+        },
+      },
+    },
+    githubRepo: {
+      ...FIXTURE_SNAPSHOT.githubRepo!,
+      recentCommits: [
+        ...(FIXTURE_SNAPSHOT.githubRepo!.recentCommits ?? []),
+        {
+          sha: "deadbee",
+          oid: "deadbeef00000000000000000000000000000000",
+          title: "Merge remote-tracking branch 'origin/main' into t3/test",
+          authors: ["LYJW131"],
+          committedAt: "2026-11-24T21:00:00Z",
+          url: "https://github.com/LYJW131/lyjwpage/commit/deadbeef00000000000000000000000000000000",
+          verified: true,
+        },
+      ],
+    },
+  };
+
+  const diverse = buildFeedItems(burstSnapshot, {
+    format: "atom",
+    types: [...DEFAULT_FEED_TYPES],
+    tags: [],
+    limit: 20,
+  });
+  assert.equal(new Set(diverse.slice(0, 3).map((item) => item.type)).size, 3, "前 3 条来自 3 个不同维度，不被连发奖杯或听歌刷屏");
+  assert.equal(diverse.filter((item) => item.type === "listening").length, 3, "多类型混排时 listening 最多保留 3 条");
+
+  const soloListening = buildFeedItems(burstSnapshot, {
+    format: "atom",
+    types: ["listening"],
+    tags: [],
+    limit: 20,
+  });
+  assert.equal(soloListening.length, 5, "单类型 listening 不受多类型上限裁剪");
+
+  const commitsOnly = buildFeedItems(burstSnapshot, {
+    format: "rss",
+    types: ["commits"],
+    tags: [],
+    limit: 20,
+  });
+  assert.equal(commitsOnly.length, 1, "过滤 Merge remote-tracking branch 合并提交");
+  assert.equal(commitsOnly[0].title, "feat(site): 关掉维护页，页面恢复正常渲染 (#815)");
 
   const tagged = buildFeedItems(FIXTURE_SNAPSHOT, {
     format: "rss",

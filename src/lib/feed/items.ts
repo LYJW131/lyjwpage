@@ -40,8 +40,10 @@ export type FeedItem = {
 
 const SITE_HOME_URL = `${site.url}/`;
 const MINUTE_MS = 60_000;
+const MULTI_TYPE_LISTENING_LIMIT = 3;
 const LISTENING_PLAYING_STATE = LISTENING_STATES.indexOf("playing");
 const WATCHING_PLAYING_STATE = WATCHING_STATES.indexOf("playing");
+const MERGE_COMMIT_PATTERN = /^Merge\s+(?:remote-tracking\s+branch|branch)\b/i;
 
 function safeHttpUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -167,11 +169,12 @@ function digestItems(data: DigestPayload | undefined): FeedItem[] {
 
 function commitItems(data: GithubRepoPayload | undefined): FeedItem[] {
   if (!data?.recentCommits?.length) return [];
-  return data.recentCommits.map((commit) => {
+  return data.recentCommits.flatMap((commit) => {
     const title = commit.title.split("\n")[0].trim() || commit.sha;
+    if (MERGE_COMMIT_PATTERN.test(title)) return [];
     const key = commit.oid ?? commit.sha;
     const authors = commit.authors.length ? commit.authors.join(", ") : site.githubLogin;
-    return {
+    return [{
       id: `tag:lyjw.me,2026:commit:${key}`,
       type: "commits",
       title,
@@ -179,7 +182,7 @@ function commitItems(data: GithubRepoPayload | undefined): FeedItem[] {
       link: safeHttpUrl(commit.url) ?? `${site.repo}/commit/${key}`,
       publishedAt: parseTimestamp(commit.committedAt),
       categories: uniqueTags(["commits", "github", ...conventionalCommitTags(title)]),
-    };
+    }];
   });
 }
 
@@ -455,7 +458,32 @@ export function buildFeedItems(snapshot: FeedSnapshot, query: FeedQuery): FeedIt
     return a.index - b.index;
   });
 
-  return indexed.slice(0, query.limit).map((entry) => entry.item);
+  const sorted = indexed.map((entry) => entry.item);
+  if (query.types.length <= 1) return sorted.slice(0, query.limit);
+
+  const capped: FeedItem[] = [];
+  let listeningCount = 0;
+  for (const item of sorted) {
+    if (item.type === "listening") {
+      if (listeningCount >= MULTI_TYPE_LISTENING_LIMIT) continue;
+      listeningCount += 1;
+    }
+    capped.push(item);
+  }
+
+  // 多类型混排时各维度最新一条置前（保留各自时间序），避免同类连发占满只展示前几条的友链卡片。
+  const seenTypes = new Set<FeedType>();
+  const lead: FeedItem[] = [];
+  const rest: FeedItem[] = [];
+  for (const item of capped) {
+    if (!seenTypes.has(item.type)) {
+      seenTypes.add(item.type);
+      lead.push(item);
+    } else {
+      rest.push(item);
+    }
+  }
+  return [...lead, ...rest].slice(0, query.limit);
 }
 
 // 优先取条目时间，缺项时退回数据源快照时间，不写 Date.now()，否则无变化时每次 ETag 都会变。
