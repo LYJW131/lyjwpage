@@ -476,7 +476,7 @@ export function buildFeedItems(snapshot: FeedSnapshot, query: FeedQuery): FeedIt
   const lead: FeedItem[] = [];
   const rest: FeedItem[] = [];
   for (const item of capped) {
-    if (!seenTypes.has(item.type)) {
+    if (item.publishedAt != null && !seenTypes.has(item.type)) {
       seenTypes.add(item.type);
       lead.push(item);
     } else {
