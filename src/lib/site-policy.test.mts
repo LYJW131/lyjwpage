@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  FEED_CACHE_CONTROL,
   HOME_CACHE_CONTROL,
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
@@ -38,6 +39,10 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("POST", "/"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("GET", "/image"), { kind: "image-proxy" });
   assert.deepEqual(classifyGatewayRequest("GET", "/manifest.webmanifest"), { kind: "render" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/feed"), { kind: "render" });
+  assert.deepEqual(classifyGatewayRequest("HEAD", "/rss.xml"), { kind: "render" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/atom.xml"), { kind: "render" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/feed"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("GET", "/icon"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("HEAD", "/pwa/icon-192.png"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
@@ -199,6 +204,10 @@ test("首页 HTML 与根数据才可缓存，SSR 错误一律 no-store", () => {
   assert.deepEqual(renderCacheHeaders("home-data", 404, "text/x-script", null, false), {
     "Cache-Control": NO_STORE,
   });
+  assert.equal(
+    renderCacheHeaders("other", 200, "application/rss+xml; charset=utf-8", FEED_CACHE_CONTROL, false),
+    null,
+  );
   assert.equal(
     renderCacheHeaders("other", 200, "application/json", "public, max-age=0, must-revalidate", false),
     null,
