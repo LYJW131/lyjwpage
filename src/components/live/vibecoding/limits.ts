@@ -1,6 +1,6 @@
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import type { VibeCodingLimit } from "@shared/types";
-import { FABLE_WEEKLY_SHARE_PERCENT } from "@shared/vibecoding-limits";
+import { FABLE_WEEKLY_SHARE_PERCENT, type ClaudeResetCards } from "@shared/vibecoding-limits";
 
 const LIMIT_WARN_PERCENT = 75;
 const LIMIT_ALERT_PERCENT = 90;
@@ -281,3 +281,10 @@ export function nextCompactTickDelay(remain: number) {
 }
 
 export const LIMITS_SILENT = "Limits reporter is silent";
+
+export type ResetCardKind = keyof ClaudeResetCards;
+
+export function usableCardKinds(limits: VibeCodingLimit[], cards: ClaudeResetCards | null | undefined): ResetCardKind[] {
+  if (!cards) return [];
+  return (["fable", "standard"] as const).filter((kind) => cards[kind] > 0 && (kind !== "fable" || limits.some(isFableLimit)));
+}

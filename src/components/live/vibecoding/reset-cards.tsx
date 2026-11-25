@@ -1,12 +1,12 @@
 "use client";
 
-import { isFableLimit, weeklyLimit } from "@/components/live/vibecoding/limits";
+import { isFableLimit, usableCardKinds, weeklyLimit, type ResetCardKind } from "@/components/live/vibecoding/limits";
 import { forecastWithCard, type LimitForecast } from "@/lib/limit-forecast";
 import { cn } from "@/lib/utils";
 import type { VibeCodingLimit } from "@shared/types";
 import { FABLE_WEEKLY_SHARE_PERCENT, type ClaudeResetCards } from "@shared/vibecoding-limits";
 
-export type ResetCardKind = keyof ClaudeResetCards;
+export { usableCardKinds, type ResetCardKind };
 
 export type ResetCardScenario = {
   kind: ResetCardKind;
@@ -24,11 +24,6 @@ function percentAfter(kind: ResetCardKind, forecast: LimitForecast, limits: Vibe
   const fable = limits.find(isFableLimit);
   const fableUsed = fable && fable.resetsAt != null && fable.resetsAt * 1000 > forecast.now ? fable.usedPercent : 0;
   return forecast.usedPercent - (fableUsed * FABLE_WEEKLY_SHARE_PERCENT) / 100;
-}
-
-export function usableCardKinds(limits: VibeCodingLimit[], cards: ClaudeResetCards | null | undefined): ResetCardKind[] {
-  if (!cards) return [];
-  return (["fable", "standard"] as const).filter((kind) => cards[kind] > 0 && (kind !== "fable" || limits.some(isFableLimit)));
 }
 
 export function resetCardScenarios(
