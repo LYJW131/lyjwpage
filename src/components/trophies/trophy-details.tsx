@@ -297,6 +297,7 @@ function TrophyRow({ trophy, firstScreen }: { trophy: Trophy; firstScreen: boole
   );
 }
 
+// 高度改了要同步更新 src/lib/readme-card-heights.ts#TROPHY_GROUPS_STRIP_PX，README 卡按它算高度。
 function GroupSlot({
   groups,
   resetKey,

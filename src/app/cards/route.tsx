@@ -20,12 +20,12 @@ import { QuestNowCard } from "@/components/live/quest-now-card";
 import { ServerCard } from "@/components/live/server-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
-import { usableCardKinds } from "@/components/live/vibecoding/reset-cards";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { RenderClock } from "@/hooks/use-mounted-at";
 import { codingAgentRows } from "@/lib/coding-agents";
+import { PLAYSTATION_BASE_HEIGHT, VIBE_CODING_BASE_HEIGHT, playstationCardHeight, vibeCodingCardHeight } from "@/lib/readme-card-heights";
 import { trophiesTilePath } from "@/lib/paths";
 import { githubAvatarDataUri } from "@/lib/github-avatar-inline";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
@@ -67,12 +67,6 @@ const FOCUS_HEIGHT = 46;
 const OUTAGE_HEIGHT = 74;
 const DIGEST_HEIGHT = 202;
 const QUEST_HEIGHT = 98;
-// Vibe Coding 卡底部每个 compact 代理占一行，行数跟着上报的代理变；按 FULL_WIDTH 在浏览器里量得。
-// 须与 src/components/live/vibecoding/compact-agents.tsx 的行高同步。
-const COMPACT_AGENT_ROW_PX = 57;
-const VIBE_CODING_BASE_HEIGHT = 724;
-// 重置卡按钮组一行加上方 gap-3；须与 src/components/live/vibecoding/agent-panel.tsx 的摘要区排版同步。
-const RESET_CARD_TOGGLE_PX = 38;
 
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
 
@@ -282,26 +276,28 @@ const CARDS: Record<string, ReadmeCard> = {
     label: "Vibe Coding",
     width: FULL_WIDTH,
     height: VIBE_CODING_BASE_HEIGHT,
-    async render(status) {
+    async render(status, _site, now) {
       const [coding, codingNow, limits, history] = await Promise.all([
         status("coding"), status("codingNow"), status("limits"), status("limitsHistory"),
       ]);
       const rows = codingAgentRows(coding.ok ? coding.data : null, codingNow.ok ? codingNow.data : null, limits.ok ? limits.data : null);
-      const claude = rows.find((row) => row.id === "claude");
-      const resetCardToggleShown = !!claude && usableCardKinds(claude.limits, limits.ok ? limits.data.claudeResetCards : null).length > 0;
       return {
         element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} historyFallback={history} />,
         sample: false,
-        height: VIBE_CODING_BASE_HEIGHT
-          + rows.filter((row) => row.row === "compact").length * COMPACT_AGENT_ROW_PX
-          + (resetCardToggleShown ? RESET_CARD_TOGGLE_PX : 0),
+        height: vibeCodingCardHeight({
+          rows,
+          history: history.ok ? history.data : null,
+          resetCards: limits.ok ? (limits.data.claudeResetCards ?? null) : null,
+          now,
+          limitsServedAt: limits.ok ? limits.servedAt : undefined,
+        }),
       };
     },
   },
   playstation: {
     label: "PlayStation",
     width: FULL_WIDTH,
-    height: 835,
+    height: PLAYSTATION_BASE_HEIGHT,
     // 展开最近一个奖杯所在的游戏，和首页点「Latest」一样：先渲一遍找出展开的那格，取它的奖杯目录作 SWR 兜底再渲。
     async render(status, site, now) {
       const [summary, playing, playingNow] = await Promise.all([status("trophies"), status("playing"), status("playingNow")]);
@@ -323,6 +319,7 @@ const CARDS: Record<string, ReadmeCard> = {
       return {
         element: catalog ? <SWRConfig value={{ fallback: { [trophiesTilePath(ids!.split(","))]: catalog } }}>{block}</SWRConfig> : block,
         sample: false,
+        height: playstationCardHeight(catalog?.ok ? catalog.data.titles : null),
       };
     },
   },
@@ -337,7 +334,7 @@ const CARDS: Record<string, ReadmeCard> = {
   "site-status": {
     label: "LYJWPAGE",
     width: FULL_WIDTH,
-    height: 924,
+    height: 921,
     async render(status) {
       const [githubRepo, siteDeployments, cloudflareWorkers, health, server, reporters] = await Promise.all([
         status("githubRepo"),
