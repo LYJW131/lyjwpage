@@ -98,7 +98,7 @@ Agent(
 
 提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
 
-- 同步自查：主线程列出这次改动里的规则关键词、符号、常量名，改说法的连旧说法一起列。在仓库根跑 `rg -n --hidden --glob '*.md' --glob '!.git' -e '<词 1>' -e '<词 2>' .`（整库的 md，`apps/`、子目录 README 都在内），列出仍写着旧说法、或该跟着改却没提的位置。动了仓库外配置（控制台、定时任务提示词、Access 策略）的，另查 `docs/ops-facts.md` 有没有对应条目和核对戳。
+- 同步自查：主线程列出这次改动里的规则关键词、符号、常量名，改说法的连旧说法一起列。在仓库根跑 `rg -n --hidden --glob '*.md' --glob '!.git' -e '<词 1>' -e '<词 2>' .`（整库的 md，`apps/`、子目录 README 都在内），列出仍写着旧说法、或该跟着改却没提的位置。动了仓库外配置（控制台、定时任务提示词、Access 策略）的，另查 `docs/ops-facts.md` 有没有对应条目和核对戳；改了机制、拆出模块或借鉴外部仓库/文档做法的，另查 `docs/references.md` 与对应 `docs/*.md`，过时说法同提交同步，借鉴来源同提交补登记。
 - 新增注释：`git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.ts' '*.tsx' '*.mjs' '*.js' | rg '^\+.*(//|/\*)|^\+\s*\*'`，Python 与 shell 另跑 `git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.py' '*.sh' | rg -e '^\+.*#' -e '^\+.*"""' -e "^\+.*'''"`（行尾的 `#` 和文档字符串都算，字符串里的 `#` 会误报，由主线程判；skill 目录里的脚本也在内）（比到工作区，已提交和没提交的都在；没跟踪的新文件先 `git add -N <文件>`），逐条列出，标出含数字、数量词或调用方名字的。
 
 主线程逐条判，过期的同一提交改掉。
@@ -201,3 +201,4 @@ node scripts/site-verify.ts readme-cards --url <预览地址>              # REA
 - 全 PASS：按项目规矩汇报。UI 截图：云端会话里 lyjw 看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，lyjw 定的规矩）；lyjw 在看开发服务器时按第 2 节「附图时机」，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
 - 汇报只写实际验到的，「没验到」那一栏原样告诉 lyjw。
 - 要 lyjw 点头的汇报（UI 效果、大方向、基线例外）附一行「这些检查测不到什么」，例如只测了暗色、没测 WebKit 的滚动、没测真实推送。说不出来就是还没验够，先补验再找 lyjw。
+- 等 lyjw 验收或拍板合并的 PR（不仅限 UI，含大改动 `needs-judge`、`verifier-changed` 或依赖外部配置），交接时用 `ask_question` 发可点确认选项（如「OK，合并并上线 / 需要调整」），不 `unwatch_pull_request` 后纯文本结束回合：纯文本收尾会让 T3 把线程标成已完成，像没合就收尾了。
