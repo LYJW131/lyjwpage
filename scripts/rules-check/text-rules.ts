@@ -1,4 +1,4 @@
-import { commentTexts, HELPER_SCOPE, type Issue } from "./source.ts";
+import { commentTexts, extOf, HELPER_SCOPE, maskComments, TS_PARSE_EXTS, type Issue } from "./source.ts";
 
 const TICKET_RE = /#\d+|https?:\/\/\S+/;
 const TODO_RE = /\b(?:TODO|FIXME)\b/;
@@ -41,5 +41,15 @@ export function checkInlineScriptJson(file: string, text: string) {
   if (!HELPER_SCOPE.test(file) || file === INLINE_SCRIPT_JSON_IMPL) return [];
   return text.split("\n").flatMap((line, index) => LT_ESCAPE_RE.test(line)
     ? [{ file, line: index + 1, rule: "inline-script-json", message: "内联脚本里的 JSON 用 @/lib/inline-script#scriptJson 转义，不再各写一份 replace(/</g, \"\\\\u003c\")。" }]
+    : []);
+}
+
+const TRUSTED_AUTHOR_IMPL = "scripts/verify-receipt.ts";
+const TRUSTED_AUTHOR_SET_RE = /\bTRUSTED_AUTHOR_IDS\b/;
+
+export function checkTrustedAuthor(file: string, text: string) {
+  if (!TS_PARSE_EXTS.has(extOf(file)) || file === TRUSTED_AUTHOR_IMPL) return [];
+  return maskComments(file, text).split("\n").flatMap((line, index) => TRUSTED_AUTHOR_SET_RE.test(line)
+    ? [{ file, line: index + 1, rule: "trusted-author", message: "是不是 lyjw 的账号只调 scripts/verify-receipt.ts#isTrustedUser 判断，不在别处拿那份账号名单另写一份。" }]
     : []);
 }

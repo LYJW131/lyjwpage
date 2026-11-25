@@ -8,7 +8,8 @@ import { gitNotesOnly, gitRulesChanged, type NotesOnly, type RulesChanged } from
 
 const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
-export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
+const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
+export const isTrustedUser = (user: { id?: number | null } | null | undefined) => TRUSTED_AUTHOR_IDS.has(user?.id ?? 0);
 
 export const notesOnlyFor = (authorId: number | undefined, notesOnly: NotesOnly | undefined) => (TRUSTED_AUTHOR_IDS.has(authorId ?? 0) ? notesOnly : undefined);
 

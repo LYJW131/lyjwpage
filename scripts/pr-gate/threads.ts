@@ -1,5 +1,5 @@
 import { stripHtmlComments, stripHtmlTags } from "../strip-html.ts";
-import { TRUSTED_AUTHOR_IDS } from "../verify-receipt.ts";
+import { isTrustedUser } from "../verify-receipt.ts";
 import type { Client, ReviewComment } from "./github.ts";
 import { REPO } from "./github.ts";
 import { BOTS } from "./reviewers.ts";
@@ -57,7 +57,7 @@ export function buildThreads(comments: ReviewComment[], resolution: Resolution) 
       ...severityOf(first.body ?? "", BOTS[first.user?.login ?? ""] ?? null),
       title: shortTitle(first.body ?? ""),
       lastBy: last.user?.login ?? null,
-      lastByLyjw: TRUSTED_AUTHOR_IDS.has(last.user?.id ?? 0),
+      lastByLyjw: isTrustedUser(last.user),
       outdated: state?.outdated ?? null,
       path: first.path ?? null,
       line: first.line ?? first.original_line ?? null,

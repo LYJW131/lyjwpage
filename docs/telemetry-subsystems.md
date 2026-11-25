@@ -165,7 +165,7 @@ Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──
 ## 7. AI Coding — 多来源 token 用量与年度热力图
 
 ### 来源与事实
-coding agent 的 token 用量有四个来源。来源只报自己观测到的原始事实，合计、排名、「今天」、年度格子都在状态核心一处算；事实类型与校验在 `shared/coding-usage.ts`，来源登记与合并规则在 `shared/coding-usage-sources.ts`。
+coding agent 的 token 用量有五个来源。来源只报自己观测到的原始事实，合计、排名、「今天」、年度格子都在状态核心一处算；事实类型与校验在 `shared/coding-usage.ts`，来源登记与合并规则在 `shared/coding-usage-sources.ts`。
 
 | 来源 | 入口里的位置 | 看得到什么 |
 | --- | --- | --- |
@@ -323,8 +323,8 @@ payload: >-
   （`pulse:v2:listening-traces`）；出口按时长把连续播放的一串对齐，推出每首的起止，用斜线画出来，
   算法见 [core Worker](../workers/core/README.md#存储事实时间线)。
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
-  （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code / Devin CLI 的 token 桶）现算，各道都没有模型分。
-- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（含 cache read，口径见 `shared/coding-usage.ts#codingRowTokens`），不带模型名和来源；
+  （`pulse:coding-observations`、Cursor 账号观测、云端 Claude Code / Devin CLI 与 Omarchy 上 Claude Code 的 token 桶）现算，各道都没有模型分。
+- Tokens 道画各来源的 5 分钟 token 桶相加后的速率（含 cache read，口径见 `shared/coding-usage.ts#codingRowTokens`），不带模型名和来源；
   取桶规则见 `workers/core/src/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
 - 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）。

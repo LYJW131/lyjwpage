@@ -40,7 +40,8 @@ iPhone 那一站的 App 名按 main a2c6e1c 回代码复核过；apple-recent �
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（`reporters/server-reporter/src/config.ts#intervalMs` 的默认值，容器 `.env` 可覆盖） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
 | Quest | discord-reporter，misaka-jp 容器：Bot 连 Discord Gateway，只取 lyjw 的 Discord 账号上 `platform=meta_quest` 的 Playing（`reporters/discord-reporter/README.md`） | `/api/ingest/quest` · `lyjwpage-quest` | Quest 在玩什么：`{version:1, presence:{observedAt, discordStatus, playing}}`（`shared/ingest/quest.ts#prepareQuestReport`）。进实时层、推 `quest-now`（`shared/status-views.ts#STATUS_VIEWS` 的 `questNow`）；在玩时首页出现一张 Now Playing 卡（`src/components/live/quest-now-card.tsx`） |
-| Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器；云端环境里的 Devin CLI 也推到这里 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（Claude Code 只收 cumulative，Devin CLI 只发 delta）；状态核心做差，落成和别的来源同形的日行、5 分钟桶、最近一次用量事件（`workers/core/src/stores/agents-otlp.ts`）。Mac 上的 Devin CLI 拿 `lyjwpage-mac` 推同一个入口，入口按凭据的权限记成另一个来源 `mac-otlp`（`workers/ingress/README.md`「OTLP：按凭据分来源」）。几处怎么合并见下文「编码用量」 |
+| Omarchy | omarchy-reporter，lyjw 那台 Omarchy（Hyprland）机器上的桌面应用 | `/api/ingest/omarchy` · `lyjwpage-omarchy` | 前台窗口：`{version:1, observedAt, modules:{desktop}}`（`shared/ingest/omarchy.ts#prepareOmarchyReport`），应用图标由上报器直传 R2。状态核心只存最新一份（`shared/omarchy.ts#omarchyMirror`），不推送，站点暂不展示 |
+| Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器；云端环境里的 Devin CLI 也推到这里 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（Claude Code 只收 cumulative，Devin CLI 只发 delta）；状态核心做差，落成和别的来源同形的日行、5 分钟桶、最近一次用量事件（`workers/core/src/stores/agents-otlp.ts`）。Mac 上的 Devin CLI 拿 `lyjwpage-mac` 推同一个入口，入口按凭据的权限记成另一个来源 `mac-otlp`；Omarchy 上的 Claude Code 拿 `lyjwpage-omarchy` 推来，记成 `omarchy-otlp`（`workers/ingress/README.md`「OTLP：按凭据分来源」）。几处怎么合并见下文「编码用量」 |
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
 PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。presence 里有在玩的游戏时首页出现一张 PlayStation 的 Now Playing 卡（`src/components/live/playstation-now-card.tsx`），开局时刻由 core 按同一款连续上报接续（`workers/core/src/stores/playstation.ts#withStartedAt`），上报器不报。采集 Worker 不拉 PSN，也不持有 PSN 凭据（`docs/ops-facts.md` 里采集 Worker 那一条）。PS5 电源没有来源上报，站点也不显示：PlayStation 信封带 `power` 字段会被入口拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。状态核心还留着一个没人调用、也没有新数据写入的只读接口 `playstationPower`（契约只加不改，`shared/state-core.ts#StateCoreRpc`），片中不画成活动的链路。
@@ -69,12 +70,12 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   - Mac 充电头封面：Anker 的源 JPEG 原样上传，扩展名 jpg（`reporters/mac-telemetry-hub/App/MacTelemetryHub/ServiceController.swift#confirmedCoverIconObjectKey`）
 - 信封里只带 `objectKey`。入口按 `shared/asset-url.ts#IMAGE_OBJECT_KEY` 的正则校验（64 位十六进制加 png / webp / jpg / jpeg）。Mac 的应用图标在 `desktop` 模块里是 `iconHash` 加 `iconObjectKey`（`shared/ingest/telemetry.ts#PreparedDesktop`）。
 
-### 编码用量（四个来源）
+### 编码用量（五个来源）
 
-- 各来源只报自己观测到的原始事实，三种形状一样：日行（来源 × agent × 站点日）、5 分钟 token 桶、最近一次用量事件（契约 `shared/coding-usage.ts`）。来源登记在 `shared/coding-usage-sources.ts#CODING_USAGE_SOURCES`：`mac`（Mac 本机的会话记录）、`agents`（agents-reporter 里 Cursor 账号的完整历史）、`agents-otlp`（云端环境的 OTLP：Claude Code 云端线程与云端的 Devin CLI）、`mac-otlp`（Mac 上 Devin CLI 自己推的 OTLP）；两路 OTLP 都是状态核心做差后才成形（见上表）。
+- 各来源只报自己观测到的原始事实，三种形状一样：日行（来源 × agent × 站点日）、5 分钟 token 桶、最近一次用量事件（契约 `shared/coding-usage.ts`）。来源登记在 `shared/coding-usage-sources.ts#CODING_USAGE_SOURCES`：`mac`（Mac 本机的会话记录）、`agents`（agents-reporter 里 Cursor 账号的完整历史）、`agents-otlp`（云端环境的 OTLP：Claude Code 云端线程与云端的 Devin CLI）、`mac-otlp`（Mac 上 Devin CLI 自己推的 OTLP）、`omarchy-otlp`（Omarchy 台式机上 Claude Code 自己推的 OTLP）；三路 OTLP 都是状态核心做差后才成形（见上表）。
 - 合计、排名、去重、年度格子都不归来源，在状态核心一处算（`shared/coding-usage-view.ts#buildCodingUsageView`）：同一个 agent 有账号级来源（Cursor 账号）就只用它，其余来源相加（`shared/coding-usage-sources.ts#resolveCodingUsageSources`）。读出口是 `/api/status/coding`、`/api/status/coding/now`、`/api/status/coding/year`（`shared/status-views.ts#STATUS_VIEWS`）。
 - Pulse 多一条 Tokens 道：各来源的 5 分钟桶全部相加，画的是 token 处理量（输入 + 输出 + 缓存读 + 缓存写入，与站内所有 token 数同口径，见 `shared/coding-usage.ts#codingRowTokens`）在每个 5 分钟桶里的平均值，折成每分钟；它不是模型的生成速度（`workers/core/src/pulse.ts#tokensLaneView`）。卡上「此刻」那个数取最近 `TOKEN_CURRENT_MS`（10 分钟）内最后一个有用量的桶，不是此刻的精确值，口径问题还没修（同文件 `TOKEN_CURRENT_MS`）。
-- 片中只讲到「三处各报原始数，站点这边合并，Pulse 上多一条 token 处理量（5 分钟平均）」，不点存储键和模块名。按地方数仍是三处（Mac、云端、Cursor 账号），Mac 那一处有本机扫描和 OTLP 两路，所以按来源数是四个；画面上说「三处」「Mac · 云端 · Cursor」照旧成立，说「三个来源」不成立。不说「生成速度」「每分钟生成」，也不说它是此刻的精确值。
+- 片中只讲到「三处各报原始数，站点这边合并，Pulse 上多一条 token 处理量（5 分钟平均）」，不点存储键和模块名。按地方数是四处（Mac、云端、Cursor 账号、Omarchy），Mac 那一处有本机扫描和 OTLP 两路，所以按来源数是五个；画面上说「三处」「Mac · 云端 · Cursor」没算 Omarchy，说「三个来源」不成立。不说「生成速度」「每分钟生成」，也不说它是此刻的精确值。
 
 ### collector 的任务
 
@@ -100,7 +101,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 鉴权
 
-- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）；`/quest` 只认 misaka-jp 上 discord-reporter 的 `lyjwpage-quest`，权限只有 `ingest:quest`。第 02 章的门墙按 `shared/ingest/prepare.ts#INGEST_SOURCES` 一个来源一扇门，外加 `/agents/otlp`；权限表按 `ACCESS_CLIENTS` 一把钥匙一行，只写上报方名，不写 client id，名字照 `docs/ops-facts.md`「Cloudflare Access（Zero Trust）」。`/agents/otlp` 这扇门认两种权限：Claude Code 云端那把的 `ingest:agents-otlp`，和 mac 那把另带的 `ingest:mac-otlp`（同一台 Mac 上的 Devin CLI 推用量；`workers/ingress/src/worker.ts#OTLP_SOURCES`）。iPhone 有两把（App 一把、专注模式快捷指令一把，都只开 `/iphone`）；github-actions 那把不开上报的门，只有 `internal:site-deployed`、`internal:collector-refresh` 两条内部路径（`workers/ingress/src/worker.ts#SITE_DEPLOYED_PATH`、`#COLLECTOR_REFRESH_PATH`）。验钥匙分三步：
+- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）；`/quest` 只认 misaka-jp 上 discord-reporter 的 `lyjwpage-quest`，权限只有 `ingest:quest`。第 02 章的门墙按 `shared/ingest/prepare.ts#INGEST_SOURCES` 一个来源一扇门，外加 `/agents/otlp`；权限表按 `ACCESS_CLIENTS` 一把钥匙一行，只写上报方名，不写 client id，名字照 `docs/ops-facts.md`「Cloudflare Access（Zero Trust）」。`/agents/otlp` 这扇门认三种权限：Claude Code 云端那把的 `ingest:agents-otlp`、mac 那把另带的 `ingest:mac-otlp`（同一台 Mac 上的 Devin CLI 推用量），和 omarchy 那把另带的 `ingest:omarchy-otlp`（同一台 Omarchy 上的 Claude Code 推用量；`workers/ingress/src/worker.ts#OTLP_SOURCES`）。iPhone 有两把（App 一把、专注模式快捷指令一把，都只开 `/iphone`）；github-actions 那把不开上报的门，只有 `internal:site-deployed`、`internal:collector-refresh` 两条内部路径（`workers/ingress/src/worker.ts#SITE_DEPLOYED_PATH`、`#COLLECTOR_REFRESH_PATH`）。验钥匙分三步：
   1. Access 在边缘先挡一道。
   2. Worker 再验 `Cf-Access-Jwt-Assertion`（RS256，校验 aud / iss / exp；`shared/access-jwt.ts#verifyAccessJwt`）。
   3. 用 `common_name` 查 `ACCESS_CLIENTS` 权限表。
@@ -231,8 +232,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### Pulse 事实时间线
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
-- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测、Cursor 账号的观测和 Claude Code 云端线程的用量桶现算（`shared/pulse-coding-features.ts#codingBand`、同文件 `cloudAgentActivity`）。卡片右边的汇总是 driver（lyjw 在 Mac 前台开着编码应用的时长，`shared/pulse-types.ts#codingDriverSeconds`）和 agent 两个时长（`src/components/live/pulse/state-lanes.tsx`）；第 06 章标的两个时长是示意值。
-- Tokens 道：各来源（Mac 本机扫描、Cursor 账号、云端 OTLP、Mac 上的 OTLP）的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`workers/core/src/pulse.ts#tokensLaneView`）。
+- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测、Cursor 账号的观测、Claude Code 云端线程和 Omarchy 上 Claude Code 的用量桶现算（`shared/pulse-coding-features.ts#codingBand`、同文件 `cloudAgentActivity`）。卡片右边的汇总是 driver（lyjw 在 Mac 前台开着编码应用的时长，`shared/pulse-types.ts#codingDriverSeconds`）和 agent 两个时长（`src/components/live/pulse/state-lanes.tsx`）；第 06 章标的两个时长是示意值。
+- Tokens 道：各来源（Mac 本机扫描、Cursor 账号、云端 OTLP、Mac 上的 OTLP、Omarchy 上的 OTLP）的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`workers/core/src/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 06 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`shared/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
 ## 4 首屏（site Worker 上的 React Router）

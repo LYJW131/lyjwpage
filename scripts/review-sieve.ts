@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { stripHtmlComments, stripHtmlTags } from "./strip-html.ts";
-import { TRUSTED_AUTHOR_IDS } from "./verify-receipt.ts";
+import { isTrustedUser } from "./verify-receipt.ts";
 
 const REPO = "LYJW131/lyjwpage";
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -120,7 +120,6 @@ export function botOf(user: User | undefined) {
   return BOTS[(user?.login ?? "").replace(/\[bot\]$/, "")] ?? null;
 }
 
-const trusted = (user: User | undefined) => TRUSTED_AUTHOR_IDS.has(user?.id ?? 0);
 const later = (a: string, b: string) => Date.parse(a) > Date.parse(b);
 
 export function shaHits(text: string, commits: PrCommit[]) {
@@ -182,8 +181,8 @@ export function sievePr(pr: number, data: PrData) {
     merge: (c.parents?.length ?? 1) > 1,
   }));
   const general: Reply[] = [
-    ...data.issueComments.filter((c) => trusted(c.user)).map((c) => ({ body: c.body ?? "", at: c.created_at, url: c.html_url })),
-    ...data.reviews.filter((r) => trusted(r.user) && r.submitted_at).map((r) => ({ body: r.body ?? "", at: r.submitted_at!, url: r.html_url })),
+    ...data.issueComments.filter((c) => isTrustedUser(c.user)).map((c) => ({ body: c.body ?? "", at: c.created_at, url: c.html_url })),
+    ...data.reviews.filter((r) => isTrustedUser(r.user) && r.submitted_at).map((r) => ({ body: r.body ?? "", at: r.submitted_at!, url: r.html_url })),
   ].filter((r) => plain(r.body) && !BOOKKEEPING.test(plain(r.body)));
   const items: (Item & { verdict: Verdict })[] = [];
 
@@ -191,7 +190,7 @@ export function sievePr(pr: number, data: PrData) {
     const bot = botOf(root.user);
     if (root.in_reply_to_id || !bot) continue;
     const replies = data.comments
-      .filter((c) => c.in_reply_to_id === root.id && trusted(c.user))
+      .filter((c) => c.in_reply_to_id === root.id && isTrustedUser(c.user))
       .map((c) => ({ body: c.body ?? "", at: c.created_at, url: c.html_url }));
     const result = classify(root.created_at, replies, general, commits);
     items.push({

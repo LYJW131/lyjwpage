@@ -27,6 +27,7 @@
 //   html-strip-once
 //                  剥 HTML 注释或标签（正则以 <!-- 或 <[^ 开头、换成空串）要删到不再缩短：scripts/ 用 strip-html.ts，
 //                  src/ 用 src/lib/strip-scripts.ts#stripUntilStable，别处至少套在循环里
+//   trusted-author 是不是 lyjw 的账号只经 scripts/verify-receipt.ts#isTrustedUser 判断，别处不读 TRUSTED_AUTHOR_IDS
 //   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
 //                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增（scripts/baseline-growth-check.ts）
 //
@@ -38,11 +39,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { checkFetchHost, checkHtmlStripOnce, checkJsdoc, checkJsonObjectGuard, checkJsonResponseLiteral, checkManualSleep, checkScrollbarPair } from "./rules-check/ast-rules.ts";
 import { extOf, type Issue } from "./rules-check/source.ts";
-import { checkBakedImgUrl, checkInlineScriptJson, checkSha256Hex, checkTodo } from "./rules-check/text-rules.ts";
+import { checkBakedImgUrl, checkInlineScriptJson, checkSha256Hex, checkTodo, checkTrustedAuthor } from "./rules-check/text-rules.ts";
 
 export { ALLOWED_FETCH_HOSTS, checkFetchHost, checkHtmlStripOnce, checkJsdoc, checkJsonObjectGuard, checkJsonResponseLiteral, checkManualSleep, checkScrollbarPair } from "./rules-check/ast-rules.ts";
 export { commentTexts, maskComments, type Issue } from "./rules-check/source.ts";
-export { checkBakedImgUrl, checkInlineScriptJson, checkSha256Hex, checkTodo } from "./rules-check/text-rules.ts";
+export { checkBakedImgUrl, checkInlineScriptJson, checkSha256Hex, checkTodo, checkTrustedAuthor } from "./rules-check/text-rules.ts";
 
 const CODE_EXTS = new Set([
   "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "swift", "py", "sh",
@@ -56,7 +57,7 @@ const JSON_RESPONSE_IMPL = new Set(["shared/http-origins.ts"]);
 
 export function checkFile(file: string, text: string): Issue[] {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
-  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text), ...checkInlineScriptJson(file, text), ...checkHtmlStripOnce(file, text)];
+  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text), ...checkInlineScriptJson(file, text), ...checkHtmlStripOnce(file, text), ...checkTrustedAuthor(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
   if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;
