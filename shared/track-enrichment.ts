@@ -19,7 +19,7 @@ export type TrackEnrichment = {
   motion: TrackMotion | null;
 };
 
-// 写入路径每段各自限时，上报器在等回执。目录查询最多串行 4 次 Apple 请求（3 个搜索词 + 1 次单曲详情）；
+// 写入路径每段各自限时，上报器在等回执。目录查询最多串行 6 次 Apple 请求（3 个搜索词 + 资料库搜索 + 资料库对回目录 + 1 次单曲详情），超出写入预算的落到回执后的重试；
 // 必需的目录查询与队列后两首并行，动态封面排在目录之后，最坏耗时是目录加动态封面两段之和。
 export const CATALOG_TIMEOUT_MS = 2_000;
 export const UPCOMING_TIMEOUT_MS = 2_000;
@@ -133,6 +133,11 @@ export async function prewarmLyrics(enrichment: TrackEnrichment | null, title: s
   if (songId) await stage("lyrics", title, LYRICS_PREWARM_TIMEOUT_MS, () => resolveLyrics(songId));
 }
 
+// 目录块的好坏：对上目录（有 songId）> 只从资料库拿到封面 > 什么都没查到。
+function catalogRank(enrichment: TrackEnrichment): number {
+  return enrichment.songId ? 2 : enrichment.artwork ? 1 : 0;
+}
+
 // upcomingSongIds 属于算它时的那份队列，同一首歌期间队列可以变：queueMatches 为假（不是同一份队列）时不动已存的队列 ID。
 export function mergeEnrichment(
   stored: TrackEnrichment | null | undefined,
@@ -140,8 +145,8 @@ export function mergeEnrichment(
   queueMatches: boolean,
 ): TrackEnrichment | null {
   const same = stored?.trackKey === next.trackKey ? stored : null;
-  if (!same) return next.songId ? { ...next, upcomingSongIds: queueMatches ? next.upcomingSongIds : [] } : null;
-  const catalog = next.songId && !same.songId ? next : same;
+  if (!same) return catalogRank(next) ? { ...next, upcomingSongIds: queueMatches ? next.upcomingSongIds : [] } : null;
+  const catalog = catalogRank(next) > catalogRank(same) ? next : same;
   const motion = catalog === same && same.songId === next.songId && !same.motion && next.motion ? next.motion : catalog.motion;
   const upcomingSongIds = queueMatches && next.upcomingSongIds.length > same.upcomingSongIds.length
     ? next.upcomingSongIds
@@ -197,9 +202,9 @@ export function keepEnrichment(
 ): TrackEnrichment | null {
   if (!playableMusic(music)) return next ?? null;
   const same = previous?.trackKey === trackKeyOf(music) ? previous : null;
-  if (!next) return same?.songId ? same : null;
+  if (!next) return same && catalogRank(same) ? same : null;
   if (!same) return next;
-  const catalog = next.songId || !same.songId ? next : same;
+  const catalog = catalogRank(next) >= catalogRank(same) ? next : same;
   const upcomingSongIds = queueMatches && same.upcomingSongIds.length > next.upcomingSongIds.length
     ? same.upcomingSongIds
     : next.upcomingSongIds;

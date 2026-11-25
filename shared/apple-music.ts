@@ -64,7 +64,9 @@ export async function appleFetchRaw<T>(url: string, credentials: Credentials): P
 const TRACK_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // 新歌发行当天目录常搜不到、歌词也常晚几天才上，「没查到」「没歌词」不是定论，短存。
 const TRACK_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-// 同一曲目可能在多个专辑中重复收录；截短候选会漏掉正确版本。
+// 资料库里自己上传的曲目，封面是 blobstore 预签名链接，签发后 24 小时失效；缓存须短于它。
+const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
+// 同一曲目可能在多个专辑中重复收录；截短候选会漏掉正确版本。也是资料库搜索 limit 的上限。
 const SEARCH_LIMIT = 25;
 
 export type TrackLookup = {
@@ -78,6 +80,7 @@ export type TrackLookup = {
 // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
 // 缓存形状或匹配策略变化必须换键；旧字符串的 .link 是内建方法，不能当作新对象读取。
 export function trackLookupTtlMs(lookup: TrackLookup): number {
+  if (!lookup.link && lookup.artwork) return LIBRARY_ARTWORK_TTL_MS;
   return lookup.link && lookup.hasLyrics ? TRACK_LINK_TTL_MS : TRACK_MISS_TTL_MS;
 }
 
@@ -89,7 +92,7 @@ export function trackLookupCacheKey(track: { title: string | null; artist: strin
   const fitted = new TextEncoder().encode(identity).length <= TRACK_LOOKUP_IDENTITY_MAX_BYTES
     ? identity
     : `sha256=${createHash("sha256").update(identity).digest("hex")}`;
-  return "apple-music:track-lookup:v11:" + fitted;
+  return "apple-music:track-lookup:v12:" + fitted;
 }
 
 type TrackIdentity = { title: string | null; artist: string | null; album: string | null };
@@ -99,6 +102,37 @@ export function trackLookupFallback(track: TrackIdentity): TrackLookup {
   const terms = catalogSearchTerms(track.title, track.artist, track.album);
   const link = `https://music.apple.com/search?term=${encodeURIComponent(terms.at(-1) ?? track.title)}`;
   return { link, artwork: null, id: null, songId: null, hasLyrics: false };
+}
+
+type LibrarySong = CatalogSong & { attributes?: CatalogSong["attributes"] & { playParams?: { catalogId?: string } } };
+
+// 本区目录里没有的（别区上架、自己上传的），到 lyjw 的资料库里找：匹配过目录的给出 catalogId，
+// 回到本区目录取详情；上传的只有封面可用，库 id 不是目录 id，下游歌词和动态封面不能用。
+async function lookupLibrary(
+  track: { title: string; artist: string | null; album: string | null },
+  credentials: Credentials,
+  storefront: string,
+): Promise<{ hit: CatalogSong | undefined; libraryArtwork: string | null }> {
+  const json = await appleFetchRaw<{
+    results?: { "library-songs"?: { data?: LibrarySong[] } };
+  }>(
+    `https://api.music.apple.com/v1/me/library/search` +
+      `?term=${encodeURIComponent(track.title)}&types=library-songs&limit=${SEARCH_LIMIT}`,
+    credentials,
+  );
+  const found = pickCatalogHit(json.results?.["library-songs"]?.data ?? [], track) as LibrarySong | undefined;
+  if (!found) return { hit: undefined, libraryArtwork: null };
+  const catalogId = found.attributes?.playParams?.catalogId;
+  if (catalogId && /^\d{1,20}$/.test(catalogId)) {
+    // ids= 形式在本区下架时回 200 空列表，单曲路径会回 404 被当成查询失败、永远重查。
+    const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
+      `https://api.music.apple.com/v1/catalog/${storefront}/songs?ids=${catalogId}&relate=albums`,
+      credentials,
+    );
+    const hit = detail.data?.[0];
+    if (hit?.attributes?.url) return { hit, libraryArtwork: null };
+  }
+  return { hit: undefined, libraryArtwork: found.attributes?.artwork?.url ?? null };
 }
 
 // 查询失败时抛出，与「查过、目录里没有」区分开：后者会缓存，前者值得重试。
@@ -125,6 +159,15 @@ export async function lookupTrack(track: TrackIdentity): Promise<TrackLookup> {
       if (hit) break;
     }
 
+    let libraryArtwork: string | null = null;
+    if (!hit) {
+      ({ hit, libraryArtwork } = await lookupLibrary(
+        { title: track.title!, artist: track.artist, album: track.album },
+        credentials,
+        storefront,
+      ));
+    }
+
     let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
     if (hit?.id && !albumId) {
       const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
@@ -138,7 +181,7 @@ export async function lookupTrack(track: TrackIdentity): Promise<TrackLookup> {
     // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍
     return {
       link: hit?.attributes?.url ?? "",
-      artwork: hit?.attributes?.artwork?.url ?? null,
+      artwork: hit?.attributes?.artwork?.url ?? libraryArtwork,
       id: albumId,
       songId: hit?.id ?? null,
       hasLyrics: hit?.attributes?.hasLyrics === true,

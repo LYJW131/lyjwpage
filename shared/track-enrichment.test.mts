@@ -107,6 +107,7 @@ test("查到的结果存 30 天，否定结果 7 天，空歌词 1 小时", asyn
   assert.equal(trackLookupTtlMs(found), 30 * DAY);
   assert.equal(trackLookupTtlMs({ ...found, hasLyrics: false }), 7 * DAY);
   assert.equal(trackLookupTtlMs({ ...found, link: "" }), 7 * DAY);
+  assert.equal(trackLookupTtlMs({ ...found, link: "", artwork: "https://store-033.blobstore.apple.com/x/image" }), 12 * 60 * 60 * 1000);
 });
 
 test("动态封面：Apple 404 按「没有」缓存 7 天，其他错误不缓存", async (t) => {
@@ -206,8 +207,74 @@ test("目录里确定没有的曲目不算未知，不触发重查", async (t) =
 
 test("超长歌名的目录缓存键不超过 KV 键长", () => {
   const short = trackLookupCacheKey(music("Song"));
-  assert.equal(short, "apple-music:track-lookup:v11:song:artist:album");
+  assert.equal(short, "apple-music:track-lookup:v12:song:artist:album");
   const long = trackLookupCacheKey(music("长".repeat(400)));
   assert.ok(new TextEncoder().encode(`lyjwpage:${long}`).length < 512);
   assert.notEqual(long, trackLookupCacheKey(music("长".repeat(401))));
+});
+
+async function lookupAgainst(t: test.TestContext, reply: (url: URL) => unknown) {
+  const { installAppleMusicAuth } = await import("@shared/apple-music-auth");
+  installAppleMusicAuth({
+    developerToken: async () => "dev",
+    credentials: async () => ({ ok: true, credentials: { musicUserToken: "user", receivedAt: 0 } }),
+  });
+  const kv = new TtlKv();
+  installAppleCache(() => kv);
+  const original = globalThis.fetch;
+  const fetched: URL[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    fetched.push(url);
+    return Response.json(reply(url));
+  }) as typeof fetch;
+  t.after(() => { globalThis.fetch = original; installAppleCache(null); installAppleMusicAuth(null); });
+  return { kv, fetched };
+}
+
+const UPLOADED = { title: "nameless story", artist: "岸田教団&THE明星ロケッツ", album: "nameless story - 「とある科学の超電磁砲T」ED - EP" };
+const BLOB_ART = "https://store-033.blobstore.apple.com/sq-mq-us-033-000002/a7/image?X-Amz-Expires=86400";
+
+test("本区目录搜不到时到资料库找：上传曲目只补封面，不给目录 id，短存", async (t) => {
+  const { kv, fetched } = await lookupAgainst(t, (url) => url.pathname.endsWith("/me/library/search")
+    ? { results: { "library-songs": { data: [
+      { id: "i.kGO5", attributes: { name: "nameless story  - instrumental", artistName: UPLOADED.artist, albumName: UPLOADED.album, artwork: { url: "https://x.blobstore.apple.com/other" } } },
+      { id: "i.oOdK", attributes: { name: UPLOADED.title, artistName: UPLOADED.artist, albumName: UPLOADED.album, artwork: { url: BLOB_ART } } },
+    ] } } }
+    : { results: {} });
+  const { lookupTrack } = await import("@shared/apple-music");
+  const found = await withRequestState(() => lookupTrack(UPLOADED));
+  assert.equal(found.artwork, BLOB_ART);
+  assert.equal(found.songId, null);
+  assert.equal(found.id, null);
+  assert.match(found.link, /music\.apple\.com\/search/);
+  assert.ok(fetched.some((url) => url.pathname === "/v1/me/library/search" && url.searchParams.get("types") === "library-songs"));
+  assert.equal(kv.ttls.get(`lyjwpage:${trackLookupCacheKey(UPLOADED)}`), 12 * 60 * 60);
+});
+
+test("资料库里的曲目带 catalogId 时回本区目录取链接与歌词标记", async (t) => {
+  const catalogSong = {
+    id: "1501",
+    relationships: { albums: { data: [{ id: "1500" }] } },
+    attributes: { name: "Song", artistName: "Artist", albumName: "Album", url: LINK, artwork: { url: "https://is1-ssl.mzstatic.com/{w}x{h}.jpg" }, hasLyrics: true },
+  };
+  const { fetched } = await lookupAgainst(t, (url) => {
+    if (url.pathname.endsWith("/me/library/search")) {
+      return { results: { "library-songs": { data: [{ id: "i.abc", attributes: { name: "Song", artistName: "Artist", albumName: "Album", playParams: { catalogId: "1501" } } }] } } };
+    }
+    if (url.pathname.endsWith("/catalog/cn/songs")) return { data: url.searchParams.get("ids") === "1501" ? [catalogSong] : [] };
+    return { results: {} };
+  });
+  const { lookupTrack } = await import("@shared/apple-music");
+  const found = await withRequestState(() => lookupTrack(music("Song")));
+  assert.deepEqual(found, { link: LINK, artwork: "https://is1-ssl.mzstatic.com/{w}x{h}.jpg", id: "1500", songId: "1501", hasLyrics: true });
+  assert.ok(fetched.some((url) => url.pathname === "/v1/catalog/cn/songs" && url.searchParams.get("ids") === "1501"));
+});
+
+test("资料库也没有时按目录没有缓存，不带封面", async (t) => {
+  await lookupAgainst(t, () => ({ results: {} }));
+  const { lookupTrack } = await import("@shared/apple-music");
+  const found = await withRequestState(() => lookupTrack(music("Nowhere")));
+  assert.equal(found.artwork, null);
+  assert.equal(found.songId, null);
 });
