@@ -7,13 +7,11 @@
 - lyjw 用提议或提醒的口气（「要不…」「提醒一下」「看一下…有影响」）时，先回判断与影响清单，等一句再改；不当成已下的指令。
 - lyjw 明确要求优先于本文件和 skill 的默认建议。skill 让你停下或确认时，指出具体文件与条款。
 - 和 Cloudflare 相关的查询和调用优先用 Cloudflare Code Mode MCP。
-- 等待（CI、机器评审、部署、后台循环）都带上限，超时记失败接着做（`lyjwpage-verify`「等待要有上限」）。写代码同理：外部请求带 `AbortSignal.timeout`，互不依赖的请求并行，日志这类收尾交给 `ctx.waitUntil`。
-- 改动碰到超过约 20 KB 的源码文件时，顺手按职责拆出一块，原路径留作入口；切不出自然边界就不拆，汇报里说一句。锁文件、Markdown、生成物与讲解动画不算。
+- 等待（CI、机器评审、部署、后台循环）都带上限，超时记失败接着做（`lyjwpage-verify`「等待要有上限」）。
 - 要 lyjw 动手改设置（云端环境、Network secret、控制台）的方案不算轻：先找不用动配置的路（Cloudflare MCP 直写 KV / D1、已有凭据与路径）放在前面；仍要改时，同一条消息里写明那个字段能不能改、还有什么依赖它。
 - 改法有轻有重时先做最轻的（改提示词、文案、仓库里一处配置）；要另加机制（检查、拦截名单、定时任务、CI 步骤）的，写明防什么、何时跑、谁看结果，lyjw 点头再做。被问「为什么被拦、为什么红」、原因出在防线或不挡合并的检查本身时同理：讲清原因就停，放宽还是加严由 lyjw 定，不自己往更严里补。
 - 下「做不到」的判断或提方案前，先 `rg` 仓库、`git log -S` / `--grep`、读项目记忆；外部服务的能力与报错读官方文档、搜上游 issue。能亲手试的先试再下结论：公开网页实际打开读，容器里已接好的接口先调几次，只在 lyjw 机器上能读的原始数据借 Mac 会话读，画面怎么变先渲染出图，搜不到时换别名、扩到评审正文再搜。
 - 动手前看有没有在做的线程或开着的 PR 碰同一处（`list_threads`、`list_prs`），有就经协调者交给它。
-- 写或改定时任务的 skill 与提示词时，书签、水位只在那一步读成功、结果写进状态文件后才推进（`.claude/rules/routines.md`）。
 - 默认简洁中文，先说结果，再说原因、验证和剩余问题。区分本地修改、测试通过和已部署；只读代码推出的运行时行为算推测，写明要查什么才能确认。
 - 第三人称提到站点主人（文档、注释、skill、记忆、PR、提交说明、汇报、给 agent 的简报）一律写 lyjw；当面仍称「你」。界面文案与代码标识符不在此列。
 - 协作约定与合并分档见 `HUMAN.md`。改了 Claude Projects 的项目记忆，同一轮同步进 `.claude/memory/` 并开小 docs PR（`.claude/memory/README.md`）。
@@ -49,7 +47,7 @@
 
 # API 命名与跨端契约
 
-新增或修改上报入口、状态端点、推送事件或跨来源字段前，先读 `docs/api-contracts.md`。来源只上报自己观测到的原始事实，合并、去重、排名在站点侧一处算，新增来源只加生产者和入口校验。
+跨端契约的命名表与设计契约在 `.claude/rules/api-contracts.md`，用 Read 读到 `shared/`、`workers/`、`reporters/`、`apps/ios/` 下的文件时自动载入；没经 Read 就改时先打开它。
 
 ## 变更完成条件
 
@@ -59,39 +57,20 @@
 
 # 界面设计
 
-改站点 UI 前先读 `DESIGN.md`，自查与量尺用 `lyjwpage-ui-design`，图片规则见 `.claude/rules/images.md`。有 UI / UX 变化的改动先给 lyjw 看图、点头再合（lyjw 明确要求的小改动除外）。lyjw 要在分支预览上亲手点时，生产还没有的数据只在本分支给预览注入（`docs/workers-builds.md`「分支预览」），不为让预览看得见先把一部分合进 main。
+改站点 UI 的规矩在 `.claude/rules/ui.md`，用 Read 读到 `src/components/`、`src/app/` 的页面与样式时自动载入。有 UI / UX 变化的改动先给 lyjw 看图、点头再合（lyjw 明确要求的小改动除外）。lyjw 要在分支预览上亲手点时，生产还没有的数据只在本分支给预览注入（`docs/workers-builds.md`「分支预览」），不为让预览看得见先把一部分合进 main。
 
 # 文档与注释
 
-文档和注释会整段进上下文，错的比缺的更糟。每条陈述要么由代码保证，要么一眼能核实。
+注释和文档的写法（只写哪三类注释、不写时间线、不抄易变的值、一个事实一个出处）在 `.claude/rules/docs-and-comments.md`，用 Read 读到代码或 Markdown 文件时自动载入。
 
-- 注释默认不写，JSDoc 只留给对外发布的库接口。只写三类，判据是「删了会让人改坏」：意外行为（绕开的 bug、运行时怪癖、竞态）、设计意图（不变量、有意取的阈值与节奏）、契约（跨端字段的语义和单位；做不成测试或共享常量的「须与 X 同步」，两侧都写）。
-- 不写：复述代码、提调用方或任务 / PR、分节标题、没有单号的 TODO、历史与时间线（「之前」「已改为」）。不抄易变的值，写常量或符号名；引用写路径加符号，不写行号。
-- 清扫注释时上面三类不删；只改注释的改动用 `pnpm docs:comment-only` 证明。
-- 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`。采用了外部做法的，同一提交登记进 `docs/references.md`（`lyjwpage-borrow`）。
+- 采用了外部做法的，同一提交登记进 `docs/references.md`（`lyjwpage-borrow`）。
 - 改代码、规则或流程的同一提交里更新受影响的文档：`rg` 改动的符号、常量和规则关键词，范围含 `HUMAN.md`、`.claude/`、`docs/`（含 `docs/explainer/FACTS.md`）、各级 `README*.md` 与 `public/llms.txt`。新加的模型、数据去向、来源或 Worker 还搜不到，就搜它已有的同类，每一处补上，含 `src/components/god-chat/consent.tsx#CONSENT_COPY`。文档与代码冲突以代码为准，当轮改掉。
 - Markdown 写法（docs 类型、AGENTS.md 写法与大小上限）见 `.claude/rules/docs-writing.md`。
 
 ## 规则 → 由什么强制
 
-| 规则 | 由什么强制 |
-| --- | --- |
-| 不手跑 `wrangler deploy` / `cf deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子与 pi 扩展调 `scripts/guard-forbidden-commands.mjs` |
-| 合并 PR 带 `expectedHeadSha`、合并方式按提交数、拦 `do-not-merge`、回执/Jev 只提醒 | PreToolUse 钩子与 pi 扩展调 `scripts/guard-merge-method.ts` |
-| 不直推 main | GitHub 分支保护 |
-| 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 大小、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
-| 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
-| README 架构图与工作流图跟 `scripts/readme-diagrams.ts` 的输出一致 | `pnpm docs:diagrams --check`（CI docs 门禁） |
-| Worker / shared / `src/` 之间的 import 边界 | `eslint.config.mjs` 的 `no-restricted-imports` |
-| `src/` 组件不手写 `<img>`，用 `AppImage`；不调 `toSorted` / `toReversed` / `toSpliced`（客户端无 polyfill） | `eslint.config.mjs` 的 `no-restricted-syntax`（`app-image.tsx` 除外） |
-| Worker 生产代码不用 `env.X!` 硬取可选绑定 | `eslint.config.mjs` 的 `no-restricted-syntax`（测试除外） |
-| 阶梯外间距、任意值字号 / 位移 / 圆角、子级外边距、裸 hex / oklch 色值 | `pnpm design:scale`（基线 `scripts/design-scale-baseline.json`） |
-| `TODO` / `FIXME` 须带单号、JS / TS 不写 JSDoc 块注释、`/img/` 不烧交付域、`src/` 网络调用不写字面量主机、隐藏滚动条两句同现、`scripts/` 不新增 `.mjs`（存量见 `scripts/mjs-baseline.json`）、SHA-256 十六进制只用 `shared/sha256.ts`、普通对象判断只用 `shared/json.ts#object`、内联脚本 JSON 只经 `src/lib/inline-script.ts` 转义 | `pnpm rules:check` |
-| 剥 HTML 注释或标签删到不再缩短，不只删一遍（`scripts/strip-html.ts`、`src/lib/strip-scripts.ts#stripUntilStable`） | `pnpm rules:check` |
-| 界面文案用英文 | `pnpm ui:copy`（基线 `scripts/ui-copy-baseline.json`） |
-| `@` 引入的规则文件与 `.claude/rules/` 都在合并前规则漂移检查的范围里（`scripts/rule-drift.ts#RULE_PATHS`） | `scripts/rule-drift.test.ts`（CI 的脚本测试） |
-| 三份存量基线只减不增（例外由 lyjw 打 `baseline-exception` 标签放行，agent 不打） | `pnpm baselines:check` |
+每条规则由哪个钩子、lint 或 CI 步骤拦，表在 `docs/rule-enforcement.md`；加了新的强制手段，在那张表里加一行。三份存量基线只减不增，例外由 lyjw 打 `baseline-exception` 标签放行，agent 不打。
 
 ## Code Review Rules
 
-@REVIEW.md
+做 PR 评审时读 `REVIEW.md`：报什么、不报什么、怎么报。

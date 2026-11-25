@@ -1,6 +1,6 @@
 ---
 name: lyjwpage-devin-dispatch
-description: lyjwpage 云端线程把实现、排查或测量的活派给容器里的 Devin CLI（限额有余用 Fusion High，用完退回免费的 swe-2-max）时用：每任务一个 git worktree，tmux 交互式可中途追加指令，Claude 写任务书、监控、验收，再把 Devin 的提交重新签名进 PR。规格已定、要动多个代码文件或要反复跑命令试错的实现、复现、测量（lyjwpage-delegate 表里归 Devin 的那一档）时用；lyjw 说「派给 Devin」「让 Devin 去做」「给 Devin 追加指令」「续派」时也用。
+description: lyjwpage 云端线程把规格已定的实现、复现或测量派给容器里的 Devin CLI 时用：Claude 写任务书、监控、验收，再把 Devin 的提交重新签名进 PR。lyjw 说「派给 Devin」「让 Devin 去做」「给 Devin 追加指令」「续派」时也用。
 ---
 
 # 云端 Devin CLI 调度
