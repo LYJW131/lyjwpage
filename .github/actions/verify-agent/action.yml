@@ -1,5 +1,5 @@
 name: Verify agent
-description: 用 pi 的 SDK 跑验证员 / 判定员（scripts/verify-agent.ts），模型走 Anthropic API
+description: 用 pi 的 SDK 跑验证员 / 判定员（scripts/verify-agent.ts），模型走 Anthropic API（GitHub OIDC 联合认证）
 
 inputs:
   role:
@@ -12,8 +12,14 @@ inputs:
     default: ""
   prompt:
     required: true
-  anthropic-api-key:
+  anthropic-federation-rule-id:
     required: true
+  anthropic-organization-id:
+    required: true
+  anthropic-service-account-id:
+    default: ""
+  anthropic-workspace-id:
+    default: ""
   github-token:
     required: true
   default-branch:
@@ -37,13 +43,28 @@ runs:
   using: composite
   steps:
     - shell: bash
-      # 和下面的 verify-runner 一样：前面跑过 PR 的代码，可能预先放了假的 SDK 或 .npmrc，而 runner 在拿钥匙的进程里 import 它
+      run: |
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+          echo "::error::缺少 GitHub OIDC 请求凭据（ACTIONS_ID_TOKEN_REQUEST_*）：检查 job 是否开启 id-token: write，fork PR 不授予 OIDC 权限"
+          exit 1
+        fi
+        if [ -z "${ANTHROPIC_FEDERATION_RULE_ID:-}" ] || [ -z "${ANTHROPIC_ORGANIZATION_ID:-}" ]; then
+          echo "::error::缺少 Anthropic OIDC 联合认证配置（ANTHROPIC_FEDERATION_RULE_ID / ANTHROPIC_ORGANIZATION_ID 仓库变量）"
+          exit 1
+        fi
+      env:
+        ANTHROPIC_FEDERATION_RULE_ID: ${{ inputs.anthropic-federation-rule-id }}
+        ANTHROPIC_ORGANIZATION_ID: ${{ inputs.anthropic-organization-id }}
+    - shell: bash
+      # 和下面的 verify-runner 一样：前面跑过 PR 的代码，可能预先放了假的 SDK 或 .npmrc，而 runner 在拿凭据的进程里 import 它
       run: |
         rm -rf "$RUNNER_TEMP/pi"
         npm install --userconfig /dev/null --registry https://registry.npmjs.org/ --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pi" "@earendil-works/pi-coding-agent@$PI_VERSION"
       env:
         PI_VERSION: ${{ inputs.pi-version }}
-    # 拿 API 钥匙的 runner 只用默认分支上的版本，PR 改不到它；默认分支还没有这个文件时（引入它的那个 PR）才用 PR 自己的
+        ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+    # 拿凭据的 runner 只用默认分支上的版本，PR 改不到它；默认分支还没有这个文件时（引入它的那个 PR）才用 PR 自己的
     - shell: bash
       run: |
         runner="$RUNNER_TEMP/verify-runner"
@@ -70,16 +91,17 @@ runs:
       env:
         DEFAULT_BRANCH: ${{ inputs.default-branch }}
         PROMPT: ${{ inputs.prompt }}
+        ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
     # 凭据只经这两个文件进 runner（它读完就删）：放进 run 那一步的环境，PR 的代码能从 /proc/<pid>/environ 读到
     - shell: bash
       run: |
         umask 077
-        # 已有同名文件或链接就报错，不顺着链接把钥匙写到别处
+        # 已有同名文件或链接就报错，不顺着链接把凭据写到别处
         set -o noclobber
-        printf '%s' "$ANTHROPIC_API_KEY" > "$RUNNER_TEMP/verify-runner/anthropic-key"
+        node -e 'process.stdout.write(JSON.stringify({ url: process.env.ACTIONS_ID_TOKEN_REQUEST_URL ?? "", token: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? "" }))' > "$RUNNER_TEMP/verify-runner/oidc-request"
         printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/verify-runner/github-token"
       env:
-        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
     - id: run
       shell: bash
@@ -87,7 +109,11 @@ runs:
         node "$RUNNER_TEMP/verify-runner/scripts/verify-agent.ts"
         --role "$ROLE" --pr "$PR" --base "$BASE" ${OUT_DIR:+--out-dir "$OUT_DIR"}
         --prompt-file "$RUNNER_TEMP/verify-runner/prompt.txt"
-        --api-key-file "$RUNNER_TEMP/verify-runner/anthropic-key"
+        --oidc-request-file "$RUNNER_TEMP/verify-runner/oidc-request"
+        --federation-rule-id "$ANTHROPIC_FEDERATION_RULE_ID"
+        --organization-id "$ANTHROPIC_ORGANIZATION_ID"
+        ${ANTHROPIC_SERVICE_ACCOUNT_ID:+--service-account-id "$ANTHROPIC_SERVICE_ACCOUNT_ID"}
+        ${ANTHROPIC_WORKSPACE_ID:+--workspace-id "$ANTHROPIC_WORKSPACE_ID"}
         --github-token-file "$RUNNER_TEMP/verify-runner/github-token"
         --model "$MODEL" --thinking "$THINKING" --timeout-min "$TIMEOUT_MIN"
         ${OUT_DIR:+--transcript "$OUT_DIR/work/agent-transcript.jsonl"}
@@ -100,6 +126,15 @@ runs:
         THINKING: ${{ inputs.thinking }}
         TIMEOUT_MIN: ${{ inputs.timeout-min }}
         PI_SDK_DIR: ${{ runner.temp }}/pi
+        ANTHROPIC_FEDERATION_RULE_ID: ${{ inputs.anthropic-federation-rule-id }}
+        ANTHROPIC_ORGANIZATION_ID: ${{ inputs.anthropic-organization-id }}
+        ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ inputs.anthropic-service-account-id }}
+        ANTHROPIC_WORKSPACE_ID: ${{ inputs.anthropic-workspace-id }}
+        ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
     - if: always()
       shell: bash
-      run: rm -f "$RUNNER_TEMP/verify-runner/anthropic-key" "$RUNNER_TEMP/verify-runner/github-token"
+      run: rm -f "$RUNNER_TEMP/verify-runner/oidc-request" "$RUNNER_TEMP/verify-runner/github-token"
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""

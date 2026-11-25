@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 // bash 与测试跑的是 PR 的代码：名字像凭据的变量一律不给，GitHub 的输出文件也不给（不然 PR 代码能改写这一步的结果）
-const SECRET_ENV = /TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|^ACTIONS_ID_TOKEN|^ACTIONS_RUNTIME|^GITHUB_OUTPUT$|^GITHUB_STEP_SUMMARY$|^GITHUB_ENV$|^GITHUB_PATH$/i;
+const SECRET_ENV = /TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|^ANTHROPIC_|^ACTIONS_ID_TOKEN|^ACTIONS_RUNTIME|^GITHUB_OUTPUT$|^GITHUB_STEP_SUMMARY$|^GITHUB_ENV$|^GITHUB_PATH$/i;
 
 export function childEnv(env: Record<string, string | undefined>, tmpDir: string) {
   const out: Record<string, string | undefined> = { TMPDIR: tmpDir };

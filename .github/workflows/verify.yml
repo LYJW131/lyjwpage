@@ -59,12 +59,15 @@ jobs:
     if: needs.plan.outputs.need != ''
     runs-on: ubuntu-latest
     timeout-minutes: 105
-    # 只读令牌：验证员能跑任意命令，回执由 publish job 发
+    # 只读令牌：验证员能跑任意命令，回执由 publish job 发。
+    # id-token: write 供 verify-agent 用 GitHub OIDC 换取短期 Anthropic 令牌：fork PR 不授予该权限，
+    # 本 job 中所有非 verify-agent 步骤均清空 ACTIONS_ID_TOKEN_REQUEST_*，ai Worker 另只认 main 上 build.yml 签的令牌。
     permissions:
       contents: read
       pull-requests: read
       checks: read
       actions: read
+      id-token: write
     outputs:
       result: ${{ steps.pi.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
@@ -85,8 +88,14 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - uses: ./.github/actions/verify-tools
         timeout-minutes: 14
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
         with:
           browsers: "true"
       # actionlint 只是验证员的一件工具，下载失败不该拖垮整个验证
@@ -100,11 +109,16 @@ jobs:
         env:
           V: 1.7.12
           SHA: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       # WebKit 的系统依赖（一百多个 apt 包）只在界面档装。runner 默认的 azure 镜像时常卡住不报错（一次挂了 40 分钟）：
       # timeout 要放在 sudo 里面才杀得掉 apt-get、放开 dpkg 锁；重试前从镜像表删掉 azure，走 archive.ubuntu.com
       - name: Install browser system deps
         if: needs.plan.outputs.ui == 'true'
         timeout-minutes: 12
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
         run: |
           deps() { sudo timeout -k 10 300 "$(command -v playwright)" install-deps chromium webkit; }
           deps || {
@@ -118,6 +132,8 @@ jobs:
         run: node scripts/verify-action.ts wait-preview --pr "$PR" --timeout-min 20
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       # 脚本能跑的不交给模型：撤回证明在这里跑，结果写进提示词与回执。这一步跑 PR 的测试，不给令牌
       - id: proof
         timeout-minutes: 10
@@ -125,15 +141,22 @@ jobs:
         run: node scripts/verify-action.ts proof --pr "$PR" --base "origin/$BASE" --out-dir "$RUNNER_TEMP/verify-out"
         env:
           BASE: ${{ needs.plan.outputs.base }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - id: prompt
         run: node scripts/verify-action.ts prompt --role verifier --pr "$PR" --preview "$PREVIEW" --out-dir "$RUNNER_TEMP/verify-out"
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
-      # 拿钥匙的 action 用默认分支上的版本：PR 能改仓库里那份，前面跑过的 PR 代码也能改工作区里那份
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+      # 拿凭据的 action 用默认分支上的版本：PR 能改仓库里那份，前面跑过的 PR 代码也能改工作区里那份
       # 先删掉同名目录：前面跑过的 PR 代码可能预先放了带钩子的 .git 或指出去的符号链接
       - id: clean
         run: rm -rf .verify-agent-main
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - uses: actions/checkout@v5
         id: trusted
         if: steps.clean.outcome == 'success'
@@ -154,11 +177,17 @@ jobs:
           base: origin/${{ needs.plan.outputs.base }}
           out-dir: ${{ runner.temp }}/verify-out
           prompt: ${{ steps.prompt.outputs.prompt }}
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic-organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic-service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic-workspace-id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           github-token: ${{ github.token }}
           default-branch: ${{ github.event.repository.default_branch }}
       # 验证员能在产物目录里建符号链接，upload-artifact 会把链接指向的文件内容一起传上去
       - if: always()
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
         run: |
           [ ! -L "$RUNNER_TEMP/verify-out" ] || rm "$RUNNER_TEMP/verify-out"
           find "$RUNNER_TEMP/verify-out" -type l -delete 2>/dev/null || true
@@ -170,6 +199,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           HEAD: ${{ needs.plan.outputs.head }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -186,6 +217,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      id-token: write
     outputs:
       result: ${{ steps.pi.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
@@ -201,15 +233,26 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - id: prompt
         run: node scripts/verify-action.ts prompt --role judge --pr "$PR"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - uses: ./.github/actions/verify-tools
         timeout-minutes: 8
-      # 与 verify 同样的隔离：先清目录再从默认分支检出 verify-agent，防止 PR 代码篡改带钥匙的 action
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+      # 与 verify 同样的隔离：先清目录再从默认分支检出 verify-agent，防止 PR 代码篡改带凭据的 action
       - id: clean
         run: rm -rf .verify-agent-main
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
       - uses: actions/checkout@v5
         id: trusted
         if: steps.clean.outcome == 'success'
@@ -230,7 +273,10 @@ jobs:
           prompt: ${{ steps.prompt.outputs.prompt }}
           model: anthropic/claude-opus-5-5
           thinking: high
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic-organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic-service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic-workspace-id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           github-token: ${{ github.token }}
           default-branch: ${{ github.event.repository.default_branch }}
 

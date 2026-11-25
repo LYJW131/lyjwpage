@@ -5,16 +5,20 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { childEnv, filterGrepOutput, forbiddenRead, inside, prepareInside, readAllowed, realInside, sandboxed, writeInside } from "./verify-agent/guard.ts";
+import { createOidcAuthFetch, fetchGitHubOidcToken, installOidcAnthropicProvider, OAUTH_API_BETA_HEADER, parseOidcRequest, resolveVerifyAuth, type AnthropicOidcSdk } from "./verify-agent/oidc.ts";
 import { compareBaseTool, docsSyncTool, prDiffTool, removedIdentifiers } from "./verify-agent/tools.ts";
 
-test("childEnv：凭据与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
+test("childEnv：凭据、ANTHROPIC_* 与 GitHub 的输出文件都不给子进程，TMPDIR 换成 runner 的临时目录", () => {
   const env = childEnv(
     {
       ANTHROPIC_API_KEY: "a",
+      ANTHROPIC_FEDERATION_RULE_ID: "fdrl_1",
+      ANTHROPIC_ORGANIZATION_ID: "org_1",
       GITHUB_TOKEN: "b",
       GH_TOKEN: "c",
       ACTIONS_RUNTIME_URL: "d",
       ACTIONS_ID_TOKEN_REQUEST_URL: "e",
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: "t",
       GITHUB_OUTPUT: "/out",
       GITHUB_ENV: "/env",
       GITHUB_STEP_SUMMARY: "/sum",
@@ -173,7 +177,218 @@ test("docs_sync：git grep 没命中（退出 1）记 0 处，别的失败记搜
   assert.doesNotMatch(broken, /0 处/);
 });
 
-test("工作流里拿钥匙的 verify-agent action 只从先清空、再检出默认分支的 .verify-agent-main 载入", () => {
+test("parseOidcRequest 与 fetchGitHubOidcToken：校验 JSON 结构，按已有查询串正确拼 audience 且不重编码原参数", async () => {
+  assert.deepEqual(parseOidcRequest('{"url":"https://oidc.example/tok?sig=a+b/c=","token":"t1"}'), {
+    url: "https://oidc.example/tok?sig=a+b/c=",
+    token: "t1",
+  });
+  assert.throws(() => parseOidcRequest("not-json"), /合法 JSON/);
+  assert.throws(() => parseOidcRequest('{"url":"","token":"t1"}'), /缺少非空/);
+
+  const urls: string[] = [];
+  const auths: string[] = [];
+  const fakeFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    urls.push(String(input));
+    auths.push(new Headers(init?.headers).get("authorization") ?? "");
+    return new Response(JSON.stringify({ value: "gh-jwt" }), { status: 200 });
+  }) as typeof fetch;
+
+  assert.equal(await fetchGitHubOidcToken({ url: "https://oidc.example/tok?sig=a+b/c=", token: "req-1" }, "https://api.anthropic.com", fakeFetch), "gh-jwt");
+  assert.equal(await fetchGitHubOidcToken({ url: "https://oidc.example/tok", token: "req-2" }, "https://api.anthropic.com", fakeFetch), "gh-jwt");
+  assert.deepEqual(urls, [
+    "https://oidc.example/tok?sig=a+b/c=&audience=https%3A%2F%2Fapi.anthropic.com",
+    "https://oidc.example/tok?audience=https%3A%2F%2Fapi.anthropic.com",
+  ]);
+  assert.deepEqual(auths, ["Bearer req-1", "Bearer req-2"]);
+});
+
+test("createOidcAuthFetch：注入 Bearer、追加 oauth beta 不覆盖原 beta，401 时失效缓存重新换票并重试一次", async () => {
+  let issued = 0;
+  let invalidations = 0;
+  const sdk: AnthropicOidcSdk = {
+    oidcFederationProvider: ({ identityTokenProvider, federationRuleId, organizationId, serviceAccountId, workspaceId }) => async () => {
+      const jwt = await identityTokenProvider();
+      assert.equal(jwt, "gh-jwt");
+      assert.equal(federationRuleId, "fdrl_1");
+      assert.equal(organizationId, "org_1");
+      assert.equal(serviceAccountId, "svac_1");
+      assert.equal(workspaceId, "wrkspc_1");
+      issued++;
+      return { token: `ant-${issued}`, expiresAt: Math.floor(Date.now() / 1000) + 600 };
+    },
+    TokenCache: class {
+      #provider: () => Promise<{ token: string; expiresAt: number | null }>;
+      #cached: string | null = null;
+      constructor(provider: () => Promise<{ token: string; expiresAt: number | null }>) {
+        this.#provider = provider;
+      }
+      async getToken() {
+        if (!this.#cached) this.#cached = (await this.#provider()).token;
+        return this.#cached;
+      }
+      invalidate() {
+        invalidations++;
+        this.#cached = null;
+      }
+    },
+  };
+
+  const calls: { url: string; auth: string | null; apiKey: string | null; beta: string | null }[] = [];
+  let messageAttempts = 0;
+  const fakeFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith("https://oidc.example/")) return new Response(JSON.stringify({ value: "gh-jwt" }), { status: 200 });
+    const h = new Headers(init?.headers);
+    calls.push({ url, auth: h.get("authorization"), apiKey: h.get("x-api-key"), beta: h.get("anthropic-beta") });
+    messageAttempts++;
+    if (messageAttempts === 2) return new Response("expired", { status: 401 });
+    return new Response("ok", { status: 200 });
+  }) as typeof fetch;
+
+  const authFetch = createOidcAuthFetch(
+    {
+      request: { url: "https://oidc.example/tok?sig=1", token: "req-tok" },
+      federationRuleId: "fdrl_1",
+      organizationId: "org_1",
+      serviceAccountId: "svac_1",
+      workspaceId: "wrkspc_1",
+    },
+    sdk,
+    fakeFetch,
+  );
+
+  const r1 = await authFetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": "stale", "anthropic-beta": "interleaved-thinking-2025-05-14" },
+  });
+  assert.equal(r1.status, 200);
+  const r2 = await authFetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "anthropic-beta": `interleaved-thinking-2025-05-14,${OAUTH_API_BETA_HEADER}` },
+  });
+  assert.equal(r2.status, 200);
+  assert.equal(issued, 2);
+  assert.equal(invalidations, 1);
+  assert.deepEqual(calls, [
+    {
+      url: "https://api.anthropic.com/v1/messages",
+      auth: "Bearer ant-1",
+      apiKey: null,
+      beta: `interleaved-thinking-2025-05-14,${OAUTH_API_BETA_HEADER}`,
+    },
+    {
+      url: "https://api.anthropic.com/v1/messages",
+      auth: "Bearer ant-1",
+      apiKey: null,
+      beta: `interleaved-thinking-2025-05-14,${OAUTH_API_BETA_HEADER}`,
+    },
+    {
+      url: "https://api.anthropic.com/v1/messages",
+      auth: "Bearer ant-2",
+      apiKey: null,
+      beta: `interleaved-thinking-2025-05-14,${OAUTH_API_BETA_HEADER}`,
+    },
+  ]);
+});
+
+test("installOidcAnthropicProvider：包装 anthropic 提供方的 auth 与 stream/streamSimple 注入 OIDC fetch", async () => {
+  let registered: Record<string, unknown> | null = null;
+  let streamFetch: unknown = null;
+  let streamSimpleFetch: unknown = null;
+  const runtime = {
+    getProvider: (id: string) =>
+      id === "anthropic"
+        ? {
+            id: "anthropic",
+            auth: { apiKey: { name: "orig" }, oauth: { name: "oauth" } },
+            stream: (_m: unknown, _c: unknown, opts?: Record<string, unknown>) => {
+              streamFetch = opts?.fetch;
+              return "stream-res";
+            },
+            streamSimple: (_m: unknown, _c: unknown, opts?: Record<string, unknown>) => {
+              streamSimpleFetch = opts?.fetch;
+              return "simple-res";
+            },
+          }
+        : undefined,
+    registerNativeProvider: (provider: Record<string, unknown>) => {
+      registered = provider;
+    },
+  };
+  const sdk: AnthropicOidcSdk = {
+    oidcFederationProvider: () => async () => ({ token: "t", expiresAt: null }),
+    TokenCache: class {
+      async getToken() {
+        return "t";
+      }
+      invalidate() {}
+    },
+  };
+  installOidcAnthropicProvider(runtime, { request: { url: "https://oidc.example/t", token: "k" }, federationRuleId: "f", organizationId: "o" }, sdk);
+  assert.ok(registered);
+  const prov = registered as {
+    auth: { apiKey: { resolve: () => Promise<{ auth: { headers: Record<string, string> }; source: string }> } };
+    stream: (m: unknown, c: unknown, o?: Record<string, unknown>) => unknown;
+    streamSimple: (m: unknown, c: unknown, o?: Record<string, unknown>) => unknown;
+  };
+  const resolved = await prov.auth.apiKey.resolve();
+  assert.equal(resolved.source, "oidc federation");
+  assert.equal(resolved.auth.headers.Authorization, "Bearer oidc");
+  assert.equal(prov.stream({}, {}, {}), "stream-res");
+  assert.equal(prov.streamSimple({}, {}, {}), "simple-res");
+  assert.equal(typeof streamFetch, "function");
+  assert.equal(streamFetch, streamSimpleFetch);
+});
+
+test("resolveVerifyAuth：CI 强制文件传凭据、读完即删并清理环境变量，本地仍支持静态 API key", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "verify-auth-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const oidcFile = path.join(dir, "oidc-request");
+  const ghFile = path.join(dir, "github-token");
+  fs.writeFileSync(oidcFile, JSON.stringify({ url: "https://oidc.example/t?sig=1", token: "req-1" }));
+  fs.writeFileSync(ghFile, "gh-tok");
+
+  const ciEnv: Record<string, string | undefined> = {
+    CI: "true",
+    ANTHROPIC_FEDERATION_RULE_ID: "fdrl_1",
+    ANTHROPIC_ORGANIZATION_ID: "org_1",
+    ANTHROPIC_SERVICE_ACCOUNT_ID: "svac_1",
+    ANTHROPIC_WORKSPACE_ID: "wrkspc_1",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "leaked",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "leaked",
+  };
+  const resolved = resolveVerifyAuth({ provider: "anthropic", oidcRequestFile: oidcFile, githubTokenFile: ghFile }, ciEnv);
+  assert.equal(fs.existsSync(oidcFile), false);
+  assert.equal(fs.existsSync(ghFile), false);
+  assert.equal(ciEnv.ACTIONS_ID_TOKEN_REQUEST_TOKEN, undefined);
+  assert.equal(ciEnv.ANTHROPIC_FEDERATION_RULE_ID, undefined);
+  assert.deepEqual(resolved, {
+    oidc: {
+      request: { url: "https://oidc.example/t?sig=1", token: "req-1" },
+      federationRuleId: "fdrl_1",
+      organizationId: "org_1",
+      serviceAccountId: "svac_1",
+      workspaceId: "wrkspc_1",
+    },
+    apiKey: undefined,
+    githubToken: "gh-tok",
+  });
+
+  assert.throws(
+    () =>
+      resolveVerifyAuth(
+        { provider: "anthropic", federationRuleId: "fdrl_1", organizationId: "org_1" },
+        { CI: "true", ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/t", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "req-1" },
+      ),
+    /--oidc-request-file/,
+  );
+
+  const localEnv: Record<string, string | undefined> = { ANTHROPIC_API_KEY: "sk-local" };
+  assert.deepEqual(resolveVerifyAuth({ provider: "anthropic" }, localEnv), { oidc: null, apiKey: "sk-local", githubToken: undefined });
+  assert.equal(localEnv.ANTHROPIC_API_KEY, undefined);
+});
+
+test("工作流里拿凭据的 verify-agent action 只从先清空、再检出默认分支的 .verify-agent-main 载入，且 OIDC 边界与隔离完整", () => {
   const dir = path.join(import.meta.dirname, "..", ".github", "workflows");
   const files = fs.readdirSync(dir).filter((name) => name.endsWith(".yml"));
   const uses = files.flatMap((name) => [...fs.readFileSync(path.join(dir, name), "utf8").matchAll(/uses: (\S*verify-agent\S*)/g)].map((match) => match[1]));
@@ -181,13 +396,25 @@ test("工作流里拿钥匙的 verify-agent action 只从先清空、再检出�
   const workflow = fs.readFileSync(path.join(dir, "verify.yml"), "utf8");
   const trustedCheckouts = [
     ...workflow.matchAll(
-      /run: rm -rf \.verify-agent-main\n\s+- uses: actions\/checkout@v5\n\s+id: trusted\n\s+if: steps\.clean\.outcome == 'success'\n[\s\S]*?ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n\s+path: \.verify-agent-main\n/g,
+      /run: rm -rf \.verify-agent-main\n(?:\s+env:\n(?:\s+\S+: .*\n)+)?\s+- uses: actions\/checkout@v5\n\s+id: trusted\n\s+if: steps\.clean\.outcome == 'success'\n[\s\S]*?ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n\s+path: \.verify-agent-main\n/g,
     ),
   ];
   const piSteps = [...workflow.matchAll(/uses: \.\/\.verify-agent-main\/\.github\/actions\/verify-agent\n\s+id: pi\n\s+if: steps\.trusted\.outcome == 'success'\n/g)];
   assert.equal(trustedCheckouts.length, 2);
   assert.equal(piSteps.length, 2);
-  assert.doesNotMatch(workflow, /claude-code-action|CLAUDE_CODE_OAUTH_TOKEN/);
+  assert.doesNotMatch(workflow, /claude-code-action|CLAUDE_CODE_OAUTH_TOKEN|secrets\.ANTHROPIC_API_KEY|anthropic-api-key/);
+  assert.equal([...workflow.matchAll(/^\s+id-token: write$/gm)].length, 2);
+  assert.equal([...workflow.matchAll(/anthropic-federation-rule-id: \$\{\{ vars\.ANTHROPIC_FEDERATION_RULE_ID \}\}/g)].length, 2);
+  assert.equal([...workflow.matchAll(/anthropic-organization-id: \$\{\{ vars\.ANTHROPIC_ORGANIZATION_ID \}\}/g)].length, 2);
+  // verify 与 judge 里非 verify-agent 的所有命令步骤都应清空 ACTIONS_ID_TOKEN_REQUEST_*
+  assert.equal([...workflow.matchAll(/ACTIONS_ID_TOKEN_REQUEST_URL: ""/g)].length, 14);
+  assert.equal([...workflow.matchAll(/ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""/g)].length, 14);
   assert.equal(fs.existsSync(path.join(dir, "claude-code-review.yml")), false);
   assert.equal(fs.existsSync(path.join(dir, "claude.yml")), false);
+
+  const action = fs.readFileSync(path.join(import.meta.dirname, "..", ".github", "actions", "verify-agent", "action.yml"), "utf8");
+  assert.doesNotMatch(action, /anthropic-api-key/);
+  assert.match(action, /umask 077[\s\S]*?set -o noclobber[\s\S]*?oidc-request/);
+  assert.match(action, /id: run[\s\S]*?--oidc-request-file "\$RUNNER_TEMP\/verify-runner\/oidc-request"[\s\S]*?ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""/);
+  assert.match(action, /if: always\(\)[\s\S]*?rm -f "\$RUNNER_TEMP\/verify-runner\/oidc-request"/);
 });
