@@ -12,7 +12,7 @@ Checked 2026-10-23 23:55 (SGT) at lyjw's request. Source: Cloudflare GraphQL `du
 | core StateHub | global | none | KIX (Osaka) since ≥09-23, stable |
 | core LivePushRoom | global-apac | apac | NRT (Tokyo) since 10-02 (old `global` room was AMS) |
 | ai ChatQuota | global | none | NRT |
-| ai AnthropicEgress | anthropic-jp-0 (in use) | apac | NRT 10-16..17, then KIX from 10-18 |
+| ai AnthropicEgress | anthropic-jp-0 (no longer helps since 2026-11-12, see [[anthropic-region-block-visitor-ip]]; #811 removes its use) | apac | NRT 10-16..17, then KIX from 10-18 |
 | ai AnthropicEgress | anthropic-wnam (fallback) | wnam | DEN (one day DFW, 10-15) |
 | ai ChatLog | global | none | SEA (Seattle) |
 | ai BuildCoordinator | global | none | DFW (Dallas) |

@@ -37,9 +37,16 @@
         "source": "github",
         "repo": "anthropics/claude-plugins-community"
       }
+    },
+    "googlechrome": {
+      "source": {
+        "source": "github",
+        "repo": "GoogleChrome/modern-web-guidance"
+      }
     }
   },
   "enabledPlugins": {
-    "html-plan@claude-community": true
+    "html-plan@claude-community": true,
+    "modern-web-guidance@googlechrome": true
   }
 }
