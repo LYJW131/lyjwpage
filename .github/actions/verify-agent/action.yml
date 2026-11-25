@@ -106,6 +106,7 @@ runs:
     - id: run
       shell: bash
       run: >-
+        env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN
         node "$RUNNER_TEMP/verify-runner/scripts/verify-agent.ts"
         --role "$ROLE" --pr "$PR" --base "$BASE" ${OUT_DIR:+--out-dir "$OUT_DIR"}
         --prompt-file "$RUNNER_TEMP/verify-runner/prompt.txt"

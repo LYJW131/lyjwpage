@@ -105,6 +105,11 @@ export async function loadAnthropicOidcSdk(sdkDir: string): Promise<AnthropicOid
 
 export function createOidcAuthFetch(config: OidcConfig, sdk: AnthropicOidcSdk, baseFetch: typeof fetch = fetch): typeof fetch {
   const baseURL = config.baseURL ?? ANTHROPIC_OIDC_AUDIENCE;
+  const exchangeFetch: typeof fetch = (input, init) => {
+    const timeout = AbortSignal.timeout(20_000);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return baseFetch(input, { ...init, signal });
+  };
   const provider = sdk.oidcFederationProvider({
     // GitHub OIDC JWT 只有几分钟有效期，Anthropic 访问令牌快到期时按需向 GitHub 重新取一张
     identityTokenProvider: () => fetchGitHubOidcToken(config.request, ANTHROPIC_OIDC_AUDIENCE, baseFetch),
@@ -113,7 +118,7 @@ export function createOidcAuthFetch(config: OidcConfig, sdk: AnthropicOidcSdk, b
     serviceAccountId: config.serviceAccountId,
     workspaceId: config.workspaceId,
     baseURL,
-    fetch: baseFetch,
+    fetch: exchangeFetch,
   });
   const tokenCache = new sdk.TokenCache(provider, (err) => {
     console.error(`[oidc] 后台续期失败，暂沿用缓存令牌：${err instanceof Error ? err.message : String(err)}`);

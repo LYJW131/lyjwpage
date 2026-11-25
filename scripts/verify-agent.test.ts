@@ -206,13 +206,15 @@ test("createOidcAuthFetch：注入 Bearer、追加 oauth beta 不覆盖原 beta�
   let issued = 0;
   let invalidations = 0;
   const sdk: AnthropicOidcSdk = {
-    oidcFederationProvider: ({ identityTokenProvider, federationRuleId, organizationId, serviceAccountId, workspaceId }) => async () => {
+    oidcFederationProvider: ({ identityTokenProvider, federationRuleId, organizationId, serviceAccountId, workspaceId, fetch: exchangeFetch }) => async () => {
       const jwt = await identityTokenProvider();
       assert.equal(jwt, "gh-jwt");
       assert.equal(federationRuleId, "fdrl_1");
       assert.equal(organizationId, "org_1");
       assert.equal(serviceAccountId, "svac_1");
       assert.equal(workspaceId, "wrkspc_1");
+      const tokenRes = await exchangeFetch("https://api.anthropic.com/v1/oauth/token", { method: "POST" });
+      assert.equal(tokenRes.status, 200);
       issued++;
       return { token: `ant-${issued}`, expiresAt: Math.floor(Date.now() / 1000) + 600 };
     },
@@ -238,6 +240,10 @@ test("createOidcAuthFetch：注入 Bearer、追加 oauth beta 不覆盖原 beta�
   const fakeFetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("https://oidc.example/")) return new Response(JSON.stringify({ value: "gh-jwt" }), { status: 200 });
+    if (url === "https://api.anthropic.com/v1/oauth/token") {
+      assert.ok(init?.signal instanceof AbortSignal);
+      return new Response(JSON.stringify({ access_token: "ok" }), { status: 200 });
+    }
     const h = new Headers(init?.headers);
     calls.push({ url, auth: h.get("authorization"), apiKey: h.get("x-api-key"), beta: h.get("anthropic-beta") });
     messageAttempts++;
@@ -415,6 +421,6 @@ test("工作流里拿凭据的 verify-agent action 只从先清空、再检出�
   const action = fs.readFileSync(path.join(import.meta.dirname, "..", ".github", "actions", "verify-agent", "action.yml"), "utf8");
   assert.doesNotMatch(action, /anthropic-api-key/);
   assert.match(action, /umask 077[\s\S]*?set -o noclobber[\s\S]*?oidc-request/);
-  assert.match(action, /id: run[\s\S]*?--oidc-request-file "\$RUNNER_TEMP\/verify-runner\/oidc-request"[\s\S]*?ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""/);
+  assert.match(action, /id: run[\s\S]*?env -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN[\s\S]*?--oidc-request-file "\$RUNNER_TEMP\/verify-runner\/oidc-request"/);
   assert.match(action, /if: always\(\)[\s\S]*?rm -f "\$RUNNER_TEMP\/verify-runner\/oidc-request"/);
 });

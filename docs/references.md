@@ -8,6 +8,11 @@
 
 ## Agent 编排与定时自动化
 
+- **[mygo-music-apple-music：Upstream watch OIDC 联合认证](https://github.com/LYJW131/mygo-music-apple-music/blob/main/scripts/upstream-watch.ts)**（lyjw 个人仓库）
+  - 是什么：在 GitHub Actions 里用 Workload Identity Federation（`id-token: write` + `@anthropic-ai/sdk` 的 `oidcFederationProvider`）按需拉取 GitHub OIDC JWT 换取 Anthropic 短期 Bearer 令牌，配合 `bubblewrap --unshare-pid` 与子进程环境变量剥离（含 `^ANTHROPIC_`、`^ACTIONS_`），避免静态 API key 过期与凭据外泄。
+  - 取了什么：Verify Action 的 `verify` 与 `judge` job 开启 `id-token: write`，复用 `pi` 内置 `@anthropic-ai/sdk` 的 `oidcFederationProvider` + `TokenCache` 在内存按需换票与续期，不落盘短期令牌；子进程屏蔽追加 `^ANTHROPIC_`。偏离：4 个联合认证 ID 经仓库 Variables（`vars.ANTHROPIC_*`）而非工作流写死字面量；`verify.yml` 跑在 `pull_request` 上，凭据只经受信任默认分支检出的 `verify-agent` 临时文件传入、读完即删，并用 `env -u` 保证 `node` 进程环境不保留 `ACTIONS_ID_TOKEN_REQUEST_*`。
+  - 状态：采用。落在 [oidc.ts](../scripts/verify-agent/oidc.ts)、[verify-agent.ts](../scripts/verify-agent.ts)、[guard.ts](../scripts/verify-agent/guard.ts)、[verify-agent/action.yml](../.github/actions/verify-agent/action.yml)、[verify.yml](../.github/workflows/verify.yml) 与 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「PR 上的验证：Verify Action」。
+
 - **[Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)**、**[Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)**、**[Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)**、**[Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)**（Anthropic）、**[pi 文档：Extensions、Skills](https://github.com/earendil-works/pi)**（pi coding agent）
   - 是什么：agent 循环里「核对产出」最好用明确规则给反馈、说清哪条没过；工具少而贴合工作流、报错写清怎么改；系统提示取中间高度、用少量典型例子代替长规则单、细节按需取；评测从真实失败建题、每题多跑、读 transcript、留出没见过的题。pi 的扩展事件（`tool_call`、`before_provider_request`）与按需加载的 skill。
   - 取了什么：自搭 pi runner 在 Verify Action 里单轨跑验证员与判定员，加三个贴着验证流程的工具（声明台账、目标分支对照、文档同步）、判定做法用三个通用例子写进系统提示、探针写法做成 skill；用历史缺陷、注入缺陷和干净样本做评测，例子避开测试样本，另留设计时没见过的样本单独统计。
