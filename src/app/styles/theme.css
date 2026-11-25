@@ -173,7 +173,9 @@
     system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC",
     "Microsoft YaHei", sans-serif;
   --font-mono:
-    var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+    var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas,
+    "Liberation Mono", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei",
+    "Noto Sans CJK SC", "Source Han Sans SC", monospace;
 
   --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-trophy-focus: trophy-focus 1s ease-in-out 1;
