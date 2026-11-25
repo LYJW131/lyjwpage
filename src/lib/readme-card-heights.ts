@@ -1,7 +1,7 @@
 import { usableCardKinds, weeklyLimit } from "@/components/live/vibecoding/limits";
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import { forecastLimit } from "@/lib/limit-forecast";
-import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
+import { AGENT_LIMITS_STALE_MS, clockReading } from "@shared/freshness";
 import type { LimitHistoryPayload } from "@shared/limit-history";
 import type { TrophyTitle } from "@shared/types";
 import type { ClaudeResetCards } from "@shared/vibecoding-limits";
@@ -31,12 +31,11 @@ export function vibeCodingCardHeight({
   limitsServedAt?: number;
 }): number {
   const claude = rows.find((row) => row.id === "claude");
-  const clock = limitsServedAt ?? now;
+  const clock = clockReading(0, now, limitsServedAt);
   const claudeLimitsStale = claude?.limitsAt != null && clock - claude.limitsAt > AGENT_LIMITS_STALE_MS;
   const limit = claude && !claudeLimitsStale ? weeklyLimit(claude) : null;
   const points = history?.series.find((series) => series.agent === "claude" && series.key === limit?.key)?.points ?? [];
   const forecast = limit && clock ? forecastLimit(limit, points, Math.min(clock, claude?.limitsAt ?? clock)) : null;
-  // ResetCardToggle 仅在 forecast 存在且有可用重置卡时渲染（见 reset-cards.tsx#resetCardScenarios）。
   const resetCardToggleShown = !!claude && forecast != null && usableCardKinds(claude.limits, resetCards).length > 0;
   return (
     VIBE_CODING_BASE_HEIGHT

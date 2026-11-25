@@ -70,6 +70,7 @@ test("vibeCodingCardHeight：Claude 限额缺失或过期时无 forecast，即�
       history: null,
       resetCards: { fable: 0, standard: 1 },
       now: NOW,
+      limitsServedAt: NOW - 60_000,
     }),
     baseWith4Compact,
   );
