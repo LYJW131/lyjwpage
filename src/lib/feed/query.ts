@@ -3,8 +3,8 @@ import type { StatusViewKey } from "@shared/status-views";
 
 export const FEED_PATHS: ReadonlySet<string> = new Set(["/feed", "/rss.xml", "/atom.xml"]);
 
-export const DEFAULT_FEED_TYPES = ["digest", "commits", "trophies", "gaming", "workouts"] as const;
-export const OPTIONAL_FEED_TYPES = ["deployments", "watching", "listening", "incidents"] as const;
+export const DEFAULT_FEED_TYPES = ["digest", "gaming", "trophies", "workouts", "watching", "listening"] as const;
+export const OPTIONAL_FEED_TYPES = ["commits", "deployments", "incidents"] as const;
 export const ALL_FEED_TYPES = [...DEFAULT_FEED_TYPES, ...OPTIONAL_FEED_TYPES] as const;
 
 export type FeedType = (typeof ALL_FEED_TYPES)[number];

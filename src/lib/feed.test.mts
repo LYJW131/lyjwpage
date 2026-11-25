@@ -16,237 +16,8 @@ import {
   requiredViewsForTypes,
 } from "./feed/query.ts";
 import { etagMatches, serveFeed } from "./feed/response.ts";
+import { FIXTURE_SNAPSHOT } from "./feed/fixtures.test.ts";
 import { escapeXml, renderAtom, renderRss } from "./feed/xml.ts";
-
-const FIXTURE_SNAPSHOT: FeedSnapshot = {
-  digest: {
-    headline: "奖杯有进账",
-    highlights: [
-      { topic: "trophies", value: 3, unit: "count", atLeast: true, caption: "trophies" },
-      { topic: "gaming", value: 6.5, unit: "hours", atLeast: false, caption: "gaming" },
-    ],
-    model: "rules",
-    generatedAt: Date.parse("2026-11-24T22:50:00Z"),
-  },
-  githubRepo: {
-    repo: "LYJW131/lyjwpage",
-    fetchedAt: Date.parse("2026-11-24T22:30:00Z"),
-    totals: { commits: 3176, additions: 742265, deletions: 367027, contributors: 13 },
-    contributors: [],
-    recentCommits: [
-      {
-        sha: "31b1802",
-        oid: "31b18029e7317e7c370bb9eeeaa7deed4ab2b0b3",
-        title: "feat(site): 关掉维护页，页面恢复正常渲染 (#815)",
-        authors: ["LYJW131", "claude"],
-        committedAt: "2026-11-24T20:00:00Z",
-        url: "https://github.com/LYJW131/lyjwpage/commit/31b18029e7317e7c370bb9eeeaa7deed4ab2b0b3",
-        verified: true,
-      },
-    ],
-  },
-  siteDeployments: {
-    fetchedAt: Date.parse("2026-11-24T22:45:00Z"),
-    production: null,
-    activeVersions: [],
-    recent: [
-      {
-        id: "cloudflare-build:1",
-        state: "READY",
-        createdAt: Date.parse("2026-11-24T20:05:00Z"),
-        buildDurationMs: 130_000,
-        target: "production",
-        commit: {
-          sha: "31b18029e7317e7c370bb9eeeaa7deed4ab2b0b3",
-          branch: "main",
-          message: "feat(site): 关掉维护页，页面恢复正常渲染 (#815)",
-        },
-      },
-    ],
-  },
-  trophies: {
-    observedAt: Date.parse("2026-11-24T18:00:00Z"),
-    profile: {
-      onlineId: "BQDJS",
-      avatarUrl: null,
-      plus: true,
-      level: 180,
-      tier: 2,
-      trophyPoint: 13155,
-      levelBasePoint: 13140,
-      levelNextPoint: 13230,
-      levelProgress: 16,
-      earned: { platinum: 5, gold: 24, silver: 110, bronze: 413 },
-    },
-    earned: { platinum: 5, gold: 24, silver: 108, bronze: 413 },
-    titles: [],
-    recent: [
-      {
-        npCommunicationId: "NPWR21008_00",
-        id: 64,
-        groupId: "002",
-        titleName: "《地平线 西之绝境™》",
-        trophyName: "与朗德拉对峙",
-        type: "bronze",
-        iconUrl: null,
-        earnedAt: Date.parse("2026-11-24T17:30:00Z"),
-      },
-    ],
-  },
-  playing: {
-    observedAt: Date.parse("2026-11-24T19:00:00Z"),
-    items: [
-      {
-        titleId: "PPSA17903_00",
-        name: "《地平线 西之绝境™》",
-        category: "ps5_native_game",
-        playCount: 36,
-        firstPlayedAt: Date.parse("2025-11-01T00:00:00Z"),
-        lastPlayedAt: Date.parse("2026-11-24T19:00:00Z"),
-        playDurationMs: 334_540_000,
-        imageUrl: null,
-        service: "none(purchased)",
-        preOrder: false,
-      },
-      {
-        titleId: "PPSA01616_00",
-        name: "Netflix",
-        category: "ps5_native_media_app",
-        playCount: 39,
-        firstPlayedAt: Date.parse("2025-11-01T00:00:00Z"),
-        lastPlayedAt: Date.parse("2026-11-24T19:30:00Z"),
-        playDurationMs: 105_316_000,
-        imageUrl: null,
-        service: null,
-        preOrder: false,
-      },
-      {
-        titleId: "PPSA99999_00",
-        name: "Upcoming Preorder",
-        category: "ps5_native_game",
-        playCount: 0,
-        firstPlayedAt: null,
-        lastPlayedAt: null,
-        playDurationMs: null,
-        imageUrl: null,
-        service: "none(purchased)",
-        preOrder: true,
-      },
-    ],
-  },
-  workouts: {
-    pushedAt: Date.parse("2026-11-23T12:00:00Z"),
-    items: [
-      {
-        id: "workout-1",
-        activityType: "Fencing",
-        startedAt: Date.parse("2026-11-23T11:00:00Z"),
-        endedAt: Date.parse("2026-11-23T11:20:00Z"),
-        secondsFromGMT: 28800,
-        durationSeconds: 1222,
-        distanceMeters: null,
-        activeEnergyKcal: 147.6,
-        elevationAscendedMeters: null,
-        indoor: false,
-      },
-    ],
-  },
-  watching: {
-    items: [
-      {
-        id: "22114",
-        title: "我推的孩子",
-        subtitle: "S2:E9 · 梦",
-        progress: 0,
-        poster: null,
-        backdrop: null,
-        type: "Episode",
-        year: 2023,
-        link: "https://emby.lyjw131.com/web/index.html#!/item?id=22114",
-        playedAt: null,
-      },
-      {
-        id: "22113",
-        title: "我推的孩子",
-        subtitle: "S2:E8 · 触发",
-        progress: 0,
-        poster: null,
-        backdrop: null,
-        type: "Episode",
-        year: 2023,
-        link: "https://emby.lyjw131.com/web/index.html#!/item?id=22113",
-        playedAt: null,
-      },
-    ],
-  },
-  pulse: {
-    generatedAt: Date.parse("2026-11-24T22:55:00Z"),
-    window: {
-      from: Date.parse("2026-11-23T22:55:00Z"),
-      to: Date.parse("2026-11-24T22:55:00Z"),
-    },
-    lanes: {
-      coding: { kind: "coding", segments: { startSec: [], endSec: [], value: [], agentSources: [] }, summary: { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 } },
-      tokens: { kind: "tokens", buckets: { startSec: [], endSec: [], total: [], output: [], cacheRead: [] }, summary: { peakPerMinute: null, currentPerMinute: null, totalTokens: 0 } },
-      listening: {
-        kind: "state",
-        segments: {
-          startSec: [80_000, 80_010, 80_210],
-          endSec: [80_200, 80_210, 80_810],
-          state: [2, 2, 1],
-          title: ["晴天", "稻香", "暂停曲"],
-          subtitle: ["周杰伦", "周杰伦", "周杰伦"],
-        },
-        uncertain: {
-          startSec: [70_000],
-          endSec: [70_180],
-          title: ["Idol"],
-          subtitle: ["YOASOBI"],
-          marginSec: [60],
-        },
-        summary: { activeSeconds: 580, titles: 3 },
-      },
-      watching: {
-        kind: "state",
-        segments: {
-          startSec: [75_000],
-          endSec: [76_500],
-          state: [2],
-          title: ["我推的孩子"],
-          subtitle: ["S2:E9 · 梦"],
-        },
-        summary: { activeSeconds: 1500, titles: 1 },
-      },
-      gaming: { kind: "state", segments: { startSec: [], endSec: [], state: [], title: [], subtitle: [] }, summary: { activeSeconds: 0, titles: 0 } },
-      charging: { kind: "power", segments: { startSec: [], endSec: [], watts: [] }, currentPowerW: null, summary: { peakW: null, energyWh: 0 } },
-      activity: { kind: "steps", buckets: { startSec: [], endSec: [], steps: [] }, workouts: { startSec: [], endSec: [], activityType: [] }, summary: { steps: 0 } },
-    },
-  },
-  agentStatus: {
-    fetchedAt: Date.parse("2026-11-24T22:50:00Z"),
-    agents: [
-      {
-        id: "claude",
-        name: "Claude",
-        indicator: "partial_outage",
-        statusUrl: "https://status.claude.com",
-        components: [],
-        incidents: [
-          {
-            id: "inc-1",
-            title: "Elevated API errors",
-            status: "investigating",
-            url: "https://status.claude.com/incidents/inc-1",
-            updatedAt: "2026-11-24T21:15:00Z",
-            body: "<p>Investigating <script>alert(1)</script>elevated errors.</p>",
-          },
-        ],
-        note: null,
-        stale: false,
-      },
-    ],
-  },
-};
 
 function makeServices(
   overrides: Partial<Record<StatusViewKey, FirstScreen<StatusViewKey>>> = {},
@@ -325,19 +96,140 @@ test("parseFeedQuery 解析默认值、合法筛选与非法参数策略", () =>
 test("requiredViewsForTypes 只请求被选中的最小视图集合并去重", () => {
   assert.deepEqual(requiredViewsForTypes(["commits"]), ["githubRepo"]);
   assert.deepEqual(requiredViewsForTypes(["watching", "listening"]), ["watching", "pulse"]);
-  assert.deepEqual(requiredViewsForTypes(DEFAULT_FEED_TYPES), ["digest", "githubRepo", "trophies", "playing", "workouts"]);
+  assert.deepEqual(requiredViewsForTypes(DEFAULT_FEED_TYPES), ["digest", "playing", "trophies", "workouts", "watching", "pulse"]);
 });
 
-test("buildFeedItems 过滤媒体应用、补齐 watching 时间、支持 tag 筛选并按时间倒序", () => {
+test("buildFeedItems 过滤媒体应用与合并提交、补齐 watching 时间、支持 tag 筛选并按多样性前置", () => {
   const defaultQuery = parseFeedQuery(new URLSearchParams(), "rss");
   assert.equal(defaultQuery.ok, true);
   const items = buildFeedItems(FIXTURE_SNAPSHOT, defaultQuery.query);
 
-  assert.deepEqual(items.map((item) => item.type), ["digest", "commits", "gaming", "trophies", "workouts"]);
+  assert.deepEqual(items.slice(0, 6).map((item) => item.type), ["digest", "listening", "watching", "gaming", "trophies", "workouts"]);
+  assert.equal(items.some((item) => item.type === "commits"), false, "默认流不包含 commits");
   assert.equal(items.some((item) => item.title.includes("Netflix")), false, "过滤 ps5_native_media_app");
   assert.equal(items.some((item) => item.title.includes("Upcoming Preorder")), false, "过滤未游玩预购游戏");
   assert.equal(items[0].title, "Digest: 奖杯有进账 · 3+ trophies, 6.5h gaming");
-  assert.equal(items[1].title, "feat(site): 关掉维护页，页面恢复正常渲染 (#815)");
+
+  const burstSnapshot: FeedSnapshot = {
+    ...FIXTURE_SNAPSHOT,
+    trophies: {
+      ...FIXTURE_SNAPSHOT.trophies!,
+      recent: [
+        {
+          npCommunicationId: "NPWR21008_00",
+          id: 70,
+          groupId: "002",
+          titleName: "《地平线 西之绝境™》",
+          trophyName: "完成所有任务",
+          type: "gold",
+          iconUrl: null,
+          earnedAt: Date.parse("2026-11-24T22:40:00Z"),
+        },
+        {
+          npCommunicationId: "NPWR21008_00",
+          id: 71,
+          groupId: "002",
+          titleName: "《地平线 西之绝境™》",
+          trophyName: "协助昆恩族",
+          type: "bronze",
+          iconUrl: null,
+          earnedAt: Date.parse("2026-11-24T22:39:00Z"),
+        },
+        {
+          npCommunicationId: "NPWR21008_00",
+          id: 72,
+          groupId: "002",
+          titleName: "《地平线 西之绝境™》",
+          trophyName: "升级幽魂护手",
+          type: "silver",
+          iconUrl: null,
+          earnedAt: Date.parse("2026-11-24T22:38:00Z"),
+        },
+      ],
+    },
+    pulse: {
+      ...FIXTURE_SNAPSHOT.pulse!,
+      lanes: {
+        ...FIXTURE_SNAPSHOT.pulse!.lanes,
+        listening: {
+          kind: "state",
+          segments: {
+            startSec: [81_000, 81_300, 81_600, 81_900, 82_200],
+            endSec: [81_200, 81_500, 81_800, 82_100, 82_400],
+            state: [2, 2, 2, 2, 2],
+            title: ["Song 1", "Song 2", "Song 3", "Song 4", "Song 5"],
+            subtitle: ["A", "A", "A", "A", "A"],
+          },
+          summary: { activeSeconds: 1000, titles: 5 },
+        },
+      },
+    },
+    githubRepo: {
+      ...FIXTURE_SNAPSHOT.githubRepo!,
+      recentCommits: [
+        ...(FIXTURE_SNAPSHOT.githubRepo!.recentCommits ?? []),
+        {
+          sha: "deadbee",
+          oid: "deadbeef00000000000000000000000000000000",
+          title: "Merge remote-tracking branch 'origin/main' into t3/test",
+          authors: ["LYJW131"],
+          committedAt: "2026-11-24T21:00:00Z",
+          url: "https://github.com/LYJW131/lyjwpage/commit/deadbeef00000000000000000000000000000000",
+          verified: true,
+        },
+      ],
+    },
+  };
+
+  const diverse = buildFeedItems(burstSnapshot, {
+    format: "atom",
+    types: [...DEFAULT_FEED_TYPES],
+    tags: [],
+    limit: 20,
+  });
+  assert.equal(new Set(diverse.slice(0, 3).map((item) => item.type)).size, 3, "前 3 条来自 3 个不同维度，不被连发奖杯或听歌刷屏");
+  assert.equal(diverse.filter((item) => item.type === "listening").length, 3, "多类型混排时 listening 最多保留 3 条");
+
+  const soloListening = buildFeedItems(burstSnapshot, {
+    format: "atom",
+    types: ["listening"],
+    tags: [],
+    limit: 20,
+  });
+  assert.equal(soloListening.length, 5, "单类型 listening 不受多类型上限裁剪");
+
+  const undatedWatchingSnapshot: FeedSnapshot = {
+    watching: {
+      items: [FIXTURE_SNAPSHOT.watching!.items[1]],
+    },
+    pulse: {
+      ...burstSnapshot.pulse!,
+      lanes: {
+        ...burstSnapshot.pulse!.lanes,
+        watching: { kind: "state", segments: { startSec: [], endSec: [], state: [], title: [], subtitle: [] }, summary: { activeSeconds: 0, titles: 0 } },
+      },
+    },
+  };
+  const topThreeWithUndated = buildFeedItems(undatedWatchingSnapshot, {
+    format: "atom",
+    types: ["listening", "watching"],
+    tags: [],
+    limit: 3,
+  });
+  assert.deepEqual(
+    topThreeWithUndated.map((item) => item.type),
+    ["listening", "listening", "listening"],
+    "无日期的续播项不前置挤掉有日期的近期动态",
+  );
+
+  const commitsOnly = buildFeedItems(burstSnapshot, {
+    format: "rss",
+    types: ["commits"],
+    tags: [],
+    limit: 20,
+  });
+  assert.equal(commitsOnly.length, 1, "过滤 Merge remote-tracking branch 合并提交");
+  assert.equal(commitsOnly[0].title, "feat(site): 关掉维护页，页面恢复正常渲染 (#815)");
 
   const tagged = buildFeedItems(FIXTURE_SNAPSHOT, {
     format: "rss",
