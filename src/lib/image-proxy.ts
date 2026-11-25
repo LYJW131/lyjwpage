@@ -128,15 +128,17 @@ export class ImageUpstreamError extends Error {
   }
 }
 
-// 只有确定原图不在的上游状态对外回 404：404 / 410，以及 Apple blobstore 预签名链接过期回的 403。别的源回 403 可能是 WAF 或限流，和超时等其余状态一样算网关故障回 502，5xx 会进 Workers Issues 发告警。
+// 只有确定原图不在的上游状态对外回 404：404 / 410，以及 Apple blobstore 预签名链接过期或签名失效回的 400 / 401 / 403。别的源回这些状态可能是请求问题、WAF 或限流，和超时等其余状态一样算网关故障回 502，5xx 会进 Workers Issues 发告警。
 function isBlobstore(host: string | null): boolean {
   return host === "blobstore.apple.com" || !!host?.endsWith(".blobstore.apple.com");
 }
 
+const BLOBSTORE_GONE_STATUSES = new Set([400, 401, 403]);
+
 export function imageUpstreamFailureStatus(error: ImageUpstreamError): 404 | 413 | 502 {
   if (error.status === 413) return 413;
   if (error.status === 404 || error.status === 410) return 404;
-  return error.status === 403 && isBlobstore(error.host) ? 404 : 502;
+  return BLOBSTORE_GONE_STATUSES.has(error.status) && isBlobstore(error.host) ? 404 : 502;
 }
 
 export function imageSourceFromInternalPath(pathname: string): string | null {
