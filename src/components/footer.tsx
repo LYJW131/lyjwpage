@@ -11,9 +11,9 @@ export function Footer() {
     <footer className="mx-auto mb-6 w-[calc(100%-2rem)] max-w-5xl">
       <div
         className={cn(
-          "label-mono flex flex-wrap items-center justify-center gap-x-2 gap-y-0 border-t border-line pt-2 text-muted-foreground sm:px-4 [&>*]:py-2 [&>*+*]:before:mr-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['·']",
+          "label-mono flex flex-wrap items-center justify-center gap-x-2 gap-y-2 border-t border-line px-4 pt-4 text-muted-foreground [&>*+*]:before:mr-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['·']",
           "max-[32rem]:[&>*:last-child]:basis-full max-[32rem]:[&>*:last-child]:justify-center max-[32rem]:[&>*:last-child]:before:hidden",
-          EXTRA_TEXT ? "pb-0" : "pb-2",
+          EXTRA_TEXT ? "pb-2" : "pb-4",
         )}
       >
         {commit && (
@@ -21,20 +21,12 @@ export function Footer() {
             href={commit.url}
             target="_blank"
             rel="noreferrer"
-            className="normal-case transition-colors hover:text-foreground"
+            className="-my-2 py-2 normal-case transition-colors hover:text-foreground"
           >
             {commit.short}
           </a>
         )}
         {buildTime && <span>Built {buildTime}</span>}
-        <a
-          href="/rss.xml"
-          title="Subscribe via RSS"
-          aria-label="Subscribe via RSS"
-          className="inline-flex min-w-6 items-center justify-center transition-colors hover:text-foreground"
-        >
-          RSS
-        </a>
         <OnlineCount />
       </div>
       {EXTRA_TEXT ? (

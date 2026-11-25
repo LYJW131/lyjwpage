@@ -13,8 +13,6 @@ export const HOME_CACHE_CONTROL =
   "public, max-age=1800, stale-while-revalidate=86400, stale-if-error=86400";
 export const HOME_CACHE_TAG = "home";
 
-export const FEED_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=600";
-
 // 不带 stale-while-revalidate：首页在自己的 SWR 里后台重建时若再拿到过期快照，重建出的还是旧版面，要再等一整轮。
 export const STATUS_CACHE_CONTROL = "public, max-age=600, stale-if-error=604200";
 

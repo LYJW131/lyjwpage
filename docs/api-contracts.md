@@ -11,7 +11,6 @@
 | 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名；上报器读不到的 Claude 重置卡张数也归它，路径 `/api/ingest/agents/cards` |
 | 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个上报方一把 Cloudflare Access service token（同一上报方管多个来源时共用一把），上报入口按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 限定可写来源 | 新上报方要新建 token、加进 Access 策略并登记 client id；改这张表要同步 Access 策略，两边不一致会拦住上报；不再让一把凭据通吃所有来源 |
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
-| 订阅 Feed | `/feed`（默认 RSS 2.0，支持 `?format=rss\|atom`）、`/rss.xml`（RSS 2.0）、`/atom.xml`（Atom 1.0）；由 `site` 资源路由聚合公开状态视图，不读私有历史 | 支持 `?type=`（默认 `digest,gaming,trophies,workouts,watching,listening`，另可选 `commits,deployments,incidents` 或 `all`）、`?tag=`（逗号分隔分类匹配）、`?limit=`（默认 20，夹到 `1..50`，非法值回默认）；多类型混排时各维度最新一条按时间序置前且收听条目限前 3 条；未知 `type` / `format` 回 `400`；见 `src/lib/feed/` |
 | 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
 | 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/powerbank` 与视图键 `powerBank` 各守其约定 |
 | 跨来源字段 | 同一概念同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成；PlayStation、Quest、服务器上报的 `observedAt` 超前接收时刻超过 `shared/freshness.ts#INGEST_FUTURE_SKEW_MS` 即拒收 |
